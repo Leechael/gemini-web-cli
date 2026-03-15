@@ -53,22 +53,29 @@ func init() {
 	pf.BoolVar(&noPersist, "no-persist", false, "Do not write updated cookies back")
 	pf.Float64Var(&requestTimeout, "request-timeout", 300, "Per-request HTTP timeout in seconds")
 
-	// Chat commands
-	rootCmd.AddCommand(askCmd)
-	rootCmd.AddCommand(replyCmd)
-	rootCmd.AddCommand(listCmd)
-	rootCmd.AddCommand(getCmd)
+	rootCmd.AddGroup(
+		&cobra.Group{ID: "chat", Title: "Chat:"},
+		&cobra.Group{ID: "research", Title: "Deep Research:"},
+		&cobra.Group{ID: "util", Title: "Utilities:"},
+	)
 
-	// Deep research
-	rootCmd.AddCommand(researchCmd)
-	rootCmd.AddCommand(progressCmd)
-	rootCmd.AddCommand(reportCmd)
+	askCmd.GroupID = "chat"
+	replyCmd.GroupID = "chat"
+	listCmd.GroupID = "chat"
+	getCmd.GroupID = "chat"
+	downloadCmd.GroupID = "chat"
 
-	// Utilities
-	rootCmd.AddCommand(downloadCmd)
-	rootCmd.AddCommand(modelsCmd)
-	rootCmd.AddCommand(inspectCmd)
-	rootCmd.AddCommand(importCmd)
+	researchCmd.GroupID = "research"
+	progressCmd.GroupID = "research"
+	reportCmd.GroupID = "research"
+
+	modelsCmd.GroupID = "util"
+	inspectCmd.GroupID = "util"
+	importCmd.GroupID = "util"
+
+	rootCmd.AddCommand(askCmd, replyCmd, listCmd, getCmd, downloadCmd)
+	rootCmd.AddCommand(researchCmd, progressCmd, reportCmd)
+	rootCmd.AddCommand(modelsCmd, inspectCmd, importCmd)
 }
 
 // Execute runs the root command.
