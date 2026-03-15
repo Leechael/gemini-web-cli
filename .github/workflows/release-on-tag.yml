@@ -1,0 +1,95 @@
+name: Release on Tag
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v1.2.3)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    working-directory: gemini-web-cli
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    env:
+      GOFLAGS: -buildvcs=false
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: gemini-web-cli/go.mod
+          cache: true
+
+      - name: Validate naming contract
+        run: |
+          test -f release-naming.env
+          source release-naming.env
+          test -n "$BINARY_NAME"
+          test -n "$TAG_PREFIX"
+          test -n "$ARTIFACT_GLOB"
+          test -n "$BUILD_TARGET"
+
+      - name: Build cross-platform artifacts
+        run: |
+          source release-naming.env
+          mkdir -p dist
+          for os in darwin linux; do
+            for arch in amd64 arm64; do
+              artifact="dist/${BINARY_NAME}-${os}-${arch}.tar.gz"
+              tmpdir=$(mktemp -d)
+              CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -o "$tmpdir/${BINARY_NAME}" "$BUILD_TARGET"
+              tar -czf "$artifact" -C "$tmpdir" "$BINARY_NAME"
+              rm -rf "$tmpdir"
+            done
+          done
+          (cd dist && sha256sum ./*.tar.gz > checksums.txt)
+
+      - name: Generate CHANGELOG.md
+        run: |
+          source release-naming.env
+          current_tag="${RELEASE_TAG}"
+          previous_tag=$(git tag -l "${TAG_PREFIX}*" --sort=-version:refname | grep -v "^${current_tag}$" | head -n 1 || true)
+
+          {
+            echo "# Changelog"
+            echo
+            echo "## ${current_tag}"
+            echo
+            if [ -n "${previous_tag}" ]; then
+              echo "Changes since ${previous_tag}:"
+              echo
+              git log --pretty='- %s (%h)' "${previous_tag}..${current_tag}"
+            else
+              echo "Initial release changes:"
+              echo
+              git log --pretty='- %s (%h)' "${current_tag}"
+            fi
+          } > dist/CHANGELOG.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          body_path: gemini-web-cli/dist/CHANGELOG.md
+          files: |
+            gemini-web-cli/dist/*.tar.gz
+            gemini-web-cli/dist/checksums.txt
+            gemini-web-cli/dist/CHANGELOG.md
+          prerelease: ${{ contains(env.RELEASE_TAG, '-alpha.') || contains(env.RELEASE_TAG, '-beta.') || contains(env.RELEASE_TAG, '-rc.') }}

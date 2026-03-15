@@ -1,0 +1,62 @@
+name: Go CI
+
+on:
+  pull_request:
+    branches: ["**"]
+    paths:
+      - "gemini-web-cli/**"
+  push:
+    branches: ["**"]
+    paths:
+      - "gemini-web-cli/**"
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: gemini-web-cli
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-build:
+    runs-on: ubuntu-latest
+    env:
+      GOFLAGS: -buildvcs=false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: gemini-web-cli/go.mod
+          cache: true
+
+      - name: Download deps
+        run: go mod tidy
+
+      - name: Verify go.mod/go.sum unchanged
+        run: |
+          git diff --exit-code go.mod go.sum
+
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l ./cmd ./internal)
+          if [ -n "$unformatted" ]; then
+            echo "Unformatted files:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Unit tests
+        run: go test ./... -count=1
+
+      - name: Build
+        run: go build -v .

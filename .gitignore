@@ -1,0 +1,6 @@
+bin/
+dist/
+gemini-web-cli
+*.png
+*.jpg
+/tmp/
