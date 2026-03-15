@@ -13,9 +13,9 @@ on:
         type: choice
         options: [patch, minor, major]
       ref:
-        description: "Branch/ref to release from (default: master)"
+        description: "Branch/ref to release from (default: main)"
         required: false
-        default: master
+        default: main
         type: string
 
 permissions:
@@ -152,7 +152,6 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Validate naming contract
-        working-directory: gemini-web-cli
         run: |
           test -f release-naming.env
           source release-naming.env
@@ -160,7 +159,6 @@ jobs:
 
       - name: Compute next version and tag
         id: version
-        working-directory: gemini-web-cli
         run: |
           source release-naming.env
           chmod +x ./scripts/next-version.sh
@@ -188,7 +186,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               workflow_id: 'release-on-tag.yml',
-              ref: 'master',
+              ref: 'main',
               inputs: {
                 tag: '${{ steps.version.outputs.tag }}'
               }

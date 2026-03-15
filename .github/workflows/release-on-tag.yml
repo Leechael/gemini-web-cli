@@ -14,10 +14,6 @@ on:
 permissions:
   contents: write
 
-defaults:
-  run:
-    working-directory: gemini-web-cli
-
 jobs:
   build-release:
     runs-on: ubuntu-latest
@@ -34,7 +30,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: gemini-web-cli/go.mod
+          go-version-file: go.mod
           cache: true
 
       - name: Validate naming contract
@@ -87,9 +83,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.RELEASE_TAG }}
-          body_path: gemini-web-cli/dist/CHANGELOG.md
+          body_path: dist/CHANGELOG.md
           files: |
-            gemini-web-cli/dist/*.tar.gz
-            gemini-web-cli/dist/checksums.txt
-            gemini-web-cli/dist/CHANGELOG.md
+            dist/*.tar.gz
+            dist/checksums.txt
+            dist/CHANGELOG.md
           prerelease: ${{ contains(env.RELEASE_TAG, '-alpha.') || contains(env.RELEASE_TAG, '-beta.') || contains(env.RELEASE_TAG, '-rc.') }}

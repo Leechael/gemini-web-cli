@@ -3,19 +3,11 @@ name: Go CI
 on:
   pull_request:
     branches: ["**"]
-    paths:
-      - "gemini-web-cli/**"
   push:
     branches: ["**"]
-    paths:
-      - "gemini-web-cli/**"
 
 permissions:
   contents: read
-
-defaults:
-  run:
-    working-directory: gemini-web-cli
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -33,7 +25,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: gemini-web-cli/go.mod
+          go-version-file: go.mod
           cache: true
 
       - name: Download deps
