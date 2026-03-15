@@ -2,12 +2,21 @@ package types
 
 // ModelOutput holds the parsed response from Gemini.
 type ModelOutput struct {
-	Text      string
-	TextDelta string
-	RCid      string
-	Metadata  []string // [cid, rid, rcid, ...]
-	Images    []Image
-	Done      bool
+	Text             string
+	TextDelta        string
+	RCid             string
+	Metadata         []string // [cid, rid, rcid, ...]
+	Images           []Image
+	Done             bool
+	DeepResearchPlan *DeepResearchPlanData // non-nil when a plan is detected
+}
+
+// DeepResearchPlanData holds the extracted plan from candidate structured data.
+type DeepResearchPlanData struct {
+	Title         string
+	Steps         []string
+	ETAText       string
+	ConfirmPrompt string
 }
 
 // Image represents a web or generated image in the response.

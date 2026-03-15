@@ -54,6 +54,7 @@ func (c *Client) SendMessageDeepResearch(ctx context.Context, prompt string, met
 func (c *Client) collectStreamResult(ctx context.Context, prompt string, metadata []string, model *types.Model, deepResearch bool, cb StreamCallback) (*types.ModelOutput, []types.Image, error) {
 	var best *types.ModelOutput
 	var allImages []types.Image
+	var plan *types.DeepResearchPlanData
 	seen := map[string]bool{}
 	err := c.streamGenerate(ctx, prompt, metadata, model, deepResearch, func(out *types.ModelOutput) {
 		for _, img := range out.Images {
@@ -61,6 +62,9 @@ func (c *Client) collectStreamResult(ctx context.Context, prompt string, metadat
 				seen[img.URL] = true
 				allImages = append(allImages, img)
 			}
+		}
+		if out.DeepResearchPlan != nil {
+			plan = out.DeepResearchPlan
 		}
 		if best == nil || len(out.Text) >= len(best.Text) {
 			best = out
@@ -77,6 +81,9 @@ func (c *Client) collectStreamResult(ctx context.Context, prompt string, metadat
 	}
 	if len(allImages) > 0 {
 		best.Images = allImages
+	}
+	if plan != nil {
+		best.DeepResearchPlan = plan
 	}
 	return best, allImages, nil
 }
@@ -376,6 +383,9 @@ func parseEnvelope(envelope []any) *types.ModelOutput {
 						out.Images = imgs
 					}
 				}
+				// Deep research plan extraction from candidate structured data
+				out.DeepResearchPlan = extractDeepResearchPlan(cand)
+
 				// Clean up: card URL placeholder is not useful text when we have images
 				if strings.HasPrefix(out.Text, "http://googleusercontent.com/") && len(out.Images) > 0 {
 					out.Text = ""
@@ -485,6 +495,111 @@ func extractImages(imageData any) []types.Image {
 	}
 
 	return images
+}
+
+// extractDeepResearchPlan searches candidate data for a dict with key "56" or "57"
+// containing the research plan payload.
+func extractDeepResearchPlan(candidateData []any) *types.DeepResearchPlanData {
+	// Recursively search for a map with key "56" or "57"
+	var planPayload []any
+	findDictKey(candidateData, func(m map[string]any) bool {
+		for _, key := range []string{"56", "57"} {
+			if v, ok := m[key]; ok {
+				if arr, ok := v.([]any); ok {
+					planPayload = arr
+					return true
+				}
+			}
+		}
+		return false
+	})
+
+	if planPayload == nil {
+		return nil
+	}
+
+	plan := &types.DeepResearchPlanData{}
+
+	// title at [0]
+	if len(planPayload) > 0 {
+		if s, ok := planPayload[0].(string); ok {
+			plan.Title = s
+		}
+	}
+
+	// steps at [1] — each step is [?, label, body, ...]
+	if len(planPayload) > 1 {
+		if stepsArr, ok := planPayload[1].([]any); ok {
+			for _, step := range stepsArr {
+				if stepArr, ok := step.([]any); ok {
+					label := ""
+					body := ""
+					if len(stepArr) > 1 {
+						if s, ok := stepArr[1].(string); ok {
+							label = s
+						}
+					}
+					if len(stepArr) > 2 {
+						if s, ok := stepArr[2].(string); ok {
+							body = s
+						}
+					}
+					if label != "" && body != "" {
+						plan.Steps = append(plan.Steps, label+": "+body)
+					} else if body != "" {
+						plan.Steps = append(plan.Steps, body)
+					} else if label != "" {
+						plan.Steps = append(plan.Steps, label)
+					}
+				}
+			}
+		}
+	}
+
+	// eta at [2]
+	if len(planPayload) > 2 {
+		if s, ok := planPayload[2].(string); ok {
+			plan.ETAText = s
+		}
+	}
+
+	// confirm_prompt at [3][0]
+	if len(planPayload) > 3 {
+		if arr, ok := planPayload[3].([]any); ok && len(arr) > 0 {
+			if s, ok := arr[0].(string); ok {
+				plan.ConfirmPrompt = s
+			}
+		}
+	}
+
+	// Validate: at least one field must be non-empty
+	if plan.Title == "" && len(plan.Steps) == 0 && plan.ETAText == "" && plan.ConfirmPrompt == "" {
+		return nil
+	}
+
+	return plan
+}
+
+// findDictKey recursively searches nested data for a map matching the predicate.
+func findDictKey(data any, pred func(map[string]any) bool) bool {
+	switch v := data.(type) {
+	case map[string]any:
+		if pred(v) {
+			return true
+		}
+		for _, val := range v {
+			if findDictKey(val, pred) {
+				return true
+			}
+		}
+	case []any:
+		for _, item := range v {
+			if findDictKey(item, pred) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func getNestedString(arr []any, indices ...int) string {

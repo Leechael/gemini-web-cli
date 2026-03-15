@@ -31,39 +31,38 @@ func (c *Client) CreateAndStartDeepResearch(ctx context.Context, prompt string, 
 	// Step 0: Preflight RPCs (no cid yet)
 	c.deepResearchPreflight(ctx, "", "")
 
-	// Step 1: Send the prompt with deep research flags
-	output, err := c.deepResearchGenerate(ctx, prompt, nil, model)
+	// Step 1: Send the prompt with deep research flags → creates plan internally
+	step1, err := c.deepResearchGenerate(ctx, prompt, nil, model)
 	if err != nil {
 		return nil, fmt.Errorf("deep research plan request failed: %w", err)
 	}
 
 	plan := &types.DeepResearchPlan{}
-
-	if len(output.Metadata) > 0 {
-		plan.Cid = output.Metadata[0]
+	if len(step1.Metadata) > 0 {
+		plan.Cid = step1.Metadata[0]
 	}
-
-	// Parse plan details from the response text
-	text := output.Text
-	if text != "" {
-		plan.Title = extractPlanTitle(text)
-		plan.Steps = extractPlanSteps(text)
-	}
-
 	if plan.Cid == "" {
 		return nil, fmt.Errorf("no chat ID returned from deep research")
 	}
 
-	// Extract rid from step 1 metadata for preflight ack
-	var rid string
-	if len(output.Metadata) > 1 {
-		rid = output.Metadata[1]
+	// Extract plan from step 1 response
+	if step1.DeepResearchPlan != nil {
+		plan.Title = step1.DeepResearchPlan.Title
+		plan.Steps = step1.DeepResearchPlan.Steps
+		plan.ETAText = step1.DeepResearchPlan.ETAText
 	}
 
-	// Step 2: Preflight with cid, then confirm to start research
-	c.deepResearchPreflight(ctx, plan.Cid, rid)
+	// Step 2: Send confirm prompt to start research execution.
+	var rid string
+	if len(step1.Metadata) > 1 {
+		rid = step1.Metadata[1]
+	}
 	confirmPrompt := "开始研究"
-	_, err = c.deepResearchGenerate(ctx, confirmPrompt, output.Metadata, model)
+	if step1.DeepResearchPlan != nil && step1.DeepResearchPlan.ConfirmPrompt != "" {
+		confirmPrompt = step1.DeepResearchPlan.ConfirmPrompt
+	}
+	c.deepResearchPreflight(ctx, plan.Cid, rid)
+	_, err = c.deepResearchGenerate(ctx, confirmPrompt, step1.Metadata, model)
 	if err != nil {
 		// Non-fatal: research may still proceed
 		fmt.Fprintf(logWriter, "Warning: confirm step failed: %v\n", err)
