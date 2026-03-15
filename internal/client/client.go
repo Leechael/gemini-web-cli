@@ -73,6 +73,7 @@ func New(cfg Config) (*Client, error) {
 	jar.SetCookies(u, cookies)
 
 	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.ForceAttemptHTTP2 = true
 	if cfg.Proxy != "" {
 		proxyURL, err := url.Parse(cfg.Proxy)
 		if err != nil {

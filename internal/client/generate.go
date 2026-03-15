@@ -145,25 +145,20 @@ func (c *Client) buildInnerRequest(prompt string, metadata []string, deepResearc
 	// [1] = language
 	req[1] = []any{"en"}
 
-	// [2] = metadata [cid, rid, rcid, null*6, ""]
+	// [2] = metadata — Python uses ["", "", ""] for new chats,
+	// and preserves the full response metadata array for continuations.
 	if len(metadata) > 0 {
-		meta := make([]any, 10)
+		meta := make([]any, len(metadata))
 		for i, v := range metadata {
-			if i < 10 {
-				if v != "" {
-					meta[i] = v
-				}
+			if v != "" {
+				meta[i] = v
+			} else {
+				meta[i] = ""
 			}
 		}
 		req[2] = meta
 	} else {
-		// Default: ["", "", "", null, null, null, null, null, null, ""]
-		meta := make([]any, 10)
-		meta[0] = ""
-		meta[1] = ""
-		meta[2] = ""
-		meta[9] = ""
-		req[2] = meta
+		req[2] = []any{"", "", ""}
 	}
 
 	// Common fields for all requests

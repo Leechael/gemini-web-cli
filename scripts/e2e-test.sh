@@ -270,7 +270,7 @@ bold "17. research send (submit deep research)"
 # Note: deep research requires extensive server-side session setup.
 # The Go CLI sends the prompt + confirm, which may or may not trigger
 # depending on account state. We test that the command at least returns a cid.
-OUT=$($CLI --cookies-json "$COOKIES" research send --prompt "What is quantum entanglement? Brief overview." 2>&1)
+OUT=$($CLI --cookies-json "$COOKIES" research send "What is quantum entanglement? Brief overview." 2>&1)
 assert_contains "research send shows Chat ID" "$OUT" "Chat ID:"
 RESEARCH_CID=$(extract_chat_id "$OUT")
 if [ -n "$RESEARCH_CID" ]; then

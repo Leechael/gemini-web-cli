@@ -60,7 +60,7 @@ func (c *Client) CreateAndStartDeepResearch(ctx context.Context, prompt string, 
 		rid = output.Metadata[1]
 	}
 
-	// Step 2: Preflight with cid, then confirm
+	// Step 2: Preflight with cid, then confirm to start research
 	c.deepResearchPreflight(ctx, plan.Cid, rid)
 	confirmPrompt := "开始研究"
 	_, err = c.deepResearchGenerate(ctx, confirmPrompt, output.Metadata, model)

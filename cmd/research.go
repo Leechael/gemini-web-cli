@@ -14,11 +14,10 @@ var researchCmd = &cobra.Command{
 	Short: "Deep research workflow",
 }
 
-var researchSendPrompt string
-
 var researchSendCmd = &cobra.Command{
-	Use:   "send",
+	Use:   "send [prompt]",
 	Short: "Submit a deep research task",
+	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := context.Background()
 		c, jsonCookies, err := initClient(ctx)
@@ -27,8 +26,9 @@ var researchSendCmd = &cobra.Command{
 		}
 		defer cleanup(c, jsonCookies)
 
+		prompt := args[0]
 		model := resolveModel()
-		plan, err := c.CreateAndStartDeepResearch(ctx, researchSendPrompt, model)
+		plan, err := c.CreateAndStartDeepResearch(ctx, prompt, model)
 		if err != nil {
 			return err
 		}
@@ -134,9 +134,6 @@ var researchGetCmd = &cobra.Command{
 }
 
 func init() {
-	researchSendCmd.Flags().StringVar(&researchSendPrompt, "prompt", "", "Research prompt")
-	_ = researchSendCmd.MarkFlagRequired("prompt")
-
 	researchGetCmd.Flags().StringVar(&researchGetOutput, "output", "", "Write result to file instead of stdout")
 
 	researchCmd.AddCommand(researchSendCmd)
