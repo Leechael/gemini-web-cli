@@ -55,6 +55,7 @@ func (c *Client) collectStreamResult(ctx context.Context, prompt string, metadat
 	var best *types.ModelOutput
 	var allImages []types.Image
 	var plan *types.DeepResearchPlanData
+	var bestMetadata []string // track the most complete metadata across frames
 	seen := map[string]bool{}
 	err := c.streamGenerate(ctx, prompt, metadata, model, deepResearch, func(out *types.ModelOutput) {
 		for _, img := range out.Images {
@@ -65,6 +66,10 @@ func (c *Client) collectStreamResult(ctx context.Context, prompt string, metadat
 		}
 		if out.DeepResearchPlan != nil {
 			plan = out.DeepResearchPlan
+		}
+		// Keep the most complete metadata (longest with non-empty fields)
+		if len(out.Metadata) > len(bestMetadata) {
+			bestMetadata = out.Metadata
 		}
 		if best == nil || len(out.Text) >= len(best.Text) {
 			best = out
@@ -84,6 +89,9 @@ func (c *Client) collectStreamResult(ctx context.Context, prompt string, metadat
 	}
 	if plan != nil {
 		best.DeepResearchPlan = plan
+	}
+	if len(bestMetadata) > len(best.Metadata) {
+		best.Metadata = bestMetadata
 	}
 	return best, allImages, nil
 }
@@ -203,43 +211,66 @@ func (c *Client) buildInnerRequest(prompt string, metadata []string, deepResearc
 }
 
 func (c *Client) parseStreamResponse(body io.Reader, cb StreamCallback) error {
-	data, err := io.ReadAll(body)
-	if err != nil {
-		return fmt.Errorf("reading stream body: %w", err)
-	}
-
-	content := string(data)
-
-	// Strip the prefix )]}'
-	if strings.HasPrefix(content, ")]}'\n") {
-		content = content[5:]
-	}
-
-	// Parse length-prefixed frames
-	frames := parseLengthPrefixedFrames(content)
-
+	// Read the stream incrementally and parse frames as they arrive.
+	// For deep research, the server may keep the stream open after the plan;
+	// we stop as soon as we detect a completion frame (content[25] is string).
+	var allData []byte
+	buf := make([]byte, 64*1024)
 	var lastText string
 	var output *types.ModelOutput
+	framesProcessed := 0
 
-	for _, frame := range frames {
-		var envelope []any
-		if err := json.Unmarshal([]byte(frame), &envelope); err != nil {
-			continue
+	for {
+		n, readErr := body.Read(buf)
+		if n > 0 {
+			allData = append(allData, buf[:n]...)
+
+			// Parse all complete frames from accumulated data
+			content := string(allData)
+			if strings.HasPrefix(content, ")]}'\n") {
+				content = content[5:]
+			}
+
+			frames := parseLengthPrefixedFrames(content)
+			// Only process NEW frames (skip already-processed ones)
+			done := false
+			for i := framesProcessed; i < len(frames); i++ {
+				var envelope []any
+				if err := json.Unmarshal([]byte(frames[i]), &envelope); err != nil {
+					continue
+				}
+				parsed := parseEnvelope(envelope)
+				if parsed == nil {
+					continue
+				}
+				if parsed.Text != "" {
+					parsed.TextDelta = calculateDelta(lastText, parsed.Text)
+					lastText = parsed.Text
+				}
+				output = parsed
+				cb(parsed)
+				if parsed.Done {
+					done = true
+					break
+				}
+			}
+			framesProcessed = len(frames)
+
+			if done {
+				return nil
+			}
 		}
 
-		parsed := parseEnvelope(envelope)
-		if parsed == nil {
-			continue
+		if readErr != nil {
+			if readErr == io.EOF {
+				break
+			}
+			// On timeout/cancel: return what we have
+			if output != nil {
+				return nil
+			}
+			return fmt.Errorf("reading stream: %w", readErr)
 		}
-
-		// Calculate delta
-		if parsed.Text != "" {
-			parsed.TextDelta = calculateDelta(lastText, parsed.Text)
-			lastText = parsed.Text
-		}
-
-		output = parsed
-		cb(parsed)
 	}
 
 	if output == nil {
@@ -394,10 +425,25 @@ func parseEnvelope(envelope []any) *types.ModelOutput {
 		}
 	}
 
+	// Ensure metadata includes rcid from candidate (Python: chat.metadata + chat.rcid)
+	if out.RCid != "" && len(out.Metadata) >= 2 {
+		for len(out.Metadata) < 10 {
+			out.Metadata = append(out.Metadata, "")
+		}
+		if out.Metadata[2] == "" {
+			out.Metadata[2] = out.RCid
+		}
+	}
+
 	// Check completion at [25]
 	if len(content) > 25 {
-		if _, ok := content[25].(string); ok {
+		if contextStr, ok := content[25].(string); ok {
 			out.Done = true
+			// Replace metadata with completion context
+			for len(out.Metadata) < 10 {
+				out.Metadata = append(out.Metadata, "")
+			}
+			out.Metadata[9] = contextStr
 		}
 	}
 

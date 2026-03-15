@@ -72,17 +72,8 @@ func (c *Client) CreateAndStartDeepResearch(ctx context.Context, prompt string, 
 }
 
 func (c *Client) deepResearchGenerate(ctx context.Context, prompt string, metadata []string, model *types.Model) (*types.ModelOutput, error) {
-	var last *types.ModelOutput
-	err := c.streamGenerate(ctx, prompt, metadata, model, true, func(out *types.ModelOutput) {
-		last = out
-	})
-	if err != nil {
-		return nil, err
-	}
-	if last == nil {
-		return nil, fmt.Errorf("no response received")
-	}
-	return last, nil
+	best, _, err := c.collectStreamResult(ctx, prompt, metadata, model, true, nil)
+	return best, err
 }
 
 // deepResearchPreflight sends the preflight RPCs needed to enable deep research.
