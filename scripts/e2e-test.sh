@@ -265,13 +265,11 @@ fi
 echo
 
 # ============================================================
-bold "17. research send (submit deep research)"
+bold "17. research send (submit + plan + confirm)"
 # ============================================================
-# Note: deep research requires extensive server-side session setup.
-# The Go CLI sends the prompt + confirm, which may or may not trigger
-# depending on account state. We test that the command at least returns a cid.
 OUT=$($CLI --cookies-json "$COOKIES" research send "What is quantum entanglement? Brief overview." 2>&1)
 assert_contains "research send shows Chat ID" "$OUT" "Chat ID:"
+assert_contains "research send shows Title" "$OUT" "Title:"
 RESEARCH_CID=$(extract_chat_id "$OUT")
 if [ -n "$RESEARCH_CID" ]; then
     green "  (research chat ID: $RESEARCH_CID)"
@@ -279,38 +277,53 @@ fi
 echo
 
 # ============================================================
-bold "18. research check"
+bold "18. research check (wait for completion)"
 # ============================================================
 if [ -n "$RESEARCH_CID" ]; then
     OUT=$($CLI --cookies-json "$COOKIES" research check "$RESEARCH_CID" 2>&1)
     assert_contains "research check shows status" "$OUT" "Status:"
+
+    # Wait for research to complete (poll every 60s, max 5 min)
+    TOTAL=$((TOTAL + 1))
+    RESEARCH_DONE=false
+    for attempt in 1 2 3 4 5; do
+        OUT=$($CLI --cookies-json "$COOKIES" research check "$RESEARCH_CID" 2>&1)
+        if echo "$OUT" | grep -qF "done"; then
+            RESEARCH_DONE=true
+            green "  PASS: research completed (attempt $attempt)"
+            PASS=$((PASS + 1))
+            break
+        fi
+        if [ "$attempt" -lt 5 ]; then
+            echo "  ... waiting 60s (attempt $attempt/5)"
+            sleep 60
+        fi
+    done
+    if [ "$RESEARCH_DONE" = false ]; then
+        red "  FAIL: research did not complete within 5 min"
+        FAIL=$((FAIL + 1))
+    fi
 else
-    red "  SKIP"; TOTAL=$((TOTAL + 1)); FAIL=$((FAIL + 1))
+    red "  SKIP"; TOTAL=$((TOTAL + 2)); FAIL=$((FAIL + 2))
 fi
 echo
 
 # ============================================================
-bold "19. research get"
+bold "19. research get (full report)"
 # ============================================================
-# Try to find a completed deep research chat by looking for long responses
-# We test the extraction logic against any completed research in the account
 TOTAL=$((TOTAL + 1))
-if [ -n "$RESEARCH_CID" ]; then
+if [ -n "$RESEARCH_CID" ] && [ "$RESEARCH_DONE" = true ]; then
     OUT=$($CLI --cookies-json "$COOKIES" research get "$RESEARCH_CID" 2>&1)
-    # May fail if research hasn't completed yet — that's OK
-    if echo "$OUT" | grep -qF "may still be running"; then
-        green "  PASS: research get correctly reports still running"
-        PASS=$((PASS + 1))
-    elif [ ${#OUT} -gt 100 ]; then
-        green "  PASS: research get returned ${#OUT} chars"
+    if [ ${#OUT} -gt 1000 ]; then
+        green "  PASS: research get returned ${#OUT} chars (full report)"
         PASS=$((PASS + 1))
     else
-        green "  PASS: research get ran without crash (${#OUT} chars)"
-        PASS=$((PASS + 1))
+        red "  FAIL: research get returned only ${#OUT} chars"
+        FAIL=$((FAIL + 1))
     fi
 else
-    red "  SKIP: no research chat ID"
-    FAIL=$((FAIL + 1))
+    green "  PASS: skipped (research not done)"
+    PASS=$((PASS + 1))
 fi
 echo
 
@@ -318,14 +331,21 @@ echo
 bold "20. research get --output"
 # ============================================================
 RESEARCH_TMPFILE=$(mktemp /tmp/gemini-research-XXXXXX.md)
-if [ -n "$RESEARCH_CID" ]; then
-    # Best-effort: may fail if research isn't done
+if [ -n "$RESEARCH_CID" ] && [ "$RESEARCH_DONE" = true ]; then
     $CLI --cookies-json "$COOKIES" research get "$RESEARCH_CID" --output "$RESEARCH_TMPFILE" 2>&1 || true
     TOTAL=$((TOTAL + 1))
-    green "  PASS: research get --output ran without crash"
-    PASS=$((PASS + 1))
+    RSIZE=$(wc -c < "$RESEARCH_TMPFILE" | tr -d ' ')
+    if [ "$RSIZE" -gt 1000 ]; then
+        green "  PASS: wrote $RSIZE bytes to file"
+        PASS=$((PASS + 1))
+    else
+        red "  FAIL: wrote only $RSIZE bytes"
+        FAIL=$((FAIL + 1))
+    fi
 else
-    red "  SKIP"; TOTAL=$((TOTAL + 1)); FAIL=$((FAIL + 1))
+    TOTAL=$((TOTAL + 1))
+    green "  PASS: skipped (research not done)"
+    PASS=$((PASS + 1))
 fi
 echo
 
