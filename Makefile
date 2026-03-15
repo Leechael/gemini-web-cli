@@ -3,6 +3,8 @@ BIN_DIR := bin
 BIN_PATH := $(BIN_DIR)/$(BINARY_NAME)
 OUT_DIR := dist
 CMD := .
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+LDFLAGS := -ldflags "-X github.com/Leechael/gemini-web-cli/cmd.Version=$(VERSION)"
 GOFLAGS ?= -buildvcs=false
 
 export GOFLAGS
@@ -39,7 +41,7 @@ ci:
 
 build:
 	mkdir -p $(BIN_DIR)
-	go build -o $(BIN_PATH) $(CMD)
+	go build $(LDFLAGS) -o $(BIN_PATH) $(CMD)
 
 run:
 	go run $(CMD) $(ARGS)

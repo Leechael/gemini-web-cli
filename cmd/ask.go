@@ -15,7 +15,7 @@ var (
 
 var askCmd = &cobra.Command{
 	Use:   "ask [prompt]",
-	Short: "Single-turn question",
+	Short: "Single-turn question (prefix with @Google to trigger search)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := context.Background()

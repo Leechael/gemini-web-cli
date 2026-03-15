@@ -20,10 +20,14 @@ var (
 	requestTimeout float64
 )
 
+// Version is set at build time via -ldflags.
+var Version = "dev"
+
 var rootCmd = &cobra.Command{
-	Use:   "gemini-web-cli",
-	Short: "CLI for Gemini web API",
-	Long:  "Command-line interface for interacting with Google Gemini via web cookies.",
+	Use:     "gemini-web-cli",
+	Short:   "CLI for Gemini web API",
+	Long:    "Command-line interface for interacting with Google Gemini via web cookies.",
+	Version: Version,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		if verbose {
 			client.SetVerbose(os.Stderr)
