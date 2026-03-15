@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/AIO-Starter/gemini-web-cli/internal/cookies"
+	"github.com/Leechael/gemini-web-cli/internal/cookies"
 	"github.com/spf13/cobra"
 )
 

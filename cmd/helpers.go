@@ -6,18 +6,40 @@ import (
 	"os"
 	"time"
 
-	"github.com/AIO-Starter/gemini-web-cli/internal/client"
-	"github.com/AIO-Starter/gemini-web-cli/internal/cookies"
-	"github.com/AIO-Starter/gemini-web-cli/internal/types"
+	"github.com/Leechael/gemini-web-cli/internal/client"
+	"github.com/Leechael/gemini-web-cli/internal/cookies"
+	"github.com/Leechael/gemini-web-cli/internal/types"
 )
+
+const envCookiesPath = "GEMINI_WEB_COOKIES_JSON_PATH"
+
+// defaultCookiesPath returns the cookies file path from env or "cookies.json".
+func defaultCookiesPath() string {
+	if p := os.Getenv(envCookiesPath); p != "" {
+		return p
+	}
+	return "cookies.json"
+}
+
+// resolveCookiesJSON returns the effective cookies path: flag > env > "".
+func resolveCookiesJSON() string {
+	if cookiesJSON != "" {
+		return cookiesJSON
+	}
+	if p := os.Getenv(envCookiesPath); p != "" {
+		return p
+	}
+	return ""
+}
 
 // initClient creates and initializes a GeminiClient from CLI flags.
 func initClient(ctx context.Context) (*client.Client, map[string]string, error) {
 	var jsonCookies map[string]string
 	var extraCookies map[string]string
 
-	if cookiesJSON != "" {
-		jar, err := cookies.Load(cookiesJSON)
+	effectiveCookies := resolveCookiesJSON()
+	if effectiveCookies != "" {
+		jar, err := cookies.Load(effectiveCookies)
 		if err != nil {
 			return nil, nil, fmt.Errorf("loading cookies: %w", err)
 		}
@@ -74,8 +96,9 @@ func initClient(ctx context.Context) (*client.Client, map[string]string, error) 
 
 // cleanup persists cookies and closes the client.
 func cleanup(c *client.Client, jsonCookies map[string]string) {
-	if cookiesJSON != "" && !noPersist && jsonCookies != nil {
-		_ = cookies.Persist(cookiesJSON, jsonCookies, c.ExtraCookies, verbose)
+	effectiveCookies := resolveCookiesJSON()
+	if effectiveCookies != "" && !noPersist && jsonCookies != nil {
+		_ = cookies.Persist(effectiveCookies, jsonCookies, c.ExtraCookies, verbose)
 	}
 	c.Close()
 }

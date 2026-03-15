@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/AIO-Starter/gemini-web-cli/internal/types"
+	"github.com/Leechael/gemini-web-cli/internal/types"
 	"github.com/spf13/cobra"
 )
 

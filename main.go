@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/AIO-Starter/gemini-web-cli/cmd"
+	"github.com/Leechael/gemini-web-cli/cmd"
 )
 
 func main() {

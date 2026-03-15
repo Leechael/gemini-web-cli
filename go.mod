@@ -1,4 +1,4 @@
-module github.com/AIO-Starter/gemini-web-cli
+module github.com/Leechael/gemini-web-cli
 
 go 1.25.7
 

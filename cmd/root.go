@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/AIO-Starter/gemini-web-cli/internal/client"
+	"github.com/Leechael/gemini-web-cli/internal/client"
 )
 
 var (
@@ -41,7 +41,7 @@ func init() {
 	)
 
 	pf := rootCmd.PersistentFlags()
-	pf.StringVar(&cookiesJSON, "cookies-json", "", "Path to JSON cookie file")
+	pf.StringVar(&cookiesJSON, "cookies-json", "", "Path to JSON cookie file (or set $GEMINI_WEB_COOKIES_JSON_PATH)")
 	pf.StringVar(&proxy, "proxy", defaultProxy, "HTTP/SOCKS proxy URL")
 	pf.IntVar(&accountIndex, "account-index", 0, "Google account index (e.g. 2 => /u/2)")
 	pf.StringVar(&modelName, "model", "unspecified", "Model name")
@@ -57,6 +57,7 @@ func init() {
 	rootCmd.AddCommand(downloadCmd)
 	rootCmd.AddCommand(modelsCmd)
 	rootCmd.AddCommand(inspectCmd)
+	rootCmd.AddCommand(importCmd)
 }
 
 // Execute runs the root command.

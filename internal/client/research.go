@@ -9,7 +9,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/AIO-Starter/gemini-web-cli/internal/types"
+	"github.com/Leechael/gemini-web-cli/internal/types"
 )
 
 const (

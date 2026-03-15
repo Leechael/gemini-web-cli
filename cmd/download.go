@@ -13,8 +13,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/AIO-Starter/gemini-web-cli/internal/cookies"
-	"github.com/AIO-Starter/gemini-web-cli/internal/types"
+	"github.com/Leechael/gemini-web-cli/internal/cookies"
+	"github.com/Leechael/gemini-web-cli/internal/types"
 	"github.com/spf13/cobra"
 )
 
@@ -114,8 +114,9 @@ func downloadFromChat(chatID string, index int, singleMode bool) error {
 
 func downloadImage(imgURL string) error {
 	var jsonCookies map[string]string
-	if cookiesJSON != "" {
-		jar, err := cookies.Load(cookiesJSON)
+	effectiveCookies := resolveCookiesJSON()
+	if effectiveCookies != "" {
+		jar, err := cookies.Load(effectiveCookies)
 		if err != nil {
 			return fmt.Errorf("loading cookies: %w", err)
 		}

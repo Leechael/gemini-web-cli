@@ -13,7 +13,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/AIO-Starter/gemini-web-cli/internal/types"
+	"github.com/Leechael/gemini-web-cli/internal/types"
 )
 
 // GenerateContent sends a prompt and returns the full response (non-streaming).

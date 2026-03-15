@@ -7,13 +7,13 @@ Built on the reverse-engineering work of [Gemini-API](https://github.com/Hanaoka
 ## Install
 
 ```bash
-go install github.com/AIO-Starter/gemini-web-cli@latest
+go install github.com/Leechael/gemini-web-cli@latest
 ```
 
 Or build from source:
 
 ```bash
-git clone https://github.com/AIO-Starter/gemini-web-cli
+git clone https://github.com/Leechael/gemini-web-cli
 cd gemini-web-cli
 make build    # outputs to ./bin/gemini-web-cli
 ```
@@ -21,29 +21,44 @@ make build    # outputs to ./bin/gemini-web-cli
 ## Quick Start
 
 ```bash
-# Set up your cookies file (see Cookies section below)
-export COOKIES="--cookies-json cookies.json"
+# Import cookies from browser (copy raw cookie string from DevTools)
+gemini-web-cli import '_ga=GA1.1...; __Secure-1PSID=g.a000...; SID=abc...'
+
+# Or set the path via environment variable
+export GEMINI_WEB_COOKIES_JSON_PATH=cookies.json
 
 # Ask a question
-gemini-web-cli $COOKIES ask "What is the capital of France?"
+gemini-web-cli ask "What is the capital of France?"
 
 # Continue the conversation
-gemini-web-cli $COOKIES reply c_abc123 "And what's its population?"
+gemini-web-cli reply c_abc123 "And what's its population?"
 
 # List your chats
-gemini-web-cli $COOKIES list
+gemini-web-cli list
 ```
 
 ## Commands
+
+### import
+
+Parse a raw cookie string from browser DevTools and save as a JSON file.
+
+```bash
+# Save to default cookies.json (or $GEMINI_WEB_COOKIES_JSON_PATH)
+gemini-web-cli import '_ga=GA1.1.123; __Secure-1PSID=g.a000...; SID=abc...'
+
+# Save to a specific path
+gemini-web-cli import '_ga=GA1.1.123; __Secure-1PSID=g.a000...' -o path/to/cookies.json
+```
 
 ### ask
 
 Single-turn question with streaming output.
 
 ```bash
-gemini-web-cli --cookies-json cookies.json ask "Explain quantum computing"
-gemini-web-cli --cookies-json cookies.json ask --no-stream "What is 2+2?"
-gemini-web-cli --cookies-json cookies.json --model gemini-2.0-flash ask "Draw a sunset"
+gemini-web-cli ask "Explain quantum computing"
+gemini-web-cli ask --no-stream "What is 2+2?"
+gemini-web-cli --model gemini-2.0-flash ask "Draw a sunset"
 ```
 
 Output includes the response text, any generated images, and the chat ID for follow-up.
@@ -53,8 +68,8 @@ Output includes the response text, any generated images, and the chat ID for fol
 Continue an existing conversation. The chat ID comes from `ask` or `list` output.
 
 ```bash
-gemini-web-cli --cookies-json cookies.json reply c_abc123 "Tell me more"
-gemini-web-cli --cookies-json cookies.json reply --no-stream c_abc123 "Summarize"
+gemini-web-cli reply c_abc123 "Tell me more"
+gemini-web-cli reply --no-stream c_abc123 "Summarize"
 ```
 
 ### list
@@ -62,8 +77,8 @@ gemini-web-cli --cookies-json cookies.json reply --no-stream c_abc123 "Summarize
 List chat history with pagination.
 
 ```bash
-gemini-web-cli --cookies-json cookies.json list
-gemini-web-cli --cookies-json cookies.json list --cursor <cursor>
+gemini-web-cli list
+gemini-web-cli list --cursor <cursor>
 ```
 
 ### read
@@ -71,9 +86,9 @@ gemini-web-cli --cookies-json cookies.json list --cursor <cursor>
 Read a conversation's messages.
 
 ```bash
-gemini-web-cli --cookies-json cookies.json read c_abc123
-gemini-web-cli --cookies-json cookies.json read c_abc123 --max-turns 10
-gemini-web-cli --cookies-json cookies.json read c_abc123 --output chat.txt
+gemini-web-cli read c_abc123
+gemini-web-cli read c_abc123 --max-turns 10
+gemini-web-cli read c_abc123 --output chat.txt
 ```
 
 Images in the conversation are shown with global numbering:
@@ -96,14 +111,14 @@ Download generated images by direct URL or chat ID.
 
 ```bash
 # Direct URL
-gemini-web-cli --cookies-json cookies.json download "https://lh3.googleusercontent.com/..." -o image.png
+gemini-web-cli download "https://lh3.googleusercontent.com/..." -o image.png
 
 # All images from a chat
-gemini-web-cli --cookies-json cookies.json download c_abc123 -o images.png
+gemini-web-cli download c_abc123 -o images.png
 # Saves images_1.png, images_2.png, ...
 
 # Specific image by index (matches read output numbering)
-gemini-web-cli --cookies-json cookies.json download c_abc123 2 -o second.png
+gemini-web-cli download c_abc123 2 -o second.png
 ```
 
 ### research
@@ -112,14 +127,14 @@ Deep research workflow: submit a topic, check progress, retrieve the report.
 
 ```bash
 # Submit
-gemini-web-cli --cookies-json cookies.json research send --prompt "Compare Rust and Go for systems programming"
+gemini-web-cli research send --prompt "Compare Rust and Go for systems programming"
 
 # Check progress
-gemini-web-cli --cookies-json cookies.json research check c_abc123
+gemini-web-cli research check c_abc123
 
 # Get result
-gemini-web-cli --cookies-json cookies.json research get c_abc123
-gemini-web-cli --cookies-json cookies.json research get c_abc123 --output report.md
+gemini-web-cli research get c_abc123
+gemini-web-cli research get c_abc123 --output report.md
 ```
 
 ### models
@@ -146,17 +161,17 @@ Diagnose cookie and account status.
 
 ```bash
 # Cookie-only check (no network)
-gemini-web-cli --cookies-json cookies.json inspect --cookies-only
+gemini-web-cli inspect --cookies-only
 
 # Full account probe
-gemini-web-cli --cookies-json cookies.json inspect
+gemini-web-cli inspect
 ```
 
 ## Global Flags
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--cookies-json` | Path to cookie JSON file | — |
+| `--cookies-json` | Path to cookie JSON file | `$GEMINI_WEB_COOKIES_JSON_PATH` |
 | `--model` | Model name (see `models` command) | `unspecified` |
 | `--proxy` | HTTP/SOCKS proxy URL | `$HTTPS_PROXY` |
 | `--account-index` | Google account index (for multi-login, e.g. `/u/2`) | — |
@@ -166,12 +181,17 @@ gemini-web-cli --cookies-json cookies.json inspect
 
 ## Cookies
 
-This CLI authenticates using browser cookies exported from [gemini.google.com](https://gemini.google.com). The `--cookies-json` flag accepts multiple formats:
+The cookie JSON file path is resolved in order:
 
+1. `--cookies-json` flag
+2. `$GEMINI_WEB_COOKIES_JSON_PATH` environment variable
+
+The file accepts multiple formats:
+
+- `{"cookies": {"name": "value", ...}}` (output of `import` command)
 - `{"name": "value", ...}` (flat key-value)
-- `{"cookies": {"name": "value", ...}}`
+- `[{"name": "...", "value": "...", ...}, ...]` (browser extension export)
 - `{"cookies": [{"name": "...", "value": "...", ...}, ...]}`
-- `[{"name": "...", "value": "...", ...}, ...]` (browser export format)
 
 The required cookie is `__Secure-1PSID`. `__Secure-1PSIDTS` is recommended but optional.
 
