@@ -160,20 +160,24 @@ func (c *Client) buildInnerRequest(prompt string, metadata []string, deepResearc
 	// [1] = language
 	req[1] = []any{"en"}
 
-	// [2] = metadata — Python uses ["", "", ""] for new chats,
-	// and preserves the full response metadata array for continuations.
+	// [2] = metadata — 10-element array matching browser behavior:
+	// ['', '', '', null, null, null, null, null, null, ''] for new chats
+	// ['cid', 'rid', 'rcid', null, null, null, null, null, null, 'context'] for continuations
 	if len(metadata) > 0 {
-		meta := make([]any, len(metadata))
+		meta := make([]any, max(len(metadata), 10))
 		for i, v := range metadata {
 			if v != "" {
 				meta[i] = v
-			} else {
-				meta[i] = ""
 			}
 		}
 		req[2] = meta
 	} else {
-		req[2] = []any{"", "", ""}
+		meta := make([]any, 10)
+		meta[0] = ""
+		meta[1] = ""
+		meta[2] = ""
+		meta[9] = ""
+		req[2] = meta
 	}
 
 	// Common fields for all requests
@@ -425,7 +429,7 @@ func parseEnvelope(envelope []any) *types.ModelOutput {
 		}
 	}
 
-	// Ensure metadata includes rcid from candidate (Python: chat.metadata + chat.rcid)
+	// Ensure metadata includes rcid from candidate
 	if out.RCid != "" && len(out.Metadata) >= 2 {
 		for len(out.Metadata) < 10 {
 			out.Metadata = append(out.Metadata, "")
@@ -435,15 +439,27 @@ func parseEnvelope(envelope []any) *types.ModelOutput {
 		}
 	}
 
-	// Check completion at [25]
+	// Check for context string — can appear in two places:
+	// 1. content[25] as a string (normal completion)
+	// 2. content[2] as a dict with key "26" (deep research completion)
 	if len(content) > 25 {
 		if contextStr, ok := content[25].(string); ok {
 			out.Done = true
-			// Replace metadata with completion context
 			for len(out.Metadata) < 10 {
 				out.Metadata = append(out.Metadata, "")
 			}
 			out.Metadata[9] = contextStr
+		}
+	}
+	if len(content) > 2 {
+		if dictVal, ok := content[2].(map[string]any); ok {
+			if contextStr, ok := dictVal["26"].(string); ok && contextStr != "" {
+				out.Done = true
+				for len(out.Metadata) < 10 {
+					out.Metadata = append(out.Metadata, "")
+				}
+				out.Metadata[9] = contextStr
+			}
 		}
 	}
 
