@@ -53,11 +53,18 @@ func init() {
 	pf.BoolVar(&noPersist, "no-persist", false, "Do not write updated cookies back")
 	pf.Float64Var(&requestTimeout, "request-timeout", 300, "Per-request HTTP timeout in seconds")
 
+	// Chat commands
 	rootCmd.AddCommand(askCmd)
 	rootCmd.AddCommand(replyCmd)
-	rootCmd.AddCommand(researchCmd)
 	rootCmd.AddCommand(listCmd)
-	rootCmd.AddCommand(readCmd)
+	rootCmd.AddCommand(getCmd)
+
+	// Deep research
+	rootCmd.AddCommand(researchCmd)
+	rootCmd.AddCommand(progressCmd)
+	rootCmd.AddCommand(reportCmd)
+
+	// Utilities
 	rootCmd.AddCommand(downloadCmd)
 	rootCmd.AddCommand(modelsCmd)
 	rootCmd.AddCommand(inspectCmd)

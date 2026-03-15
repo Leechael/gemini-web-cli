@@ -92,10 +92,10 @@ fi
 echo
 
 # ============================================================
-bold "5. read (existing chat)"
+bold "5. get (existing chat)"
 # ============================================================
 if [ -n "$LIST_CID" ]; then
-    OUT=$($CLI --cookies-json "$COOKIES" read "$LIST_CID" 2>&1)
+    OUT=$($CLI --cookies-json "$COOKIES" get "$LIST_CID" 2>&1)
     assert_contains "has message header" "$OUT" "message 1"
     assert_contains "has [User]" "$OUT" "[User]"
 else
@@ -164,10 +164,10 @@ fi
 echo
 
 # ============================================================
-bold "11. read (created conversation, should have >=3 messages)"
+bold "11. get (created conversation, should have >=3 messages)"
 # ============================================================
 if [ -n "$ASK_CID" ]; then
-    OUT=$($CLI --cookies-json "$COOKIES" read "$ASK_CID" 2>&1)
+    OUT=$($CLI --cookies-json "$COOKIES" get "$ASK_CID" 2>&1)
     assert_contains "has [User]" "$OUT" "[User]"
     assert_contains "has [Gemini]" "$OUT" "[Gemini]"
     MSG_COUNT=$(count_pattern "$OUT" "message")
@@ -185,11 +185,11 @@ fi
 echo
 
 # ============================================================
-bold "12. read --output (write to file)"
+bold "12. get --output (write to file)"
 # ============================================================
 TMPFILE=$(mktemp /tmp/gemini-e2e-XXXXXX.txt)
 if [ -n "$ASK_CID" ]; then
-    $CLI --cookies-json "$COOKIES" read "$ASK_CID" --output "$TMPFILE" 2>&1
+    $CLI --cookies-json "$COOKIES" get "$ASK_CID" --output "$TMPFILE" 2>&1
     TOTAL=$((TOTAL + 1))
     if [ -s "$TMPFILE" ]; then
         green "  PASS: wrote $(wc -c < "$TMPFILE" | tr -d ' ') bytes to file"
@@ -265,11 +265,11 @@ fi
 echo
 
 # ============================================================
-bold "17. research send (submit + plan + confirm)"
+bold "17. research (submit + plan + confirm)"
 # ============================================================
-OUT=$($CLI --cookies-json "$COOKIES" research send "What is quantum entanglement? Brief overview." 2>&1)
-assert_contains "research send shows Chat ID" "$OUT" "Chat ID:"
-assert_contains "research send shows Title" "$OUT" "Title:"
+OUT=$($CLI --cookies-json "$COOKIES" research "What is quantum entanglement? Brief overview." 2>&1)
+assert_contains "research shows Chat ID" "$OUT" "Chat ID:"
+assert_contains "research shows Title" "$OUT" "Title:"
 RESEARCH_CID=$(extract_chat_id "$OUT")
 if [ -n "$RESEARCH_CID" ]; then
     green "  (research chat ID: $RESEARCH_CID)"
@@ -277,17 +277,17 @@ fi
 echo
 
 # ============================================================
-bold "18. research check (wait for completion)"
+bold "18. progress (wait for completion)"
 # ============================================================
 if [ -n "$RESEARCH_CID" ]; then
-    OUT=$($CLI --cookies-json "$COOKIES" research check "$RESEARCH_CID" 2>&1)
-    assert_contains "research check shows status" "$OUT" "Status:"
+    OUT=$($CLI --cookies-json "$COOKIES" progress "$RESEARCH_CID" 2>&1)
+    assert_contains "progress shows status" "$OUT" "Status:"
 
     # Wait for research to complete (poll every 60s, max 5 min)
     TOTAL=$((TOTAL + 1))
     RESEARCH_DONE=false
     for attempt in 1 2 3 4 5; do
-        OUT=$($CLI --cookies-json "$COOKIES" research check "$RESEARCH_CID" 2>&1)
+        OUT=$($CLI --cookies-json "$COOKIES" progress "$RESEARCH_CID" 2>&1)
         if echo "$OUT" | grep -qF "done"; then
             RESEARCH_DONE=true
             green "  PASS: research completed (attempt $attempt)"
@@ -309,16 +309,16 @@ fi
 echo
 
 # ============================================================
-bold "19. research get (full report)"
+bold "19. report (full report)"
 # ============================================================
 TOTAL=$((TOTAL + 1))
 if [ -n "$RESEARCH_CID" ] && [ "$RESEARCH_DONE" = true ]; then
-    OUT=$($CLI --cookies-json "$COOKIES" research get "$RESEARCH_CID" 2>&1)
+    OUT=$($CLI --cookies-json "$COOKIES" report "$RESEARCH_CID" 2>&1)
     if [ ${#OUT} -gt 1000 ]; then
-        green "  PASS: research get returned ${#OUT} chars (full report)"
+        green "  PASS: report returned ${#OUT} chars (full report)"
         PASS=$((PASS + 1))
     else
-        red "  FAIL: research get returned only ${#OUT} chars"
+        red "  FAIL: report returned only ${#OUT} chars"
         FAIL=$((FAIL + 1))
     fi
 else
@@ -328,11 +328,11 @@ fi
 echo
 
 # ============================================================
-bold "20. research get --output"
+bold "20. report --output"
 # ============================================================
 RESEARCH_TMPFILE=$(mktemp /tmp/gemini-research-XXXXXX.md)
 if [ -n "$RESEARCH_CID" ] && [ "$RESEARCH_DONE" = true ]; then
-    $CLI --cookies-json "$COOKIES" research get "$RESEARCH_CID" --output "$RESEARCH_TMPFILE" 2>&1 || true
+    $CLI --cookies-json "$COOKIES" report "$RESEARCH_CID" --output "$RESEARCH_TMPFILE" 2>&1 || true
     TOTAL=$((TOTAL + 1))
     RSIZE=$(wc -c < "$RESEARCH_TMPFILE" | tr -d ' ')
     if [ "$RSIZE" -gt 1000 ]; then

@@ -81,14 +81,14 @@ gemini-web-cli list
 gemini-web-cli list --cursor <cursor>
 ```
 
-### read
+### get
 
-Read a conversation's messages.
+Get a conversation's messages.
 
 ```bash
-gemini-web-cli read c_abc123
-gemini-web-cli read c_abc123 --max-turns 10
-gemini-web-cli read c_abc123 --output chat.txt
+gemini-web-cli get c_abc123
+gemini-web-cli get c_abc123 --max-turns 10
+gemini-web-cli get c_abc123 --output chat.txt
 ```
 
 Images in the conversation are shown with global numbering:
@@ -117,24 +117,33 @@ gemini-web-cli download "https://lh3.googleusercontent.com/..." -o image.png
 gemini-web-cli download c_abc123 -o images.png
 # Saves images_1.png, images_2.png, ...
 
-# Specific image by index (matches read output numbering)
+# Specific image by index (matches get output numbering)
 gemini-web-cli download c_abc123 2 -o second.png
 ```
 
 ### research
 
-Deep research workflow: submit a topic, check progress, retrieve the report.
+Submit a deep research task.
 
 ```bash
-# Submit
-gemini-web-cli research send --prompt "Compare Rust and Go for systems programming"
+gemini-web-cli research "Compare Rust and Go for systems programming"
+```
 
-# Check progress
-gemini-web-cli research check c_abc123
+### progress
 
-# Get result
-gemini-web-cli research get c_abc123
-gemini-web-cli research get c_abc123 --output report.md
+Check deep research status. Detects: done, running, pending confirmation, or not a research chat.
+
+```bash
+gemini-web-cli progress c_abc123
+```
+
+### report
+
+Get the deep research result.
+
+```bash
+gemini-web-cli report c_abc123
+gemini-web-cli report c_abc123 --output report.md
 ```
 
 ### models

@@ -11,13 +11,13 @@ import (
 )
 
 var (
-	readMaxTurns int
-	readOutput   string
+	getMaxTurns int
+	getOutput   string
 )
 
-var readCmd = &cobra.Command{
-	Use:   "read [chat_id]",
-	Short: "Read a chat conversation",
+var getCmd = &cobra.Command{
+	Use:   "get [chat_id]",
+	Short: "Get a chat conversation",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := context.Background()
@@ -28,7 +28,7 @@ var readCmd = &cobra.Command{
 		defer cleanup(c, jsonCookies)
 
 		chatID := args[0]
-		turns, err := c.ReadChat(ctx, chatID, readMaxTurns)
+		turns, err := c.ReadChat(ctx, chatID, getMaxTurns)
 		if err != nil {
 			return err
 		}
@@ -39,7 +39,7 @@ var readCmd = &cobra.Command{
 		}
 
 		var lines []string
-		imgSeq := 0 // global image counter across all turns
+		imgSeq := 0
 		for i, turn := range turns {
 			lines = append(lines, fmt.Sprintf("--- message %d ---", i+1))
 			if turn.UserPrompt != "" {
@@ -65,15 +65,15 @@ var readCmd = &cobra.Command{
 
 		text := strings.Join(lines, "\n")
 
-		if readOutput != "" {
-			dir := filepath.Dir(readOutput)
+		if getOutput != "" {
+			dir := filepath.Dir(getOutput)
 			if err := os.MkdirAll(dir, 0755); err != nil {
 				return err
 			}
-			if err := os.WriteFile(readOutput, []byte(text), 0644); err != nil {
+			if err := os.WriteFile(getOutput, []byte(text), 0644); err != nil {
 				return err
 			}
-			fmt.Printf("Saved chat to %s\n", readOutput)
+			fmt.Printf("Saved chat to %s\n", getOutput)
 		} else {
 			fmt.Println(text)
 		}
@@ -82,6 +82,6 @@ var readCmd = &cobra.Command{
 }
 
 func init() {
-	readCmd.Flags().IntVar(&readMaxTurns, "max-turns", 30, "Max turns to fetch")
-	readCmd.Flags().StringVar(&readOutput, "output", "", "Write to file instead of stdout")
+	getCmd.Flags().IntVar(&getMaxTurns, "max-turns", 30, "Max turns to fetch")
+	getCmd.Flags().StringVar(&getOutput, "output", "", "Write to file instead of stdout")
 }

@@ -165,27 +165,62 @@ func (c *Client) bestEffortRPCMulti(ctx context.Context, calls []rpcCall, source
 	_, _ = io.ReadAll(resp.Body)
 }
 
+// ResearchStatus describes the state of a deep research task.
+type ResearchStatus struct {
+	State   string // "done", "running", "pending_confirm", "not_research", "empty"
+	TextLen int
+}
+
 // CheckDeepResearch checks the status of a deep research task.
-func (c *Client) CheckDeepResearch(ctx context.Context, cid string) (bool, int, error) {
-	// First try raw turns for structured deep research data
+// It distinguishes between: completed, running, pending confirmation,
+// not a research chat, and empty (no response).
+func (c *Client) CheckDeepResearch(ctx context.Context, cid string) (*ResearchStatus, error) {
+	// 1. Check raw turns for structured deep research result at cand[30][0][4]
 	rawTurns, err := c.ReadChatRaw(ctx, cid, 5)
 	if err == nil && len(rawTurns) > 0 {
 		text, _ := extractResearchResultFromRaw(rawTurns)
 		if text != "" {
-			return true, len(text), nil
+			return &ResearchStatus{State: "done", TextLen: len(text)}, nil
+		}
+
+		// Check for deep research markers in raw turns:
+		// - confirmation page: "deep_research_confirmation_content"
+		// - running indicator: "immersive_entry_chip"
+		// - dict key "70" with state value (2=plan_ready, 3=running)
+		hasConfirmation := false
+		hasRunning := false
+		for _, raw := range rawTurns {
+			s := string(raw)
+			if strings.Contains(s, "deep_research_confirmation_content") {
+				hasConfirmation = true
+			}
+			if strings.Contains(s, "immersive_entry_chip") {
+				hasRunning = true
+			}
+			if strings.Contains(s, `"70":3`) {
+				hasRunning = true
+			}
+		}
+
+		if hasRunning {
+			return &ResearchStatus{State: "running"}, nil
+		}
+		if hasConfirmation {
+			return &ResearchStatus{State: "pending_confirm"}, nil
 		}
 	}
 
-	// Fall back to regular text check
+	// 2. Fall back to text-based detection
 	latest, err := c.FetchLatestChatResponse(ctx, cid)
 	if err != nil {
-		return false, 0, err
+		return nil, err
 	}
 	if latest == nil || latest.Text == "" {
-		return false, 0, nil
+		return &ResearchStatus{State: "empty"}, nil
 	}
 	text := latest.Text
 
+	// Check for completion phrases
 	lower := strings.ToLower(text)
 	done := strings.Contains(text, "我已经完成了研究") ||
 		strings.Contains(text, "研究完成") ||
@@ -193,14 +228,17 @@ func (c *Client) CheckDeepResearch(ctx context.Context, cid string) (bool, int, 
 		strings.Contains(lower, "i've completed the research") ||
 		strings.Contains(lower, "research is complete")
 
-	if !done && len(text) > 2000 {
-		trimmed := strings.TrimLeft(text, " \t\n")
-		if strings.HasPrefix(trimmed, "#") || strings.Contains(text, "\n## ") {
-			done = true
-		}
+	if done || (len(text) > 2000 && (strings.HasPrefix(strings.TrimLeft(text, " \t\n"), "#") || strings.Contains(text, "\n## "))) {
+		return &ResearchStatus{State: "done", TextLen: len(text)}, nil
 	}
 
-	return done, len(text), nil
+	// Check if this is actually a deep research chat at all
+	if strings.Contains(text, "Deep Research") || strings.Contains(text, "深度研究") || strings.Contains(text, "deep_research") {
+		return &ResearchStatus{State: "running", TextLen: len(text)}, nil
+	}
+
+	// Doesn't look like a research chat
+	return &ResearchStatus{State: "not_research", TextLen: len(text)}, nil
 }
 
 // GetDeepResearchResult fetches the full research result text.
