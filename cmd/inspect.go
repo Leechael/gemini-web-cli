@@ -3,8 +3,10 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
+	"github.com/Leechael/gemini-web-cli/internal/client"
 	"github.com/Leechael/gemini-web-cli/internal/cookies"
 	"github.com/spf13/cobra"
 )
@@ -46,6 +48,25 @@ var inspectCmd = &cobra.Command{
 		ctx := context.Background()
 		c, jsonCookies, err := initClient(ctx)
 		if err != nil {
+			var rle *client.RateLimitError
+			if errors.As(err, &rle) {
+				report := map[string]any{
+					"status":  "rate_limited",
+					"code":    rle.StatusCode,
+					"message": "Google returned HTTP 429 — your exit node is likely rate-limited.",
+					"hints": []string{
+						"Try a different proxy or exit node.",
+						"Wait a few minutes and retry.",
+						"Verify you can load gemini.google.com/app in a browser through the same proxy.",
+					},
+				}
+				if proxy != "" {
+					report["proxy"] = proxy
+				}
+				data, _ := json.MarshalIndent(report, "", "  ")
+				fmt.Println(string(data))
+				return nil
+			}
 			return err
 		}
 		defer cleanup(c, jsonCookies)

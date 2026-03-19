@@ -17,9 +17,18 @@ import (
 
 const (
 	baseURL      = "https://gemini.google.com"
-	userAgent    = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"
+	userAgent    = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 	cookieDomain = ".google.com"
 )
+
+// RateLimitError is returned when the server responds with HTTP 429.
+type RateLimitError struct {
+	StatusCode int
+}
+
+func (e *RateLimitError) Error() string {
+	return fmt.Sprintf("rate limited by server (HTTP %d)", e.StatusCode)
+}
 
 // Client communicates with the Gemini web API.
 type Client struct {
@@ -131,6 +140,9 @@ func (c *Client) Init(ctx context.Context) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
+		if resp.StatusCode == 429 {
+			return &RateLimitError{StatusCode: resp.StatusCode}
+		}
 		return fmt.Errorf("init returned HTTP %d", resp.StatusCode)
 	}
 
