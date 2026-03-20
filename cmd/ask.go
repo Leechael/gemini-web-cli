@@ -28,8 +28,25 @@ var askCmd = &cobra.Command{
 		prompt := args[0]
 		model := resolveModel()
 
+		// Upload files if --image is specified
+		var fileIDs []string
+		if askImage != "" {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Uploading %s...\n", askImage)
+			id, err := c.UploadFile(ctx, askImage)
+			if err != nil {
+				return fmt.Errorf("upload failed: %w", err)
+			}
+			fileIDs = append(fileIDs, id)
+			fmt.Fprintf(cmd.ErrOrStderr(), "Uploaded (ID: %s)\n", id)
+		}
+
 		if askNoStream {
-			output, err := c.GenerateContent(ctx, prompt, model)
+			var output *types.ModelOutput
+			if len(fileIDs) > 0 {
+				output, err = c.GenerateContentWithFiles(ctx, prompt, fileIDs, model)
+			} else {
+				output, err = c.GenerateContent(ctx, prompt, model)
+			}
 			if err != nil {
 				return err
 			}
@@ -37,11 +54,20 @@ var askCmd = &cobra.Command{
 			printImages(output)
 			printChatID(output)
 		} else {
-			output, err := c.GenerateContentStream(ctx, prompt, model, func(out *types.ModelOutput) {
-				if out.TextDelta != "" {
-					fmt.Print(out.TextDelta)
-				}
-			})
+			var output *types.ModelOutput
+			if len(fileIDs) > 0 {
+				output, err = c.GenerateContentStreamWithFiles(ctx, prompt, fileIDs, model, func(out *types.ModelOutput) {
+					if out.TextDelta != "" {
+						fmt.Print(out.TextDelta)
+					}
+				})
+			} else {
+				output, err = c.GenerateContentStream(ctx, prompt, model, func(out *types.ModelOutput) {
+					if out.TextDelta != "" {
+						fmt.Print(out.TextDelta)
+					}
+				})
+			}
 			if err != nil {
 				return err
 			}

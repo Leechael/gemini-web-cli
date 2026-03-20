@@ -507,7 +507,7 @@ func TestExtractResearchResultFromRaw(t *testing.T) {
 
 func TestBuildInnerRequest_NewChat(t *testing.T) {
 	c := &Client{}
-	req := c.buildInnerRequest("hello", nil, false, false, "TEST-UUID")
+	req := c.buildInnerRequest("hello", nil, nil, false, false, "TEST-UUID")
 
 	if len(req) != 69 {
 		t.Fatalf("len = %d, want 69", len(req))
@@ -545,7 +545,7 @@ func TestBuildInnerRequest_NewChat(t *testing.T) {
 
 func TestBuildInnerRequest_DeepResearch(t *testing.T) {
 	c := &Client{}
-	req := c.buildInnerRequest("research topic", nil, true, false, "UUID")
+	req := c.buildInnerRequest("research topic", nil, nil, true, false, "UUID")
 
 	// Deep research flags
 	if req[49] != 1 {
@@ -571,7 +571,7 @@ func TestBuildInnerRequest_DeepResearch(t *testing.T) {
 func TestBuildInnerRequest_ContinuationMetadata(t *testing.T) {
 	c := &Client{}
 	meta := []string{"c_abc", "r_def", "rc_ghi", "", "", "", "", "", "", "ctx"}
-	req := c.buildInnerRequest("follow-up", meta, false, true, "UUID")
+	req := c.buildInnerRequest("follow-up", meta, nil, false, true, "UUID")
 
 	// [17] should be [[1]] for existing chat
 	outer, ok := req[17].([]any)

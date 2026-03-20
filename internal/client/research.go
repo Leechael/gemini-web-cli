@@ -72,7 +72,7 @@ func (c *Client) CreateAndStartDeepResearch(ctx context.Context, prompt string, 
 }
 
 func (c *Client) deepResearchGenerate(ctx context.Context, prompt string, metadata []string, model *types.Model) (*types.ModelOutput, error) {
-	best, _, err := c.collectStreamResult(ctx, prompt, metadata, model, true, nil)
+	best, _, err := c.collectStreamResult(ctx, prompt, metadata, nil, model, true, nil)
 	return best, err
 }
 

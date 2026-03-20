@@ -11,14 +11,30 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 
 	"github.com/Leechael/gemini-web-cli/internal/types"
 )
 
+// ModelUnavailableError indicates error code 1052 (model not available).
+type ModelUnavailableError struct {
+	Code int
+}
+
+func (e *ModelUnavailableError) Error() string {
+	return fmt.Sprintf("model unavailable (error code %d)", e.Code)
+}
+
 // GenerateContent sends a prompt and returns the full response (non-streaming).
 func (c *Client) GenerateContent(ctx context.Context, prompt string, model *types.Model) (*types.ModelOutput, error) {
-	best, _, err := c.collectStreamResult(ctx, prompt, nil, model, false, nil)
+	best, _, err := c.collectStreamResult(ctx, prompt, nil, nil, model, false, nil)
+	return best, err
+}
+
+// GenerateContentWithFiles sends a prompt with file attachments.
+func (c *Client) GenerateContentWithFiles(ctx context.Context, prompt string, fileIDs []string, model *types.Model) (*types.ModelOutput, error) {
+	best, _, err := c.collectStreamResult(ctx, prompt, nil, fileIDs, model, false, nil)
 	return best, err
 }
 
@@ -27,37 +43,59 @@ type StreamCallback func(output *types.ModelOutput)
 
 // GenerateContentStream sends a prompt and calls cb for each streaming chunk.
 func (c *Client) GenerateContentStream(ctx context.Context, prompt string, model *types.Model, cb StreamCallback) (*types.ModelOutput, error) {
-	best, _, err := c.collectStreamResult(ctx, prompt, nil, model, false, cb)
+	best, _, err := c.collectStreamResult(ctx, prompt, nil, nil, model, false, cb)
+	return best, err
+}
+
+// GenerateContentStreamWithFiles sends a prompt with files and calls cb for each chunk.
+func (c *Client) GenerateContentStreamWithFiles(ctx context.Context, prompt string, fileIDs []string, model *types.Model, cb StreamCallback) (*types.ModelOutput, error) {
+	best, _, err := c.collectStreamResult(ctx, prompt, nil, fileIDs, model, false, cb)
 	return best, err
 }
 
 // SendMessage sends a message in an existing chat.
 func (c *Client) SendMessage(ctx context.Context, prompt string, metadata []string, model *types.Model) (*types.ModelOutput, error) {
-	best, _, err := c.collectStreamResult(ctx, prompt, metadata, model, false, nil)
+	best, _, err := c.collectStreamResult(ctx, prompt, metadata, nil, model, false, nil)
 	return best, err
 }
 
 // SendMessageStream sends a message in a chat with streaming.
 func (c *Client) SendMessageStream(ctx context.Context, prompt string, metadata []string, model *types.Model, cb StreamCallback) (*types.ModelOutput, error) {
-	best, _, err := c.collectStreamResult(ctx, prompt, metadata, model, false, cb)
+	best, _, err := c.collectStreamResult(ctx, prompt, metadata, nil, model, false, cb)
 	return best, err
 }
 
 // SendMessageDeepResearch sends a message with deep research flags.
 func (c *Client) SendMessageDeepResearch(ctx context.Context, prompt string, metadata []string, model *types.Model) (*types.ModelOutput, error) {
-	best, _, err := c.collectStreamResult(ctx, prompt, metadata, model, true, nil)
+	best, _, err := c.collectStreamResult(ctx, prompt, metadata, nil, model, true, nil)
 	return best, err
 }
 
 // collectStreamResult is the shared implementation for all generate/send methods.
 // It accumulates images across frames (deduped) and keeps the best text output.
-func (c *Client) collectStreamResult(ctx context.Context, prompt string, metadata []string, model *types.Model, deepResearch bool, cb StreamCallback) (*types.ModelOutput, []types.Image, error) {
+// On error code 1052 (model unavailable), automatically retries with fallback model.
+func (c *Client) collectStreamResult(ctx context.Context, prompt string, metadata []string, fileIDs []string, model *types.Model, deepResearch bool, cb StreamCallback) (*types.ModelOutput, []types.Image, error) {
+	best, allImages, err := c.doCollectStream(ctx, prompt, metadata, fileIDs, model, deepResearch, cb)
+	if err != nil {
+		if mErr, ok := err.(*ModelUnavailableError); ok {
+			fallback := types.FindModel(types.FallbackModelName)
+			if fallback != nil && (model == nil || model.Name != fallback.Name) {
+				fmt.Fprintf(os.Stderr, "Model unavailable (code %d), retrying with %s...\n", mErr.Code, fallback.DisplayName)
+				return c.doCollectStream(ctx, prompt, metadata, fileIDs, fallback, deepResearch, cb)
+			}
+		}
+		return nil, nil, err
+	}
+	return best, allImages, nil
+}
+
+func (c *Client) doCollectStream(ctx context.Context, prompt string, metadata []string, fileIDs []string, model *types.Model, deepResearch bool, cb StreamCallback) (*types.ModelOutput, []types.Image, error) {
 	var best *types.ModelOutput
 	var allImages []types.Image
 	var plan *types.DeepResearchPlanData
 	var bestMetadata []string // track the most complete metadata across frames
 	seen := map[string]bool{}
-	err := c.streamGenerate(ctx, prompt, metadata, model, deepResearch, func(out *types.ModelOutput) {
+	err := c.streamGenerate(ctx, prompt, metadata, fileIDs, model, deepResearch, func(out *types.ModelOutput) {
 		for _, img := range out.Images {
 			if !seen[img.URL] {
 				seen[img.URL] = true
@@ -96,14 +134,14 @@ func (c *Client) collectStreamResult(ctx context.Context, prompt string, metadat
 	return best, allImages, nil
 }
 
-func (c *Client) streamGenerate(ctx context.Context, prompt string, metadata []string, model *types.Model, deepResearch bool, cb StreamCallback) error {
+func (c *Client) streamGenerate(ctx context.Context, prompt string, metadata []string, fileIDs []string, model *types.Model, deepResearch bool, cb StreamCallback) error {
 	if model == nil {
 		model = &types.Models[0] // unspecified
 	}
 
 	uuid := generateUUID()
 	hasCid := len(metadata) > 0 && metadata[0] != ""
-	innerReq := c.buildInnerRequest(prompt, metadata, deepResearch, hasCid, uuid)
+	innerReq := c.buildInnerRequest(prompt, metadata, fileIDs, deepResearch, hasCid, uuid)
 	innerJSON, err := json.Marshal(innerReq)
 	if err != nil {
 		return fmt.Errorf("marshaling inner request: %w", err)
@@ -150,12 +188,21 @@ func (c *Client) streamGenerate(ctx context.Context, prompt string, metadata []s
 	return c.parseStreamResponse(resp.Body, cb)
 }
 
-func (c *Client) buildInnerRequest(prompt string, metadata []string, deepResearch bool, hasCid bool, uuid string) []any {
+func (c *Client) buildInnerRequest(prompt string, metadata []string, fileIDs []string, deepResearch bool, hasCid bool, uuid string) []any {
 	// Build a 69-element array matching the Python library format
 	req := make([]any, 69)
 
 	// [0] = message content
-	req[0] = []any{prompt, 0, nil, nil, nil, nil, 0}
+	// With file attachments: [prompt, 0, nil, [[[fileId1, 1]], [[fileId2, 1]]], nil, nil, 0]
+	if len(fileIDs) > 0 {
+		var fileRefs []any
+		for _, fid := range fileIDs {
+			fileRefs = append(fileRefs, []any{[]any{fid, 1}})
+		}
+		req[0] = []any{prompt, 0, nil, fileRefs, nil, nil, 0}
+	} else {
+		req[0] = []any{prompt, 0, nil, nil, nil, nil, 0}
+	}
 
 	// [1] = language
 	req[1] = []any{"en"}
@@ -242,6 +289,10 @@ func (c *Client) parseStreamResponse(body io.Reader, cb StreamCallback) error {
 				var envelope []any
 				if err := json.Unmarshal([]byte(frames[i]), &envelope); err != nil {
 					continue
+				}
+				// Check for error code 1052 (model unavailable)
+				if errCode := extractErrorCode(envelope); errCode == 1052 {
+					return &ModelUnavailableError{Code: errCode}
 				}
 				parsed := parseEnvelope(envelope)
 				if parsed == nil {
@@ -706,4 +757,53 @@ func generateHexUUID() string {
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+// extractErrorCode extracts error code from envelope at path [0][5][2][0][1][0].
+// Returns 0 if no error code found.
+func extractErrorCode(envelope []any) int {
+	// Unwrap single-element wrappers
+	for len(envelope) == 1 {
+		if inner, ok := envelope[0].([]any); ok {
+			envelope = inner
+		} else {
+			break
+		}
+	}
+	arr := getNestedArray(envelope, 0)
+	if arr == nil {
+		return 0
+	}
+	arr = getNestedArray(arr, 5)
+	if arr == nil {
+		return 0
+	}
+	arr = getNestedArray(arr, 2)
+	if arr == nil {
+		return 0
+	}
+	arr = getNestedArray(arr, 0)
+	if arr == nil {
+		return 0
+	}
+	arr = getNestedArray(arr, 1)
+	if arr == nil {
+		return 0
+	}
+	if len(arr) > 0 {
+		if f, ok := arr[0].(float64); ok {
+			return int(f)
+		}
+	}
+	return 0
+}
+
+func getNestedArray(arr []any, idx int) []any {
+	if idx >= len(arr) {
+		return nil
+	}
+	if a, ok := arr[idx].([]any); ok {
+		return a
+	}
+	return nil
 }

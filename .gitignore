@@ -4,3 +4,4 @@ gemini-web-cli
 *.png
 *.jpg
 /tmp/
+*.json

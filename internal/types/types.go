@@ -121,7 +121,20 @@ var Models = []Model{
 			"x-goog-ext-73010990-jspb":  "[0]",
 		},
 	},
+	{
+		Name:         "gemini-3-pro",
+		DisplayName:  "Gemini 3 Pro",
+		AdvancedOnly: true,
+		Headers: map[string]string{
+			"x-goog-ext-525001261-jspb": `[1,null,null,null,"9d8ca3786ebdfbea",null,null,0,[4],null,null,2]`,
+			"x-goog-ext-73010989-jspb":  "[0]",
+			"x-goog-ext-73010990-jspb":  "[0]",
+		},
+	},
 }
+
+// FallbackModelName is the model to use when error 1052 (model unavailable) is encountered.
+const FallbackModelName = "gemini-2.5-flash"
 
 // FindModel looks up a model by name, returns nil if not found.
 func FindModel(name string) *Model {
