@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Leechael/gemini-web-cli/internal/client"
 	"github.com/Leechael/gemini-web-cli/internal/types"
 	"github.com/spf13/cobra"
 )
@@ -51,8 +52,8 @@ var askCmd = &cobra.Command{
 		prompt := args[0]
 		model := resolveModel()
 
-		// Process --file: text files are inlined, binary files are uploaded
-		var fileIDs []string
+		// Process --file: text files inlined, binary files uploaded via resumable protocol
+		var uploads []*client.UploadResult
 		for _, f := range askFiles {
 			if isTextFile(f) {
 				content, err := os.ReadFile(f)
@@ -64,19 +65,19 @@ var askCmd = &cobra.Command{
 				fmt.Fprintf(cmd.ErrOrStderr(), "Attached %s (%d bytes, inlined)\n", name, len(content))
 			} else {
 				fmt.Fprintf(cmd.ErrOrStderr(), "Uploading %s...\n", f)
-				id, err := c.UploadFile(ctx, f)
+				u, err := c.UploadFile(ctx, f)
 				if err != nil {
 					return fmt.Errorf("upload %s failed: %w", f, err)
 				}
-				fileIDs = append(fileIDs, id)
-				fmt.Fprintf(cmd.ErrOrStderr(), "Uploaded %s (ID: %s)\n", filepath.Base(f), id)
+				uploads = append(uploads, u)
+				fmt.Fprintf(cmd.ErrOrStderr(), "Uploaded %s (ID: %s)\n", u.FileName, u.ID)
 			}
 		}
 
 		if askNoStream {
 			var output *types.ModelOutput
-			if len(fileIDs) > 0 {
-				output, err = c.GenerateContentWithFiles(ctx, prompt, fileIDs, model)
+			if len(uploads) > 0 {
+				output, err = c.GenerateContentWithFiles(ctx, prompt, uploads, model)
 			} else {
 				output, err = c.GenerateContent(ctx, prompt, model)
 			}
@@ -88,8 +89,8 @@ var askCmd = &cobra.Command{
 			printChatID(output)
 		} else {
 			var output *types.ModelOutput
-			if len(fileIDs) > 0 {
-				output, err = c.GenerateContentStreamWithFiles(ctx, prompt, fileIDs, model, func(out *types.ModelOutput) {
+			if len(uploads) > 0 {
+				output, err = c.GenerateContentStreamWithFiles(ctx, prompt, uploads, model, func(out *types.ModelOutput) {
 					if out.TextDelta != "" {
 						fmt.Print(out.TextDelta)
 					}
