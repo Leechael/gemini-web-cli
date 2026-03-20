@@ -2,10 +2,9 @@ package client
 
 import (
 	"context"
-	"crypto/rand"
 	"fmt"
 	"io"
-	"math/big"
+	"mime"
 	"net/http"
 	"net/url"
 	"os"
@@ -14,90 +13,124 @@ import (
 )
 
 const (
-	uploadURL = "https://content-push.googleapis.com/upload"
+	uploadURL = "https://push.clients6.google.com/upload/"
 	pushID    = "feeds/mcudyrk2a4khkz"
+	tenantID  = "bard-storage"
 )
 
-// UploadFile uploads a file to Gemini and returns its upload ID.
-func (c *Client) UploadFile(ctx context.Context, filePath string) (string, error) {
+// UploadResult holds the upload ID and file metadata needed for the request.
+type UploadResult struct {
+	ID       string
+	FileName string
+	MimeType string
+}
+
+// UploadFile uploads a file via Google's resumable upload protocol.
+func (c *Client) UploadFile(ctx context.Context, filePath string) (*UploadResult, error) {
 	f, err := os.Open(filePath)
 	if err != nil {
-		return "", fmt.Errorf("opening file: %w", err)
+		return nil, fmt.Errorf("opening file: %w", err)
 	}
 	defer f.Close()
 
 	stat, err := f.Stat()
 	if err != nil {
-		return "", fmt.Errorf("stat file: %w", err)
+		return nil, fmt.Errorf("stat file: %w", err)
 	}
 
 	fileName := filepath.Base(filePath)
+	mimeType := detectMimeType(fileName)
 
-	return c.uploadReader(ctx, f, fileName, stat.Size())
+	id, err := c.resumableUpload(ctx, f, fileName, mimeType, stat.Size())
+	if err != nil {
+		return nil, err
+	}
+
+	return &UploadResult{ID: id, FileName: fileName, MimeType: mimeType}, nil
 }
 
-// UploadReader uploads data from a reader with the given filename.
-func (c *Client) UploadReader(ctx context.Context, r io.Reader, fileName string, size int64) (string, error) {
-	return c.uploadReader(ctx, r, fileName, size)
+func (c *Client) resumableUpload(ctx context.Context, r io.Reader, fileName, mimeType string, size int64) (string, error) {
+	// Step 1: Start — get upload URL
+	uploadTarget, err := c.uploadStart(ctx, fileName, size)
+	if err != nil {
+		return "", fmt.Errorf("upload start: %w", err)
+	}
+
+	if c.verbose {
+		fmt.Fprintf(logWriter, "Upload target URL: %s\n", uploadTarget[:min(120, len(uploadTarget))])
+	}
+
+	// Step 2: Upload + Finalize — send file bytes
+	return c.uploadFinalize(ctx, uploadTarget, r, size)
 }
 
-func (c *Client) uploadReader(ctx context.Context, r io.Reader, fileName string, size int64) (string, error) {
-	boundary := generateBoundary()
+func (c *Client) uploadStart(ctx context.Context, fileName string, size int64) (string, error) {
+	body := "File name: " + fileName
 
-	// Build multipart body manually (matching pi-web-access behavior)
-	var body strings.Builder
-	body.WriteString("------" + boundary + "\r\n")
-	body.WriteString(fmt.Sprintf("Content-Disposition: form-data; name=\"file\"; filename=\"%s\"\r\n", fileName))
-	body.WriteString("Content-Type: application/octet-stream\r\n")
-	body.WriteString("\r\n")
-
-	header := body.String()
-
-	footer := "\r\n------" + boundary + "--\r\n"
-
-	// Use a pipe to stream the multipart body
-	pr, pw := io.Pipe()
-	go func() {
-		defer pw.Close()
-		pw.Write([]byte(header))
-		io.Copy(pw, r)
-		pw.Write([]byte(footer))
-	}()
-
-	req, err := http.NewRequestWithContext(ctx, "POST", uploadURL, pr)
+	req, err := http.NewRequestWithContext(ctx, "POST", uploadURL, strings.NewReader(body))
 	if err != nil {
 		return "", err
 	}
 
-	req.Header.Set("Content-Type", "multipart/form-data; boundary=----"+boundary)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded;charset=UTF-8")
 	req.Header.Set("Push-Id", pushID)
 	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("Origin", baseURL)
+	req.Header.Set("Referer", baseURL+"/")
+	req.Header.Set("X-Goog-Upload-Command", "start")
+	req.Header.Set("X-Goog-Upload-Header-Content-Length", fmt.Sprintf("%d", size))
+	req.Header.Set("X-Goog-Upload-Protocol", "resumable")
+	req.Header.Set("X-Tenant-Id", tenantID)
 
-	// Manually forward cookies — the jar has them for .google.com but
-	// the upload endpoint is content-push.googleapis.com (different domain).
-	geminiURL, _ := url.Parse(baseURL)
-	var cookieParts []string
-	for _, ck := range c.httpClient.Jar.Cookies(geminiURL) {
-		cookieParts = append(cookieParts, ck.Name+"="+ck.Value)
-	}
-	if len(cookieParts) > 0 {
-		req.Header.Set("Cookie", strings.Join(cookieParts, "; "))
-	}
-
-	// Content-Length if known
-	if size > 0 {
-		req.ContentLength = int64(len(header)) + size + int64(len(footer))
-	}
+	c.setCookieHeader(req)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("upload request failed: %w", err)
+		return "", fmt.Errorf("upload start request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
 		respBody, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("upload returned HTTP %d: %s", resp.StatusCode, string(respBody[:min(200, len(respBody))]))
+		return "", fmt.Errorf("upload start returned HTTP %d: %s", resp.StatusCode, string(respBody[:min(200, len(respBody))]))
+	}
+
+	// The upload URL is in the x-goog-upload-url response header
+	target := resp.Header.Get("X-Goog-Upload-Url")
+	if target == "" {
+		return "", fmt.Errorf("upload start: missing x-goog-upload-url in response")
+	}
+
+	return target, nil
+}
+
+func (c *Client) uploadFinalize(ctx context.Context, targetURL string, r io.Reader, size int64) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, r)
+	if err != nil {
+		return "", err
+	}
+
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded;charset=utf-8")
+	req.Header.Set("Push-Id", pushID)
+	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("Origin", baseURL)
+	req.Header.Set("Referer", baseURL+"/")
+	req.Header.Set("X-Goog-Upload-Command", "upload, finalize")
+	req.Header.Set("X-Goog-Upload-Offset", "0")
+	req.Header.Set("X-Tenant-Id", tenantID)
+	req.ContentLength = size
+
+	c.setCookieHeader(req)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("upload finalize request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		respBody, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("upload finalize returned HTTP %d: %s", resp.StatusCode, string(respBody[:min(200, len(respBody))]))
 	}
 
 	uploadID, err := io.ReadAll(resp.Body)
@@ -108,7 +141,24 @@ func (c *Client) uploadReader(ctx context.Context, r io.Reader, fileName string,
 	return strings.TrimSpace(string(uploadID)), nil
 }
 
-func generateBoundary() string {
-	n, _ := rand.Int(rand.Reader, big.NewInt(1e16))
-	return fmt.Sprintf("FormBoundary%016d", n.Int64())
+// setCookieHeader manually forwards cookies from the jar to cross-domain requests.
+func (c *Client) setCookieHeader(req *http.Request) {
+	geminiURL, _ := url.Parse(baseURL)
+	var parts []string
+	for _, ck := range c.httpClient.Jar.Cookies(geminiURL) {
+		parts = append(parts, ck.Name+"="+ck.Value)
+	}
+	if len(parts) > 0 {
+		req.Header.Set("Cookie", strings.Join(parts, "; "))
+	}
+}
+
+func detectMimeType(fileName string) string {
+	ext := strings.ToLower(filepath.Ext(fileName))
+	if ext != "" {
+		if ct := mime.TypeByExtension(ext); ct != "" {
+			return ct
+		}
+	}
+	return "application/octet-stream"
 }

@@ -33,8 +33,8 @@ func (c *Client) GenerateContent(ctx context.Context, prompt string, model *type
 }
 
 // GenerateContentWithFiles sends a prompt with file attachments.
-func (c *Client) GenerateContentWithFiles(ctx context.Context, prompt string, fileIDs []string, model *types.Model) (*types.ModelOutput, error) {
-	best, _, err := c.collectStreamResult(ctx, prompt, nil, fileIDs, model, false, nil)
+func (c *Client) GenerateContentWithFiles(ctx context.Context, prompt string, uploads []*UploadResult, model *types.Model) (*types.ModelOutput, error) {
+	best, _, err := c.collectStreamResult(ctx, prompt, nil, uploads, model, false, nil)
 	return best, err
 }
 
@@ -48,8 +48,8 @@ func (c *Client) GenerateContentStream(ctx context.Context, prompt string, model
 }
 
 // GenerateContentStreamWithFiles sends a prompt with files and calls cb for each chunk.
-func (c *Client) GenerateContentStreamWithFiles(ctx context.Context, prompt string, fileIDs []string, model *types.Model, cb StreamCallback) (*types.ModelOutput, error) {
-	best, _, err := c.collectStreamResult(ctx, prompt, nil, fileIDs, model, false, cb)
+func (c *Client) GenerateContentStreamWithFiles(ctx context.Context, prompt string, uploads []*UploadResult, model *types.Model, cb StreamCallback) (*types.ModelOutput, error) {
+	best, _, err := c.collectStreamResult(ctx, prompt, nil, uploads, model, false, cb)
 	return best, err
 }
 
@@ -74,14 +74,14 @@ func (c *Client) SendMessageDeepResearch(ctx context.Context, prompt string, met
 // collectStreamResult is the shared implementation for all generate/send methods.
 // It accumulates images across frames (deduped) and keeps the best text output.
 // On error code 1052 (model unavailable), automatically retries with fallback model.
-func (c *Client) collectStreamResult(ctx context.Context, prompt string, metadata []string, fileIDs []string, model *types.Model, deepResearch bool, cb StreamCallback) (*types.ModelOutput, []types.Image, error) {
-	best, allImages, err := c.doCollectStream(ctx, prompt, metadata, fileIDs, model, deepResearch, cb)
+func (c *Client) collectStreamResult(ctx context.Context, prompt string, metadata []string, uploads []*UploadResult, model *types.Model, deepResearch bool, cb StreamCallback) (*types.ModelOutput, []types.Image, error) {
+	best, allImages, err := c.doCollectStream(ctx, prompt, metadata, uploads, model, deepResearch, cb)
 	if err != nil {
 		if mErr, ok := err.(*ModelUnavailableError); ok {
 			fallback := types.FindModel(types.FallbackModelName)
 			if fallback != nil && (model == nil || model.Name != fallback.Name) {
 				fmt.Fprintf(os.Stderr, "Model unavailable (code %d), retrying with %s...\n", mErr.Code, fallback.DisplayName)
-				return c.doCollectStream(ctx, prompt, metadata, fileIDs, fallback, deepResearch, cb)
+				return c.doCollectStream(ctx, prompt, metadata, uploads, fallback, deepResearch, cb)
 			}
 		}
 		return nil, nil, err
@@ -89,13 +89,13 @@ func (c *Client) collectStreamResult(ctx context.Context, prompt string, metadat
 	return best, allImages, nil
 }
 
-func (c *Client) doCollectStream(ctx context.Context, prompt string, metadata []string, fileIDs []string, model *types.Model, deepResearch bool, cb StreamCallback) (*types.ModelOutput, []types.Image, error) {
+func (c *Client) doCollectStream(ctx context.Context, prompt string, metadata []string, uploads []*UploadResult, model *types.Model, deepResearch bool, cb StreamCallback) (*types.ModelOutput, []types.Image, error) {
 	var best *types.ModelOutput
 	var allImages []types.Image
 	var plan *types.DeepResearchPlanData
 	var bestMetadata []string // track the most complete metadata across frames
 	seen := map[string]bool{}
-	err := c.streamGenerate(ctx, prompt, metadata, fileIDs, model, deepResearch, func(out *types.ModelOutput) {
+	err := c.streamGenerate(ctx, prompt, metadata, uploads, model, deepResearch, func(out *types.ModelOutput) {
 		for _, img := range out.Images {
 			if !seen[img.URL] {
 				seen[img.URL] = true
@@ -134,7 +134,7 @@ func (c *Client) doCollectStream(ctx context.Context, prompt string, metadata []
 	return best, allImages, nil
 }
 
-func (c *Client) streamGenerate(ctx context.Context, prompt string, metadata []string, fileIDs []string, model *types.Model, deepResearch bool, cb StreamCallback) error {
+func (c *Client) streamGenerate(ctx context.Context, prompt string, metadata []string, uploads []*UploadResult, model *types.Model, deepResearch bool, cb StreamCallback) error {
 	if model == nil {
 		model = &types.Models[0] // unspecified
 	}
@@ -142,44 +142,24 @@ func (c *Client) streamGenerate(ctx context.Context, prompt string, metadata []s
 	uuid := generateUUID()
 	hasCid := len(metadata) > 0 && metadata[0] != ""
 
-	var outerJSON []byte
-	if len(fileIDs) > 0 {
-		// Use the proven pi-web-access 3-element format for file uploads.
-		// The 69-element format works for text but file references may not
-		// be recognized in it.
-		var fileRefs []any
-		for _, fid := range fileIDs {
-			fileRefs = append(fileRefs, []any{[]any{fid, 1}})
-		}
-		promptPayload := []any{prompt, 0, nil, fileRefs}
-		innerList := []any{promptPayload, nil, nil}
-		innerJSON, err := json.Marshal(innerList)
-		if err != nil {
-			return fmt.Errorf("marshaling inner request: %w", err)
-		}
-		outerReq := []any{nil, string(innerJSON)}
-		var err2 error
-		outerJSON, err2 = json.Marshal(outerReq)
-		if err2 != nil {
-			return fmt.Errorf("marshaling outer request: %w", err2)
-		}
-	} else {
-		innerReq := c.buildInnerRequest(prompt, metadata, nil, deepResearch, hasCid, uuid)
-		innerJSON, err := json.Marshal(innerReq)
-		if err != nil {
-			return fmt.Errorf("marshaling inner request: %w", err)
-		}
-		outerReq := []any{nil, string(innerJSON)}
-		var err2 error
-		outerJSON, err2 = json.Marshal(outerReq)
-		if err2 != nil {
-			return fmt.Errorf("marshaling outer request: %w", err2)
-		}
+	innerReq := c.buildInnerRequest(prompt, metadata, uploads, deepResearch, hasCid, uuid)
+	innerJSON, err := json.Marshal(innerReq)
+	if err != nil {
+		return fmt.Errorf("marshaling inner request: %w", err)
+	}
+	outerReq := []any{nil, string(innerJSON)}
+	outerJSON, err := json.Marshal(outerReq)
+	if err != nil {
+		return fmt.Errorf("marshaling outer request: %w", err)
 	}
 
 	form := url.Values{}
 	form.Set("at", c.accessToken)
 	form.Set("f.req", string(outerJSON))
+
+	if c.verbose {
+		fmt.Fprintf(logWriter, "f.req payload: %s\n", string(outerJSON))
+	}
 
 	reqURL := c.streamURL()
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", reqURL, strings.NewReader(form.Encode()))
@@ -215,16 +195,20 @@ func (c *Client) streamGenerate(ctx context.Context, prompt string, metadata []s
 	return c.parseStreamResponse(resp.Body, cb)
 }
 
-func (c *Client) buildInnerRequest(prompt string, metadata []string, fileIDs []string, deepResearch bool, hasCid bool, uuid string) []any {
+func (c *Client) buildInnerRequest(prompt string, metadata []string, uploads []*UploadResult, deepResearch bool, hasCid bool, uuid string) []any {
 	// Build a 69-element array matching the Python library format
 	req := make([]any, 69)
 
 	// [0] = message content
-	// With file attachments: [prompt, 0, nil, [[[fileId1, 1]], [[fileId2, 1]]], nil, nil, 0]
-	if len(fileIDs) > 0 {
+	// With file attachments (from HAR capture):
+	//   [prompt, 0, null, [[[uploadId, 1, null, "mime/type"], "filename"]], null, null, 0]
+	if len(uploads) > 0 {
 		var fileRefs []any
-		for _, fid := range fileIDs {
-			fileRefs = append(fileRefs, []any{[]any{fid, 1}})
+		for _, u := range uploads {
+			fileRefs = append(fileRefs, []any{
+				[]any{u.ID, 1, nil, u.MimeType},
+				u.FileName,
+			})
 		}
 		req[0] = []any{prompt, 0, nil, fileRefs, nil, nil, 0}
 	} else {
