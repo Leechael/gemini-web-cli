@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"mime"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -74,6 +75,18 @@ func (c *Client) uploadReader(ctx context.Context, r io.Reader, fileName, conten
 	req.Header.Set("Content-Type", "multipart/form-data; boundary=----"+boundary)
 	req.Header.Set("Push-Id", pushID)
 	req.Header.Set("User-Agent", userAgent)
+
+	// Manually forward cookies — the jar has them for .google.com but
+	// the upload endpoint is content-push.googleapis.com (different domain).
+	geminiURL, _ := url.Parse(baseURL)
+	var cookieParts []string
+	for _, ck := range c.httpClient.Jar.Cookies(geminiURL) {
+		cookieParts = append(cookieParts, ck.Name+"="+ck.Value)
+	}
+	if len(cookieParts) > 0 {
+		req.Header.Set("Cookie", strings.Join(cookieParts, "; "))
+	}
+
 	// Content-Length if known
 	if size > 0 {
 		req.ContentLength = int64(len(header)) + size + int64(len(footer))
