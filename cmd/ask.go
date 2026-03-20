@@ -10,7 +10,7 @@ import (
 
 var (
 	askNoStream bool
-	askImage    string
+	askFiles    []string
 )
 
 var askCmd = &cobra.Command{
@@ -28,13 +28,13 @@ var askCmd = &cobra.Command{
 		prompt := args[0]
 		model := resolveModel()
 
-		// Upload files if --image is specified
+		// Upload files if --file is specified
 		var fileIDs []string
-		if askImage != "" {
-			fmt.Fprintf(cmd.ErrOrStderr(), "Uploading %s...\n", askImage)
-			id, err := c.UploadFile(ctx, askImage)
+		for _, f := range askFiles {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Uploading %s...\n", f)
+			id, err := c.UploadFile(ctx, f)
 			if err != nil {
-				return fmt.Errorf("upload failed: %w", err)
+				return fmt.Errorf("upload %s failed: %w", f, err)
 			}
 			fileIDs = append(fileIDs, id)
 			fmt.Fprintf(cmd.ErrOrStderr(), "Uploaded (ID: %s)\n", id)
@@ -83,7 +83,7 @@ var askCmd = &cobra.Command{
 
 func init() {
 	askCmd.Flags().BoolVar(&askNoStream, "no-stream", false, "Wait for complete response")
-	askCmd.Flags().StringVar(&askImage, "image", "", "Attach an image/file")
+	askCmd.Flags().StringArrayVarP(&askFiles, "file", "f", nil, "Attach file(s) (can be specified multiple times)")
 }
 
 func printImages(output *types.ModelOutput) {
