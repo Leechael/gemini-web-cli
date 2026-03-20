@@ -181,6 +181,9 @@ func (c *Client) streamGenerate(ctx context.Context, prompt string, metadata []s
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
+		if resp.StatusCode == 429 {
+			return &RateLimitError{StatusCode: resp.StatusCode}
+		}
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("stream returned HTTP %d: %s", resp.StatusCode, string(body[:min(200, len(body))]))
 	}
@@ -290,9 +293,12 @@ func (c *Client) parseStreamResponse(body io.Reader, cb StreamCallback) error {
 				if err := json.Unmarshal([]byte(frames[i]), &envelope); err != nil {
 					continue
 				}
-				// Check for error code 1052 (model unavailable)
-				if errCode := extractErrorCode(envelope); errCode == 1052 {
-					return &ModelUnavailableError{Code: errCode}
+					// Check for error codes in the response
+				if errCode := extractErrorCode(envelope); errCode != 0 {
+					if errCode == 1052 {
+						return &ModelUnavailableError{Code: errCode}
+					}
+					return fmt.Errorf("server returned error code %d", errCode)
 				}
 				parsed := parseEnvelope(envelope)
 				if parsed == nil {
@@ -329,7 +335,15 @@ func (c *Client) parseStreamResponse(body io.Reader, cb StreamCallback) error {
 	}
 
 	if output == nil {
-		return fmt.Errorf("no valid response frames parsed")
+		// Include raw response snippet for debugging
+		snippet := string(allData)
+		if len(snippet) > 500 {
+			snippet = snippet[:500] + "..."
+		}
+		if len(snippet) > 0 {
+			return fmt.Errorf("no valid response frames parsed, raw response: %s", snippet)
+		}
+		return fmt.Errorf("no valid response frames parsed (empty response body)")
 	}
 	return nil
 }
@@ -759,41 +773,54 @@ func generateHexUUID() string {
 	return hex.EncodeToString(b)
 }
 
-// extractErrorCode extracts error code from envelope at path [0][5][2][0][1][0].
+// extractErrorCode tries multiple known paths to find an error code in the envelope.
 // Returns 0 if no error code found.
 func extractErrorCode(envelope []any) int {
 	// Unwrap single-element wrappers
-	for len(envelope) == 1 {
-		if inner, ok := envelope[0].([]any); ok {
-			envelope = inner
+	unwrapped := envelope
+	for len(unwrapped) == 1 {
+		if inner, ok := unwrapped[0].([]any); ok {
+			unwrapped = inner
 		} else {
 			break
 		}
 	}
-	arr := getNestedArray(envelope, 0)
-	if arr == nil {
-		return 0
+
+	// Path 1: [0][5][2][0][1][0] — standard error code path
+	if code := drillErrorCode(unwrapped, 0, 5, 2, 0, 1, 0); code != 0 {
+		return code
 	}
-	arr = getNestedArray(arr, 5)
-	if arr == nil {
-		return 0
-	}
-	arr = getNestedArray(arr, 2)
-	if arr == nil {
-		return 0
-	}
-	arr = getNestedArray(arr, 0)
-	if arr == nil {
-		return 0
-	}
-	arr = getNestedArray(arr, 1)
-	if arr == nil {
-		return 0
-	}
-	if len(arr) > 0 {
-		if f, ok := arr[0].(float64); ok {
-			return int(f)
+
+	// Path 2: check for reject code in RPC-style envelope
+	// Structure: ["wrb.fr", ..., ..., ..., ..., [rejectCode]]
+	if len(unwrapped) > 5 {
+		if arr, ok := unwrapped[5].([]any); ok && len(arr) > 0 {
+			if f, ok := arr[0].(float64); ok && f != 0 {
+				return int(f)
+			}
 		}
+	}
+
+	return 0
+}
+
+func drillErrorCode(arr []any, indices ...int) int {
+	current := arr
+	for i, idx := range indices {
+		if i == len(indices)-1 {
+			// Last index: extract the number
+			if idx < len(current) {
+				if f, ok := current[idx].(float64); ok {
+					return int(f)
+				}
+			}
+			return 0
+		}
+		next := getNestedArray(current, idx)
+		if next == nil {
+			return 0
+		}
+		current = next
 	}
 	return 0
 }
