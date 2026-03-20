@@ -61,6 +61,7 @@ func init() {
 
 	askCmd.GroupID = "chat"
 	replyCmd.GroupID = "chat"
+	googCmd.GroupID = "chat"
 	listCmd.GroupID = "chat"
 	getCmd.GroupID = "chat"
 	downloadCmd.GroupID = "chat"
@@ -71,11 +72,12 @@ func init() {
 
 	modelsCmd.GroupID = "util"
 	inspectCmd.GroupID = "util"
+	statusCmd.GroupID = "util"
 	importCmd.GroupID = "util"
 
-	rootCmd.AddCommand(askCmd, replyCmd, listCmd, getCmd, downloadCmd)
+	rootCmd.AddCommand(askCmd, replyCmd, googCmd, listCmd, getCmd, downloadCmd)
 	rootCmd.AddCommand(researchCmd, progressCmd, reportCmd)
-	rootCmd.AddCommand(modelsCmd, inspectCmd, importCmd)
+	rootCmd.AddCommand(modelsCmd, inspectCmd, statusCmd, importCmd)
 }
 
 // Execute runs the root command.
