@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"math/big"
-	"mime"
 	"net/http"
 	"net/url"
 	"os"
@@ -33,25 +32,23 @@ func (c *Client) UploadFile(ctx context.Context, filePath string) (string, error
 	}
 
 	fileName := filepath.Base(filePath)
-	contentType := detectContentType(fileName)
 
-	return c.uploadReader(ctx, f, fileName, contentType, stat.Size())
+	return c.uploadReader(ctx, f, fileName, stat.Size())
 }
 
 // UploadReader uploads data from a reader with the given filename.
 func (c *Client) UploadReader(ctx context.Context, r io.Reader, fileName string, size int64) (string, error) {
-	contentType := detectContentType(fileName)
-	return c.uploadReader(ctx, r, fileName, contentType, size)
+	return c.uploadReader(ctx, r, fileName, size)
 }
 
-func (c *Client) uploadReader(ctx context.Context, r io.Reader, fileName, contentType string, size int64) (string, error) {
+func (c *Client) uploadReader(ctx context.Context, r io.Reader, fileName string, size int64) (string, error) {
 	boundary := generateBoundary()
 
 	// Build multipart body manually (matching pi-web-access behavior)
 	var body strings.Builder
 	body.WriteString("------" + boundary + "\r\n")
 	body.WriteString(fmt.Sprintf("Content-Disposition: form-data; name=\"file\"; filename=\"%s\"\r\n", fileName))
-	body.WriteString(fmt.Sprintf("Content-Type: %s\r\n", contentType))
+	body.WriteString("Content-Type: application/octet-stream\r\n")
 	body.WriteString("\r\n")
 
 	header := body.String()
@@ -109,16 +106,6 @@ func (c *Client) uploadReader(ctx context.Context, r io.Reader, fileName, conten
 	}
 
 	return strings.TrimSpace(string(uploadID)), nil
-}
-
-func detectContentType(fileName string) string {
-	ext := filepath.Ext(fileName)
-	if ext != "" {
-		if ct := mime.TypeByExtension(ext); ct != "" {
-			return ct
-		}
-	}
-	return "application/octet-stream"
 }
 
 func generateBoundary() string {

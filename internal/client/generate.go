@@ -141,16 +141,40 @@ func (c *Client) streamGenerate(ctx context.Context, prompt string, metadata []s
 
 	uuid := generateUUID()
 	hasCid := len(metadata) > 0 && metadata[0] != ""
-	innerReq := c.buildInnerRequest(prompt, metadata, fileIDs, deepResearch, hasCid, uuid)
-	innerJSON, err := json.Marshal(innerReq)
-	if err != nil {
-		return fmt.Errorf("marshaling inner request: %w", err)
-	}
 
-	outerReq := []any{nil, string(innerJSON)}
-	outerJSON, err := json.Marshal(outerReq)
-	if err != nil {
-		return fmt.Errorf("marshaling outer request: %w", err)
+	var outerJSON []byte
+	if len(fileIDs) > 0 {
+		// Use the proven pi-web-access 3-element format for file uploads.
+		// The 69-element format works for text but file references may not
+		// be recognized in it.
+		var fileRefs []any
+		for _, fid := range fileIDs {
+			fileRefs = append(fileRefs, []any{[]any{fid, 1}})
+		}
+		promptPayload := []any{prompt, 0, nil, fileRefs}
+		innerList := []any{promptPayload, nil, nil}
+		innerJSON, err := json.Marshal(innerList)
+		if err != nil {
+			return fmt.Errorf("marshaling inner request: %w", err)
+		}
+		outerReq := []any{nil, string(innerJSON)}
+		var err2 error
+		outerJSON, err2 = json.Marshal(outerReq)
+		if err2 != nil {
+			return fmt.Errorf("marshaling outer request: %w", err2)
+		}
+	} else {
+		innerReq := c.buildInnerRequest(prompt, metadata, nil, deepResearch, hasCid, uuid)
+		innerJSON, err := json.Marshal(innerReq)
+		if err != nil {
+			return fmt.Errorf("marshaling inner request: %w", err)
+		}
+		outerReq := []any{nil, string(innerJSON)}
+		var err2 error
+		outerJSON, err2 = json.Marshal(outerReq)
+		if err2 != nil {
+			return fmt.Errorf("marshaling outer request: %w", err2)
+		}
 	}
 
 	form := url.Values{}
