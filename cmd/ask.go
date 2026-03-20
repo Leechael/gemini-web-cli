@@ -3,6 +3,9 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/Leechael/gemini-web-cli/internal/types"
 	"github.com/spf13/cobra"
@@ -12,6 +15,26 @@ var (
 	askNoStream bool
 	askFiles    []string
 )
+
+// textExtensions lists file extensions that should be inlined into the prompt.
+var textExtensions = map[string]bool{
+	".txt": true, ".md": true, ".markdown": true,
+	".json": true, ".yaml": true, ".yml": true, ".toml": true,
+	".xml": true, ".csv": true, ".tsv": true,
+	".go": true, ".py": true, ".js": true, ".ts": true, ".jsx": true, ".tsx": true,
+	".rs": true, ".c": true, ".cpp": true, ".h": true, ".hpp": true,
+	".java": true, ".kt": true, ".swift": true, ".rb": true, ".php": true,
+	".sh": true, ".bash": true, ".zsh": true, ".fish": true,
+	".sql": true, ".html": true, ".css": true, ".scss": true,
+	".env": true, ".ini": true, ".cfg": true, ".conf": true,
+	".log": true, ".diff": true, ".patch": true,
+	".tex": true, ".rst": true, ".adoc": true,
+}
+
+func isTextFile(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	return textExtensions[ext]
+}
 
 var askCmd = &cobra.Command{
 	Use:   "ask [prompt]",
@@ -28,16 +51,26 @@ var askCmd = &cobra.Command{
 		prompt := args[0]
 		model := resolveModel()
 
-		// Upload files if --file is specified
+		// Process --file: text files are inlined, binary files are uploaded
 		var fileIDs []string
 		for _, f := range askFiles {
-			fmt.Fprintf(cmd.ErrOrStderr(), "Uploading %s...\n", f)
-			id, err := c.UploadFile(ctx, f)
-			if err != nil {
-				return fmt.Errorf("upload %s failed: %w", f, err)
+			if isTextFile(f) {
+				content, err := os.ReadFile(f)
+				if err != nil {
+					return fmt.Errorf("reading %s: %w", f, err)
+				}
+				name := filepath.Base(f)
+				prompt = fmt.Sprintf("<file name=%q>\n%s\n</file>\n\n%s", name, string(content), prompt)
+				fmt.Fprintf(cmd.ErrOrStderr(), "Attached %s (%d bytes, inlined)\n", name, len(content))
+			} else {
+				fmt.Fprintf(cmd.ErrOrStderr(), "Uploading %s...\n", f)
+				id, err := c.UploadFile(ctx, f)
+				if err != nil {
+					return fmt.Errorf("upload %s failed: %w", f, err)
+				}
+				fileIDs = append(fileIDs, id)
+				fmt.Fprintf(cmd.ErrOrStderr(), "Uploaded %s (ID: %s)\n", filepath.Base(f), id)
 			}
-			fileIDs = append(fileIDs, id)
-			fmt.Fprintf(cmd.ErrOrStderr(), "Uploaded (ID: %s)\n", id)
 		}
 
 		if askNoStream {
