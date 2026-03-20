@@ -59,9 +59,22 @@ Single-turn question with streaming output.
 gemini-web-cli ask "Explain quantum computing"
 gemini-web-cli ask --no-stream "What is 2+2?"
 gemini-web-cli --model gemini-2.0-flash ask "Draw a sunset"
+
+# Attach files
+gemini-web-cli ask -f image.png "What's in this image?"
+gemini-web-cli ask -f a.pdf -f b.pdf "Compare these documents"
 ```
 
 Output includes the response text, any generated images, and the chat ID for follow-up.
+
+### goog
+
+Google search via Gemini (shortcut for `ask "@Google ..."`).
+
+```bash
+gemini-web-cli goog "latest Go release notes"
+gemini-web-cli goog --no-stream "weather in Tokyo"
+```
 
 ### reply
 
@@ -164,16 +177,16 @@ Available models for --model:
   gemini-3.0-flash
 ```
 
-### inspect
+### status
 
-Diagnose cookie and account status.
+Check login status and account diagnostics.
 
 ```bash
 # Cookie-only check (no network)
-gemini-web-cli inspect --cookies-only
+gemini-web-cli status --cookies-only
 
 # Full account probe
-gemini-web-cli inspect
+gemini-web-cli status
 ```
 
 ## Global Flags
