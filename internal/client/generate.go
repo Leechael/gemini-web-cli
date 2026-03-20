@@ -301,7 +301,7 @@ func (c *Client) parseStreamResponse(body io.Reader, cb StreamCallback) error {
 				if err := json.Unmarshal([]byte(frames[i]), &envelope); err != nil {
 					continue
 				}
-					// Check for error codes in the response
+				// Check for error codes in the response
 				if errCode := extractErrorCode(envelope); errCode != 0 {
 					if errCode == 1052 {
 						return &ModelUnavailableError{Code: errCode}
