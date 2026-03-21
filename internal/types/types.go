@@ -7,6 +7,8 @@ type ModelOutput struct {
 	RCid             string
 	Metadata         []string // [cid, rid, rcid, ...]
 	Images           []Image
+	Videos           []Video
+	Media            []GeneratedMedia
 	Done             bool
 	DeepResearchPlan *DeepResearchPlanData // non-nil when a plan is detected
 }
@@ -25,6 +27,20 @@ type Image struct {
 	Title     string
 	Alt       string
 	Generated bool
+}
+
+// Video represents a generated video in the response.
+type Video struct {
+	URL       string
+	Thumbnail string
+}
+
+// GeneratedMedia represents generated music/audio media in the response.
+type GeneratedMedia struct {
+	MP3URL       string
+	MP3Thumbnail string
+	MP4URL       string
+	MP4Thumbnail string
 }
 
 // DeepResearchPlan holds the plan returned by create_deep_research_plan.
@@ -73,8 +89,17 @@ var Models = []Model{
 		Headers:     map[string]string{},
 	},
 	{
-		Name:        "gemini-2.0-flash",
-		DisplayName: "Gemini 2.0 Flash",
+		Name:        "gemini-3-pro",
+		DisplayName: "Gemini 3 Pro",
+		Headers: map[string]string{
+			"x-goog-ext-525001261-jspb": `[1,null,null,null,"9d8ca3786ebdfbea",null,null,0,[4],null,null,1]`,
+			"x-goog-ext-73010989-jspb":  "[0]",
+			"x-goog-ext-73010990-jspb":  "[0]",
+		},
+	},
+	{
+		Name:        "gemini-3-flash",
+		DisplayName: "Gemini 3 Flash",
 		Headers: map[string]string{
 			"x-goog-ext-525001261-jspb": `[1,null,null,null,"fbb127bbb056c959",null,null,0,[4],null,null,1]`,
 			"x-goog-ext-73010989-jspb":  "[0]",
@@ -82,8 +107,47 @@ var Models = []Model{
 		},
 	},
 	{
-		Name:         "gemini-2.5-pro",
-		DisplayName:  "Gemini 2.5 Pro",
+		Name:        "gemini-3-flash-thinking",
+		DisplayName: "Gemini 3 Flash Thinking",
+		Headers: map[string]string{
+			"x-goog-ext-525001261-jspb": `[1,null,null,null,"5bf011840784117a",null,null,0,[4],null,null,1]`,
+			"x-goog-ext-73010989-jspb":  "[0]",
+			"x-goog-ext-73010990-jspb":  "[0]",
+		},
+	},
+	{
+		Name:         "gemini-3-pro-plus",
+		DisplayName:  "Gemini 3 Pro Plus",
+		AdvancedOnly: true,
+		Headers: map[string]string{
+			"x-goog-ext-525001261-jspb": `[1,null,null,null,"e6fa609c3fa255c0",null,null,0,[4],null,null,4]`,
+			"x-goog-ext-73010989-jspb":  "[0]",
+			"x-goog-ext-73010990-jspb":  "[0]",
+		},
+	},
+	{
+		Name:         "gemini-3-flash-plus",
+		DisplayName:  "Gemini 3 Flash Plus",
+		AdvancedOnly: true,
+		Headers: map[string]string{
+			"x-goog-ext-525001261-jspb": `[1,null,null,null,"56fdd199312815e2",null,null,0,[4],null,null,4]`,
+			"x-goog-ext-73010989-jspb":  "[0]",
+			"x-goog-ext-73010990-jspb":  "[0]",
+		},
+	},
+	{
+		Name:         "gemini-3-flash-thinking-plus",
+		DisplayName:  "Gemini 3 Flash Thinking Plus",
+		AdvancedOnly: true,
+		Headers: map[string]string{
+			"x-goog-ext-525001261-jspb": `[1,null,null,null,"e051ce1aa80aa576",null,null,0,[4],null,null,4]`,
+			"x-goog-ext-73010989-jspb":  "[0]",
+			"x-goog-ext-73010990-jspb":  "[0]",
+		},
+	},
+	{
+		Name:         "gemini-3-pro-advanced",
+		DisplayName:  "Gemini 3 Pro Advanced",
 		AdvancedOnly: true,
 		Headers: map[string]string{
 			"x-goog-ext-525001261-jspb": `[1,null,null,null,"e6fa609c3fa255c0",null,null,0,[4],null,null,2]`,
@@ -92,41 +156,21 @@ var Models = []Model{
 		},
 	},
 	{
-		Name:         "gemini-2.5-flash",
-		DisplayName:  "Gemini 2.5 Flash",
+		Name:         "gemini-3-flash-advanced",
+		DisplayName:  "Gemini 3 Flash Advanced",
 		AdvancedOnly: true,
 		Headers: map[string]string{
-			"x-goog-ext-525001261-jspb": `[1,null,null,null,"3acb4e219170d42a",null,null,0,[4],null,null,1]`,
+			"x-goog-ext-525001261-jspb": `[1,null,null,null,"56fdd199312815e2",null,null,0,[4],null,null,2]`,
 			"x-goog-ext-73010989-jspb":  "[0]",
 			"x-goog-ext-73010990-jspb":  "[0]",
 		},
 	},
 	{
-		Name:         "gemini-3.1-pro",
-		DisplayName:  "Gemini 3.1 Pro",
+		Name:         "gemini-3-flash-thinking-advanced",
+		DisplayName:  "Gemini 3 Flash Thinking Advanced",
 		AdvancedOnly: true,
 		Headers: map[string]string{
-			"x-goog-ext-525001261-jspb": `[1,null,null,null,"e6fa609c3fa255c0",null,null,0,[4],null,null,2]`,
-			"x-goog-ext-73010989-jspb":  "[0]",
-			"x-goog-ext-73010990-jspb":  "[0]",
-		},
-	},
-	{
-		Name:         "gemini-3.0-flash",
-		DisplayName:  "Gemini 3.0 Flash",
-		AdvancedOnly: false,
-		Headers: map[string]string{
-			"x-goog-ext-525001261-jspb": `[1,null,null,null,"fbb127bbb056c959",null,null,0,[4],null,null,1]`,
-			"x-goog-ext-73010989-jspb":  "[0]",
-			"x-goog-ext-73010990-jspb":  "[0]",
-		},
-	},
-	{
-		Name:         "gemini-3-pro",
-		DisplayName:  "Gemini 3 Pro",
-		AdvancedOnly: true,
-		Headers: map[string]string{
-			"x-goog-ext-525001261-jspb": `[1,null,null,null,"9d8ca3786ebdfbea",null,null,0,[4],null,null,2]`,
+			"x-goog-ext-525001261-jspb": `[1,null,null,null,"e051ce1aa80aa576",null,null,0,[4],null,null,2]`,
 			"x-goog-ext-73010989-jspb":  "[0]",
 			"x-goog-ext-73010990-jspb":  "[0]",
 		},
@@ -134,7 +178,7 @@ var Models = []Model{
 }
 
 // FallbackModelName is the model to use when error 1052 (model unavailable) is encountered.
-const FallbackModelName = "gemini-2.5-flash"
+const FallbackModelName = "gemini-3-flash"
 
 // FindModel looks up a model by name, returns nil if not found.
 func FindModel(name string) *Model {
