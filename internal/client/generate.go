@@ -527,10 +527,12 @@ func parseEnvelope(envelope []any) *types.ModelOutput {
 				// Deep research plan extraction from candidate structured data
 				out.DeepResearchPlan = extractDeepResearchPlan(cand)
 
-				// Clean up: card URL placeholder is not useful text when we have images
-				if strings.HasPrefix(out.Text, "http://googleusercontent.com/") && len(out.Images) > 0 {
+				// Clean up: card URL placeholder is not useful text when we have images/videos/media
+				if strings.HasPrefix(out.Text, "http://googleusercontent.com/") && (len(out.Images) > 0 || len(out.Videos) > 0 || len(out.Media) > 0) {
 					out.Text = ""
 				}
+				// Strip inline card URL lines (video_gen_chip, card_content, etc.)
+				out.Text = stripCardURLLines(out.Text)
 			}
 		}
 	}

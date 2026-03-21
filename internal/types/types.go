@@ -65,6 +65,8 @@ type ChatTurn struct {
 	RCid              string
 	Rid               string
 	Images            []Image
+	Videos            []Video
+	Media             []GeneratedMedia
 }
 
 // GroundingSource represents a search citation.

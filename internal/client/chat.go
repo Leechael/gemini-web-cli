@@ -371,15 +371,19 @@ func parseReadChat(body string) ([]types.ChatTurn, error) {
 						}
 					}
 
-					// Images at candidate[12]
+					// Images, videos, media at candidate[12]
 					if len(cand) > 12 && cand[12] != nil {
 						ct.Images = extractImages(cand[12])
+						ct.Videos = extractVideos(cand[12])
+						ct.Media = extractMedia(cand[12])
 					}
 
-					// Clean up: if text is just a card URL and we have images, clear it
-					if strings.HasPrefix(ct.AssistantResponse, "http://googleusercontent.com/") && len(ct.Images) > 0 {
+					// Clean up: if text is just a card URL and we have images/videos/media, clear it
+					if strings.HasPrefix(ct.AssistantResponse, "http://googleusercontent.com/") && (len(ct.Images) > 0 || len(ct.Videos) > 0 || len(ct.Media) > 0) {
 						ct.AssistantResponse = ""
 					}
+					// Strip trailing card URL lines from response text (video_gen_chip, card_content, etc.)
+					ct.AssistantResponse = stripCardURLLines(ct.AssistantResponse)
 				}
 
 				// rid from turn metadata at [0][1]
@@ -400,6 +404,22 @@ func parseReadChat(body string) ([]types.ChatTurn, error) {
 	}
 
 	return turns, nil
+}
+
+// stripCardURLLines removes lines that are just googleusercontent card URL placeholders.
+func stripCardURLLines(text string) string {
+	lines := strings.Split(text, "\n")
+	var kept []string
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "http://googleusercontent.com/card_content/") ||
+			strings.HasPrefix(trimmed, "http://googleusercontent.com/video_gen_chip/") {
+			continue
+		}
+		kept = append(kept, line)
+	}
+	result := strings.Join(kept, "\n")
+	return strings.TrimRight(result, "\n")
 }
 
 func getNestedStringFromAny(data any, indices ...int) string {

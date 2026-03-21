@@ -40,6 +40,8 @@ var getCmd = &cobra.Command{
 
 		var lines []string
 		imgSeq := 0
+		vidSeq := 0
+		mediaSeq := 0
 		for i, turn := range turns {
 			lines = append(lines, fmt.Sprintf("--- message %d ---", i+1))
 			if turn.UserPrompt != "" {
@@ -59,6 +61,26 @@ var getCmd = &cobra.Command{
 					}
 					lines = append(lines, fmt.Sprintf("[Image %d] %s%s", imgSeq, img.URL, title))
 				}
+			}
+			for _, vid := range turn.Videos {
+				vidSeq++
+				lines = append(lines, fmt.Sprintf("[Generated Video %d] %s", vidSeq, vid.URL))
+				if vid.Thumbnail != "" {
+					lines = append(lines, fmt.Sprintf("  Thumbnail: %s", vid.Thumbnail))
+				}
+			}
+			for _, m := range turn.Media {
+				mediaSeq++
+				if m.MP3URL != "" {
+					lines = append(lines, fmt.Sprintf("[Generated Media %d] MP3: %s", mediaSeq, m.MP3URL))
+				}
+				if m.MP4URL != "" {
+					lines = append(lines, fmt.Sprintf("[Generated Media %d] MP4: %s", mediaSeq, m.MP4URL))
+				}
+			}
+			if len(turn.Videos) == 0 && len(turn.Media) == 0 && len(turn.Images) == 0 &&
+				turn.AssistantResponse == "" && turn.UserPrompt != "" {
+				// Likely still generating
 			}
 			lines = append(lines, "")
 		}

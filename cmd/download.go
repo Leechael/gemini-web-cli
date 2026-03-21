@@ -19,7 +19,18 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var downloadOutput string
+var (
+	downloadOutput string
+	downloadPoll   bool
+)
+
+// downloadable is a unified item that can be downloaded from a chat.
+type downloadable struct {
+	URL     string
+	Label   string // e.g. "image", "video", "mp3", "mp4"
+	DefExt  string // default extension
+	Poll206 bool   // whether to poll on HTTP 206
+}
 
 var downloadCmd = &cobra.Command{
 	Use:   "download [url_or_chat_id] [N]",
@@ -27,14 +38,15 @@ var downloadCmd = &cobra.Command{
 	Long: `Download generated images, videos, or media.
 
 Examples:
-  download https://lh3.googleusercontent.com/...       # Direct URL
-  download c_abc123                                    # All images from chat
-  download c_abc123 -o output.png                      # All images (with prefix)
-  download c_abc123 2                                  # Only the 2nd image`,
+  download https://lh3.googleusercontent.com/...       # Direct URL (image)
+  download --poll https://...                           # Direct URL with 206 polling (video)
+  download c_abc123                                    # All media from chat
+  download c_abc123 -o output.png                      # All media (with prefix)
+  download c_abc123 2                                  # Only the 2nd item`,
 	Args: cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		target := args[0]
-		imageIndex := 0
+		itemIndex := 0
 		hasIndex := false
 
 		// Check for N selector in second arg (e.g. "download c_xxx 2")
@@ -42,19 +54,59 @@ Examples:
 			sel := strings.TrimPrefix(args[1], "#") // also accept #N for compat
 			n, err := strconv.Atoi(sel)
 			if err != nil || n < 1 {
-				return fmt.Errorf("invalid image index %q — use 1, 2, etc.", args[1])
+				return fmt.Errorf("invalid index %q — use 1, 2, etc.", args[1])
 			}
-			imageIndex = n - 1
+			itemIndex = n - 1
 			hasIndex = true
 		}
 
 		if strings.HasPrefix(target, "c_") {
-			return downloadFromChat(target, imageIndex, hasIndex)
+			return downloadFromChat(target, itemIndex, hasIndex)
 		} else if strings.HasPrefix(target, "http") {
-			return downloadFile(target, "", false)
+			return downloadFile(target, "", downloadPoll)
 		}
 		return fmt.Errorf("expected a URL or chat ID (c_...), got %q", target)
 	},
+}
+
+func collectDownloadables(turns []types.ChatTurn) []downloadable {
+	var items []downloadable
+	for _, turn := range turns {
+		for _, img := range turn.Images {
+			items = append(items, downloadable{
+				URL:    img.URL,
+				Label:  "image",
+				DefExt: ".png",
+			})
+		}
+		for _, vid := range turn.Videos {
+			items = append(items, downloadable{
+				URL:     vid.URL,
+				Label:   "video",
+				DefExt:  ".mp4",
+				Poll206: true,
+			})
+		}
+		for _, m := range turn.Media {
+			if m.MP3URL != "" {
+				items = append(items, downloadable{
+					URL:     m.MP3URL,
+					Label:   "mp3",
+					DefExt:  ".mp3",
+					Poll206: true,
+				})
+			}
+			if m.MP4URL != "" {
+				items = append(items, downloadable{
+					URL:     m.MP4URL,
+					Label:   "mp4",
+					DefExt:  ".mp4",
+					Poll206: true,
+				})
+			}
+		}
+	}
+	return items
 }
 
 func downloadFromChat(chatID string, index int, singleMode bool) error {
@@ -70,43 +122,39 @@ func downloadFromChat(chatID string, index int, singleMode bool) error {
 		return fmt.Errorf("reading chat: %w", err)
 	}
 
-	var allImages []types.Image
-	for _, turn := range turns {
-		allImages = append(allImages, turn.Images...)
-	}
+	items := collectDownloadables(turns)
 
-	if len(allImages) == 0 {
-		return fmt.Errorf("no images found in chat %s", chatID)
+	if len(items) == 0 {
+		return fmt.Errorf("no downloadable media found in chat %s", chatID)
 	}
 
 	if singleMode {
-		// Download specific image by index
-		if index >= len(allImages) {
-			return fmt.Errorf("image #%d not found — chat has %d image(s)", index+1, len(allImages))
+		if index >= len(items) {
+			return fmt.Errorf("item #%d not found — chat has %d item(s)", index+1, len(items))
 		}
-		fmt.Fprintf(os.Stderr, "Found %d image(s) in chat, downloading #%d\n", len(allImages), index+1)
-		return downloadFile(allImages[index].URL, "", false)
+		item := items[index]
+		fmt.Fprintf(os.Stderr, "Found %d item(s) in chat, downloading #%d (%s)\n", len(items), index+1, item.Label)
+		return downloadFile(item.URL, item.DefExt, item.Poll206)
 	}
 
-	// Download all images
-	fmt.Fprintf(os.Stderr, "Found %d image(s) in chat, downloading all\n", len(allImages))
-	for i, img := range allImages {
-		// Generate per-image output filename
+	// Download all items
+	fmt.Fprintf(os.Stderr, "Found %d item(s) in chat, downloading all\n", len(items))
+	for i, item := range items {
 		saved := downloadOutput
 		if saved != "" {
 			ext := filepath.Ext(saved)
 			base := strings.TrimSuffix(saved, ext)
 			if ext == "" {
-				ext = ".png"
+				ext = item.DefExt
 			}
-			if len(allImages) > 1 {
+			if len(items) > 1 {
 				saved = fmt.Sprintf("%s_%d%s", base, i+1, ext)
 			}
 		}
 		old := downloadOutput
 		downloadOutput = saved
-		if err := downloadFile(img.URL, "", false); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to download #%d: %v\n", i+1, err)
+		if err := downloadFile(item.URL, item.DefExt, item.Poll206); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to download #%d (%s): %v\n", i+1, item.Label, err)
 		}
 		downloadOutput = old
 	}
@@ -217,4 +265,5 @@ func downloadFile(fileURL string, defaultExt string, poll206 bool) error {
 
 func init() {
 	downloadCmd.Flags().StringVarP(&downloadOutput, "output", "o", "", "Output file path (default: auto from URL)")
+	downloadCmd.Flags().BoolVar(&downloadPoll, "poll", false, "Poll on HTTP 206 (for in-progress video/media generation)")
 }
