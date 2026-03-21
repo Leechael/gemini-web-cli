@@ -86,6 +86,8 @@ var askCmd = &cobra.Command{
 			}
 			fmt.Println(output.Text)
 			printImages(output)
+			printVideos(output)
+			printMedia(output)
 			printChatID(output)
 		} else {
 			var output *types.ModelOutput
@@ -147,6 +149,36 @@ func printImages(output *types.ModelOutput) {
 		for i, img := range gen {
 			fmt.Printf("  %d) %s\n", i+1, img.URL)
 		}
+	}
+}
+
+func printVideos(output *types.ModelOutput) {
+	if output == nil || len(output.Videos) == 0 {
+		return
+	}
+	fmt.Println("\n---\nGenerated videos:")
+	for i, vid := range output.Videos {
+		fmt.Printf("  %d) %s\n", i+1, vid.URL)
+		if vid.Thumbnail != "" {
+			fmt.Printf("     Thumbnail: %s\n", vid.Thumbnail)
+		}
+	}
+}
+
+func printMedia(output *types.ModelOutput) {
+	if output == nil || len(output.Media) == 0 {
+		return
+	}
+	fmt.Println("\n---\nGenerated media:")
+	for i, m := range output.Media {
+		fmt.Printf("  %d)", i+1)
+		if m.MP3URL != "" {
+			fmt.Printf(" MP3: %s", m.MP3URL)
+		}
+		if m.MP4URL != "" {
+			fmt.Printf(" MP4: %s", m.MP4URL)
+		}
+		fmt.Println()
 	}
 }
 

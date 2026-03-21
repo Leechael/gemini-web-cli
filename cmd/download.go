@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Leechael/gemini-web-cli/internal/cookies"
 	"github.com/Leechael/gemini-web-cli/internal/types"
@@ -22,8 +23,8 @@ var downloadOutput string
 
 var downloadCmd = &cobra.Command{
 	Use:   "download [url_or_chat_id] [N]",
-	Short: "Download a generated image by URL or chat ID",
-	Long: `Download generated images.
+	Short: "Download generated images, videos, or media by URL or chat ID",
+	Long: `Download generated images, videos, or media.
 
 Examples:
   download https://lh3.googleusercontent.com/...       # Direct URL
@@ -50,7 +51,7 @@ Examples:
 		if strings.HasPrefix(target, "c_") {
 			return downloadFromChat(target, imageIndex, hasIndex)
 		} else if strings.HasPrefix(target, "http") {
-			return downloadImage(target)
+			return downloadFile(target, "", false)
 		}
 		return fmt.Errorf("expected a URL or chat ID (c_...), got %q", target)
 	},
@@ -84,7 +85,7 @@ func downloadFromChat(chatID string, index int, singleMode bool) error {
 			return fmt.Errorf("image #%d not found — chat has %d image(s)", index+1, len(allImages))
 		}
 		fmt.Fprintf(os.Stderr, "Found %d image(s) in chat, downloading #%d\n", len(allImages), index+1)
-		return downloadImage(allImages[index].URL)
+		return downloadFile(allImages[index].URL, "", false)
 	}
 
 	// Download all images
@@ -104,7 +105,7 @@ func downloadFromChat(chatID string, index int, singleMode bool) error {
 		}
 		old := downloadOutput
 		downloadOutput = saved
-		if err := downloadImage(img.URL); err != nil {
+		if err := downloadFile(img.URL, "", false); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to download #%d: %v\n", i+1, err)
 		}
 		downloadOutput = old
@@ -112,7 +113,10 @@ func downloadFromChat(chatID string, index int, singleMode bool) error {
 	return nil
 }
 
-func downloadImage(imgURL string) error {
+// downloadFile downloads a file from a URL. If defaultExt is non-empty, it's used as the
+// default extension when generating filenames. If poll206 is true, retries on HTTP 206
+// (used for in-progress video/media generation).
+func downloadFile(fileURL string, defaultExt string, poll206 bool) error {
 	var jsonCookies map[string]string
 	effectiveCookies := resolveCookiesJSON()
 	if effectiveCookies != "" {
@@ -134,16 +138,20 @@ func downloadImage(imgURL string) error {
 	// Determine output filename
 	output := downloadOutput
 	if output == "" {
-		hash := md5.Sum([]byte(imgURL))
-		output = fmt.Sprintf("gemini-%x.png", hash[:4])
+		hash := md5.Sum([]byte(fileURL))
+		ext := ".png"
+		if defaultExt != "" {
+			ext = defaultExt
+		}
+		output = fmt.Sprintf("gemini-%x%s", hash[:4], ext)
 	}
 
-	// Append size param for full-size
-	dlURL := imgURL
-	if strings.Contains(imgURL, "googleusercontent.com") {
-		parts := strings.Split(imgURL, "/")
+	// Append size param for full-size images
+	dlURL := fileURL
+	if defaultExt == "" && strings.Contains(fileURL, "googleusercontent.com") {
+		parts := strings.Split(fileURL, "/")
 		if !strings.Contains(parts[len(parts)-1], "=") {
-			dlURL = imgURL + "=s2048"
+			dlURL = fileURL + "=s2048"
 		}
 	}
 
@@ -156,48 +164,55 @@ func downloadImage(imgURL string) error {
 		transport.Proxy = http.ProxyURL(proxyURL)
 	}
 
-	client := &http.Client{
+	httpClient := &http.Client{
 		Jar:       cookieJar,
 		Transport: transport,
 	}
 
-	req, err := http.NewRequestWithContext(context.Background(), "GET", dlURL, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+	for {
+		req, err := http.NewRequestWithContext(context.Background(), "GET", dlURL, nil)
+		if err != nil {
+			return err
+		}
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+		req.Header.Set("Origin", "https://gemini.google.com")
+		req.Header.Set("Referer", "https://gemini.google.com/")
 
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("download failed: %w", err)
-	}
-	defer resp.Body.Close()
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("download failed: %w", err)
+		}
 
-	if resp.StatusCode != 200 {
-		return fmt.Errorf("download failed: HTTP %d", resp.StatusCode)
-	}
+		if resp.StatusCode == 206 && poll206 {
+			resp.Body.Close()
+			fmt.Fprintf(os.Stderr, "Still generating (HTTP 206), retrying in 10s...\n")
+			time.Sleep(10 * time.Second)
+			continue
+		}
 
-	contentType := resp.Header.Get("Content-Type")
-	if !strings.Contains(contentType, "image") && !strings.Contains(contentType, "octet") {
-		return fmt.Errorf("unexpected content-type: %s", contentType)
-	}
+		if resp.StatusCode != 200 {
+			resp.Body.Close()
+			return fmt.Errorf("download failed: HTTP %d", resp.StatusCode)
+		}
 
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
+		data, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			return err
+		}
 
-	dir := filepath.Dir(output)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
-	}
-	if err := os.WriteFile(output, data, 0644); err != nil {
-		return err
-	}
+		dir := filepath.Dir(output)
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(output, data, 0644); err != nil {
+			return err
+		}
 
-	sizeKB := float64(len(data)) / 1024
-	fmt.Printf("Saved to %s (%.1f KB)\n", output, sizeKB)
-	return nil
+		sizeKB := float64(len(data)) / 1024
+		fmt.Printf("Saved to %s (%.1f KB)\n", output, sizeKB)
+		return nil
+	}
 }
 
 func init() {
