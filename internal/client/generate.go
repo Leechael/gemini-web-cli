@@ -92,14 +92,31 @@ func (c *Client) collectStreamResult(ctx context.Context, prompt string, metadat
 func (c *Client) doCollectStream(ctx context.Context, prompt string, metadata []string, uploads []*UploadResult, model *types.Model, deepResearch bool, cb StreamCallback) (*types.ModelOutput, []types.Image, error) {
 	var best *types.ModelOutput
 	var allImages []types.Image
+	var allVideos []types.Video
+	var allMedia []types.GeneratedMedia
 	var plan *types.DeepResearchPlanData
 	var bestMetadata []string // track the most complete metadata across frames
-	seen := map[string]bool{}
+	seenImg := map[string]bool{}
+	seenVid := map[string]bool{}
+	seenMedia := map[string]bool{}
 	err := c.streamGenerate(ctx, prompt, metadata, uploads, model, deepResearch, func(out *types.ModelOutput) {
 		for _, img := range out.Images {
-			if !seen[img.URL] {
-				seen[img.URL] = true
+			if !seenImg[img.URL] {
+				seenImg[img.URL] = true
 				allImages = append(allImages, img)
+			}
+		}
+		for _, vid := range out.Videos {
+			if !seenVid[vid.URL] {
+				seenVid[vid.URL] = true
+				allVideos = append(allVideos, vid)
+			}
+		}
+		for _, m := range out.Media {
+			key := m.MP3URL + "|" + m.MP4URL
+			if !seenMedia[key] {
+				seenMedia[key] = true
+				allMedia = append(allMedia, m)
 			}
 		}
 		if out.DeepResearchPlan != nil {
@@ -124,6 +141,12 @@ func (c *Client) doCollectStream(ctx context.Context, prompt string, metadata []
 	}
 	if len(allImages) > 0 {
 		best.Images = allImages
+	}
+	if len(allVideos) > 0 {
+		best.Videos = allVideos
+	}
+	if len(allMedia) > 0 {
+		best.Media = allMedia
 	}
 	if plan != nil {
 		best.DeepResearchPlan = plan
@@ -490,6 +513,16 @@ func parseEnvelope(envelope []any) *types.ModelOutput {
 					if len(imgs) > 0 {
 						out.Images = imgs
 					}
+					// Videos at [12][59][0][0][0]
+					vids := extractVideos(cand[12])
+					if len(vids) > 0 {
+						out.Videos = vids
+					}
+					// Media (music) at [12][86]
+					media := extractMedia(cand[12])
+					if len(media) > 0 {
+						out.Media = media
+					}
 				}
 				// Deep research plan extraction from candidate structured data
 				out.DeepResearchPlan = extractDeepResearchPlan(cand)
@@ -630,6 +663,107 @@ func extractImages(imageData any) []types.Image {
 	}
 
 	return images
+}
+
+// extractVideos extracts generated videos from candidate data at [59][0][0][0].
+// Video URLs at [0][7]: index 0 = thumbnail, index 1 = video URL.
+func extractVideos(imageData any) []types.Video {
+	arr, ok := imageData.([]any)
+	if !ok || len(arr) <= 59 {
+		return nil
+	}
+
+	var videos []types.Video
+
+	// Path: [59][0][0][0]
+	l1 := getNestedArray(arr, 59)
+	if l1 == nil {
+		return nil
+	}
+	l2 := getNestedArray(l1, 0)
+	if l2 == nil {
+		return nil
+	}
+	l3 := getNestedArray(l2, 0)
+	if l3 == nil {
+		return nil
+	}
+	l4 := getNestedArray(l3, 0)
+	if l4 == nil {
+		return nil
+	}
+
+	// URLs at [0][7]
+	l5 := getNestedArray(l4, 0)
+	if l5 == nil {
+		return nil
+	}
+	urls := getNestedArray(l5, 7)
+	if urls == nil || len(urls) < 2 {
+		return nil
+	}
+
+	thumbnail, _ := urls[0].(string)
+	videoURL, _ := urls[1].(string)
+	if videoURL != "" {
+		videos = append(videos, types.Video{
+			URL:       videoURL,
+			Thumbnail: thumbnail,
+		})
+	}
+
+	return videos
+}
+
+// extractMedia extracts generated music/audio media from candidate data at [86].
+// MP3 at [0][1][7], MP4 at [1][1][7].
+func extractMedia(imageData any) []types.GeneratedMedia {
+	arr, ok := imageData.([]any)
+	if !ok || len(arr) <= 86 {
+		return nil
+	}
+
+	mediaData := getNestedArray(arr, 86)
+	if mediaData == nil {
+		return nil
+	}
+
+	var mp3URL, mp3Thumb string
+	mp3Part := getNestedArray(mediaData, 0)
+	if mp3Part != nil {
+		mp3Inner := getNestedArray(mp3Part, 1)
+		if mp3Inner != nil {
+			mp3URLs := getNestedArray(mp3Inner, 7)
+			if mp3URLs != nil && len(mp3URLs) >= 2 {
+				mp3Thumb, _ = mp3URLs[0].(string)
+				mp3URL, _ = mp3URLs[1].(string)
+			}
+		}
+	}
+
+	var mp4URL, mp4Thumb string
+	mp4Part := getNestedArray(mediaData, 1)
+	if mp4Part != nil {
+		mp4Inner := getNestedArray(mp4Part, 1)
+		if mp4Inner != nil {
+			mp4URLs := getNestedArray(mp4Inner, 7)
+			if mp4URLs != nil && len(mp4URLs) >= 2 {
+				mp4Thumb, _ = mp4URLs[0].(string)
+				mp4URL, _ = mp4URLs[1].(string)
+			}
+		}
+	}
+
+	if mp3URL == "" && mp4URL == "" {
+		return nil
+	}
+
+	return []types.GeneratedMedia{{
+		MP3URL:       mp3URL,
+		MP3Thumbnail: mp3Thumb,
+		MP4URL:       mp4URL,
+		MP4Thumbnail: mp4Thumb,
+	}}
 }
 
 // extractDeepResearchPlan searches candidate data for a dict with key "56" or "57"
