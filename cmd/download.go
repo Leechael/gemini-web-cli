@@ -5,6 +5,7 @@ import (
 	"crypto/md5"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -63,11 +64,7 @@ Examples:
 		if strings.HasPrefix(target, "c_") {
 			return downloadFromChat(target, itemIndex, hasIndex)
 		} else if strings.HasPrefix(target, "http") {
-			defExt := ""
-			if downloadPoll {
-				defExt = ".mp4"
-			}
-			return downloadFile(target, defExt, downloadPoll)
+			return downloadFile(target, "", downloadPoll)
 		}
 		return fmt.Errorf("expected a URL or chat ID (c_...), got %q", target)
 	},
@@ -189,17 +186,6 @@ func downloadFile(fileURL string, defaultExt string, poll206 bool) error {
 	}
 	cookieJar.SetCookies(u, httpCookies)
 
-	// Determine output filename
-	output := downloadOutput
-	if output == "" {
-		hash := md5.Sum([]byte(fileURL))
-		ext := ".png"
-		if defaultExt != "" {
-			ext = defaultExt
-		}
-		output = fmt.Sprintf("gemini-%x%s", hash[:4], ext)
-	}
-
 	// Append size param for full-size images
 	dlURL := fileURL
 	if defaultExt == "" && strings.Contains(fileURL, "googleusercontent.com") {
@@ -255,6 +241,20 @@ func downloadFile(fileURL string, defaultExt string, poll206 bool) error {
 			return err
 		}
 
+		// Determine output filename (deferred until we have Content-Type)
+		output := downloadOutput
+		if output == "" {
+			hash := md5.Sum([]byte(fileURL))
+			ext := defaultExt
+			if ext == "" {
+				ext = extFromContentType(resp.Header.Get("Content-Type"))
+			}
+			if ext == "" {
+				ext = ".png"
+			}
+			output = fmt.Sprintf("gemini-%x%s", hash[:4], ext)
+		}
+
 		dir := filepath.Dir(output)
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return err
@@ -267,6 +267,26 @@ func downloadFile(fileURL string, defaultExt string, poll206 bool) error {
 		fmt.Printf("Saved to %s (%.1f KB)\n", output, sizeKB)
 		return nil
 	}
+}
+
+// extFromContentType returns a file extension (e.g. ".mp3") from a Content-Type header.
+func extFromContentType(ct string) string {
+	if ct == "" {
+		return ""
+	}
+	mediaType, _, _ := mime.ParseMediaType(ct)
+	exts, _ := mime.ExtensionsByType(mediaType)
+	if len(exts) > 0 {
+		// Prefer common extensions over obscure ones
+		for _, e := range exts {
+			switch e {
+			case ".mp4", ".mp3", ".png", ".jpg", ".webm", ".wav":
+				return e
+			}
+		}
+		return exts[0]
+	}
+	return ""
 }
 
 func init() {
