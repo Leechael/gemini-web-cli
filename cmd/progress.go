@@ -27,24 +27,20 @@ var progressCmd = &cobra.Command{
 			return err
 		}
 
-		if status.State != "not_research" {
-			switch status.State {
-			case "done":
-				fmt.Printf("  Type: deep research\n")
-				fmt.Printf("  Status: done\n")
-				fmt.Printf("  Report length: %d chars\n", status.TextLen)
-				fmt.Printf("\n  Use 'report %s' to retrieve the full result.\n", cid)
-			case "running":
-				fmt.Printf("  Type: deep research\n")
-				fmt.Printf("  Status: running\n")
-			case "pending_confirm":
-				fmt.Printf("  Type: deep research\n")
-				fmt.Printf("  Status: pending confirmation (plan created but not started)\n")
-			case "empty":
-				fmt.Printf("  Status: waiting (no response yet)\n")
-			default:
-				fmt.Printf("  Status: %s\n", status.State)
-			}
+		switch status.State {
+		case "done":
+			fmt.Printf("  Type: deep research\n")
+			fmt.Printf("  Status: done\n")
+			fmt.Printf("  Report length: %d chars\n", status.TextLen)
+			fmt.Printf("\n  Use 'report %s' to retrieve the full result.\n", cid)
+			return nil
+		case "running":
+			fmt.Printf("  Type: deep research\n")
+			fmt.Printf("  Status: running\n")
+			return nil
+		case "pending_confirm":
+			fmt.Printf("  Type: deep research\n")
+			fmt.Printf("  Status: pending confirmation (plan created but not started)\n")
 			return nil
 		}
 

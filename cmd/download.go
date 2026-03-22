@@ -63,7 +63,11 @@ Examples:
 		if strings.HasPrefix(target, "c_") {
 			return downloadFromChat(target, itemIndex, hasIndex)
 		} else if strings.HasPrefix(target, "http") {
-			return downloadFile(target, "", downloadPoll)
+			defExt := ""
+			if downloadPoll {
+				defExt = ".mp4"
+			}
+			return downloadFile(target, defExt, downloadPoll)
 		}
 		return fmt.Errorf("expected a URL or chat ID (c_...), got %q", target)
 	},
@@ -144,7 +148,9 @@ func downloadFromChat(chatID string, index int, singleMode bool) error {
 		if saved != "" {
 			ext := filepath.Ext(saved)
 			base := strings.TrimSuffix(saved, ext)
-			if ext == "" {
+			if len(items) > 1 {
+				ext = item.DefExt
+			} else if ext == "" {
 				ext = item.DefExt
 			}
 			if len(items) > 1 {

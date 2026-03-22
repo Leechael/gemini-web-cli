@@ -110,6 +110,8 @@ var askCmd = &cobra.Command{
 			if output != nil {
 				fmt.Println()
 				printImages(output)
+				printVideos(output)
+				printMedia(output)
 				printChatID(output)
 			}
 		}
