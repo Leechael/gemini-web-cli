@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Leechael/gemini-web-cli/internal/client"
@@ -13,7 +15,19 @@ import (
 
 const envCookiesPath = "GEMINI_WEB_COOKIES_JSON_PATH"
 
-// defaultCookiesPath returns the cookies file path from env or "cookies.json".
+// cookiesSearchPaths returns the ordered list of paths to search for cookies.json.
+// Project-level (./cookies.json) → User-level (~/.config/) → System-level (/etc/).
+func cookiesSearchPaths() []string {
+	paths := []string{"cookies.json"}
+	if home, err := os.UserHomeDir(); err == nil {
+		paths = append(paths, filepath.Join(home, ".config", "gemini-web-cli", "cookies.json"))
+	}
+	paths = append(paths, filepath.Join("/etc", "gemini-web-cli", "cookies.json"))
+	return paths
+}
+
+// defaultCookiesPath returns the best path for writing cookies:
+// env > first writable search path (project-level ./cookies.json).
 func defaultCookiesPath() string {
 	if p := os.Getenv(envCookiesPath); p != "" {
 		return p
@@ -21,13 +35,20 @@ func defaultCookiesPath() string {
 	return "cookies.json"
 }
 
-// resolveCookiesJSON returns the effective cookies path: flag > env > "".
+// resolveCookiesJSON returns the effective cookies path.
+// Priority: --cookies-json flag > $GEMINI_WEB_COOKIES_JSON_PATH > auto-discover.
 func resolveCookiesJSON() string {
 	if cookiesJSON != "" {
 		return cookiesJSON
 	}
 	if p := os.Getenv(envCookiesPath); p != "" {
 		return p
+	}
+	// Auto-discover from search paths
+	for _, p := range cookiesSearchPaths() {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
 	}
 	return ""
 }
@@ -41,7 +62,7 @@ func initClient(ctx context.Context) (*client.Client, map[string]string, error) 
 	if effectiveCookies != "" {
 		jar, err := cookies.Load(effectiveCookies)
 		if err != nil {
-			return nil, nil, fmt.Errorf("loading cookies: %w", err)
+			return nil, nil, fmt.Errorf("loading cookies from %s: %w", effectiveCookies, err)
 		}
 		jsonCookies = jar.Cookies
 
@@ -57,7 +78,7 @@ func initClient(ctx context.Context) (*client.Client, map[string]string, error) 
 	psidts := firstNonEmpty(jsonCookies["__Secure-1PSIDTS"], os.Getenv("GEMINI_SECURE_1PSIDTS"))
 
 	if psid == "" {
-		return nil, nil, fmt.Errorf("missing required cookie: __Secure-1PSID — export cookies from browser and provide via --cookies-json")
+		return nil, nil, cookiesNotFoundError()
 	}
 	if psidts == "" {
 		fmt.Fprintln(os.Stderr, "Warning: __Secure-1PSIDTS not found. Session may still work with long-lived cookies.")
@@ -92,6 +113,27 @@ func initClient(ctx context.Context) (*client.Client, map[string]string, error) 
 	}
 
 	return c, jsonCookies, nil
+}
+
+// cookiesNotFoundError builds a helpful error message listing what was tried.
+func cookiesNotFoundError() error {
+	var b strings.Builder
+	b.WriteString("no cookies found\n\n")
+	b.WriteString("Looked in:\n")
+	if cookiesJSON != "" {
+		b.WriteString(fmt.Sprintf("  --cookies-json %s (not found or missing __Secure-1PSID)\n", cookiesJSON))
+	}
+	if p := os.Getenv(envCookiesPath); p != "" {
+		b.WriteString(fmt.Sprintf("  $GEMINI_WEB_COOKIES_JSON_PATH=%s\n", p))
+	}
+	for _, p := range cookiesSearchPaths() {
+		b.WriteString(fmt.Sprintf("  %s\n", p))
+	}
+	b.WriteString("\nTo get started:\n")
+	b.WriteString("  1. Open https://gemini.google.com in your browser\n")
+	b.WriteString("  2. Copy cookies from DevTools (Application → Cookies → copy all as header string)\n")
+	b.WriteString("  3. Run: gemini-web-cli import '<cookie_string>'\n")
+	return fmt.Errorf("%s", b.String())
 }
 
 // cleanup persists cookies and closes the client.

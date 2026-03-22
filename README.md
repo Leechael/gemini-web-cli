@@ -246,10 +246,13 @@ gemini-web-cli status
 
 ## Cookies
 
-The cookie JSON file path is resolved in order:
+The cookie JSON file is resolved in order:
 
-1. `--cookies-json` flag
+1. `--cookies-json` flag (explicit)
 2. `$GEMINI_WEB_COOKIES_JSON_PATH` environment variable
+3. `./cookies.json` (project-level)
+4. `~/.config/gemini-web-cli/cookies.json` (user-level)
+5. `/etc/gemini-web-cli/cookies.json` (system-level)
 
 The file accepts multiple formats:
 
