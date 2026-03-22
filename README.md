@@ -53,19 +53,23 @@ gemini-web-cli import '_ga=GA1.1.123; __Secure-1PSID=g.a000...' -o path/to/cooki
 
 ### ask
 
-Single-turn question with streaming output.
+Single-turn question with streaming output. Supports text, image generation, video generation, and music generation.
 
 ```bash
 gemini-web-cli ask "Explain quantum computing"
 gemini-web-cli ask --no-stream "What is 2+2?"
-gemini-web-cli --model gemini-2.0-flash ask "Draw a sunset"
+gemini-web-cli --model gemini-3-flash ask "Draw a sunset"
+
+# Generate video/music
+gemini-web-cli ask "Generate a 5 second video of a cat walking"
+gemini-web-cli ask "Generate a short jazz melody"
 
 # Attach files
 gemini-web-cli ask -f image.png "What's in this image?"
 gemini-web-cli ask -f a.pdf -f b.pdf "Compare these documents"
 ```
 
-Output includes the response text, any generated images, and the chat ID for follow-up.
+Output includes the response text, any generated images/videos/media, and the chat ID for follow-up.
 
 ### goog
 
@@ -96,7 +100,7 @@ gemini-web-cli list --cursor <cursor>
 
 ### get
 
-Get a conversation's messages.
+Get a conversation's messages, including generated images, videos, and media.
 
 ```bash
 gemini-web-cli get c_abc123
@@ -104,7 +108,7 @@ gemini-web-cli get c_abc123 --max-turns 10
 gemini-web-cli get c_abc123 --output chat.txt
 ```
 
-Images in the conversation are shown with global numbering:
+Example output:
 
 ```
 --- message 1 ---
@@ -112,26 +116,69 @@ Images in the conversation are shown with global numbering:
 [Generated Image 1] https://lh3.googleusercontent.com/...
 
 --- message 2 ---
-[User] Now draw a dog
-[Generated Image 2] https://lh3.googleusercontent.com/...
+[User] Generate a video of a cat walking
+[Gemini] Your video is ready!
+[Generated Video 1] https://contribution.usercontent.google.com/download?...
+  Thumbnail: https://lh3.googleusercontent.com/...
+
+--- message 3 ---
+[User] Generate a jazz melody
+[Gemini] Here's a jazz melody for you.
+[Generated Media 1] MP3: https://contribution.usercontent.google.com/download?...
 ```
 
-The image numbers correspond to the `download` command's index selector.
+The item numbers correspond to the `download` command's index selector.
 
 ### download
 
-Download generated images by direct URL or chat ID.
+Download generated images, videos, or media by direct URL or chat ID.
 
 ```bash
 # Direct URL
 gemini-web-cli download "https://lh3.googleusercontent.com/..." -o image.png
 
-# All images from a chat
-gemini-web-cli download c_abc123 -o images.png
-# Saves images_1.png, images_2.png, ...
+# All media from a chat (images, videos, music)
+gemini-web-cli download c_abc123 -o output.png
+# Saves output_1.png, output_2.mp4, output_3.mp3, ...
 
-# Specific image by index (matches get output numbering)
-gemini-web-cli download c_abc123 2 -o second.png
+# Specific item by index (matches get output numbering)
+gemini-web-cli download c_abc123 2 -o video.mp4
+
+# Direct URL with polling (for in-progress video/music generation)
+gemini-web-cli download --poll "https://contribution.usercontent.google.com/download?..."
+```
+
+Videos and music downloads automatically poll (retry on HTTP 206) when downloading from a chat ID.
+
+### progress
+
+Check generation progress for deep research, video, or music tasks.
+
+```bash
+gemini-web-cli progress c_abc123
+```
+
+Output examples:
+
+```
+  Type: deep research
+  Status: running
+```
+
+```
+  Type: video generation
+  Status: ready
+  Video 1: https://contribution.usercontent.google.com/download?...
+
+  Use 'download c_abc123' to save.
+```
+
+```
+  Type: music generation
+  Status: ready
+  Media 1 MP3: https://contribution.usercontent.google.com/download?...
+
+  Use 'download c_abc123' to save.
 ```
 
 ### research
@@ -140,14 +187,6 @@ Submit a deep research task.
 
 ```bash
 gemini-web-cli research "Compare Rust and Go for systems programming"
-```
-
-### progress
-
-Check deep research status. Detects: done, running, pending confirmation, or not a research chat.
-
-```bash
-gemini-web-cli progress c_abc123
 ```
 
 ### report
@@ -170,11 +209,15 @@ gemini-web-cli models
 ```
 Available models for --model:
   unspecified (default)
-  gemini-2.0-flash
-  gemini-2.5-pro [advanced]
-  gemini-2.5-flash [advanced]
-  gemini-3.1-pro [advanced]
-  gemini-3.0-flash
+  gemini-3-pro
+  gemini-3-flash
+  gemini-3-flash-thinking
+  gemini-3-pro-plus [advanced]
+  gemini-3-flash-plus [advanced]
+  gemini-3-flash-thinking-plus [advanced]
+  gemini-3-pro-advanced [advanced]
+  gemini-3-flash-advanced [advanced]
+  gemini-3-flash-thinking-advanced [advanced]
 ```
 
 ### status

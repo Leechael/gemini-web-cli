@@ -24,12 +24,14 @@ var (
 var Version = "dev"
 
 var rootCmd = &cobra.Command{
-	Use:          "gemini-web-cli",
-	Short:        "CLI for Gemini web API",
-	Long:         "Command-line interface for interacting with Google Gemini via web cookies.",
-	Version:      Version,
-	SilenceUsage: true,
+	Use:     "gemini-web-cli",
+	Short:   "CLI for Gemini web API",
+	Long:    "Command-line interface for interacting with Google Gemini via web cookies.",
+	Version: Version,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		// Silence usage after Args validation passes — argument errors
+		// still show usage, but runtime errors (network, auth, etc.) don't.
+		cmd.SilenceUsage = true
 		if verbose {
 			client.SetVerbose(os.Stderr)
 		}
