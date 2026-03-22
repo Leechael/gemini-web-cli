@@ -667,65 +667,107 @@ func extractImages(imageData any) []types.Image {
 	return images
 }
 
-// extractVideos extracts generated videos from candidate data at [59][0][0][0].
-// Video URLs at [0][7]: index 0 = thumbnail, index 1 = video URL.
+// extractVideos extracts generated videos from candidate data.
+// StreamGenerate path: [59][0][0][0][0][7] — URLs: [0]=thumbnail, [1]=video.
+// ReadChat path: dict key "60" → [0][0][0][0][7].
 func extractVideos(imageData any) []types.Video {
 	arr, ok := imageData.([]any)
-	if !ok || len(arr) <= 59 {
+	if !ok || len(arr) == 0 {
 		return nil
 	}
 
-	var videos []types.Video
-
-	// Path: [59][0][0][0]
-	l1 := getNestedArray(arr, 59)
-	if l1 == nil {
-		return nil
-	}
-	l2 := getNestedArray(l1, 0)
-	if l2 == nil {
-		return nil
-	}
-	l3 := getNestedArray(l2, 0)
-	if l3 == nil {
-		return nil
-	}
-	l4 := getNestedArray(l3, 0)
-	if l4 == nil {
-		return nil
+	// Try StreamGenerate path: arr[59]
+	var videoRoot any
+	if len(arr) > 59 && arr[59] != nil {
+		videoRoot = arr[59]
 	}
 
-	// URLs at [0][7]
-	l5 := getNestedArray(l4, 0)
-	if l5 == nil {
+	// Try ReadChat path: scan for dict with key "60"
+	if videoRoot == nil {
+		for _, elem := range arr {
+			if m, ok := elem.(map[string]any); ok {
+				if v, exists := m["60"]; exists {
+					videoRoot = v
+					break
+				}
+			}
+		}
+	}
+
+	if videoRoot == nil {
 		return nil
 	}
-	urls := getNestedArray(l5, 7)
+
+	return extractVideoURLs(videoRoot)
+}
+
+// extractVideoURLs navigates [0][0][0][0][7] to find video URLs.
+func extractVideoURLs(data any) []types.Video {
+	// Drill down [0][0][0][0] to reach the video element
+	current, ok := data.([]any)
+	if !ok || len(current) == 0 {
+		return nil
+	}
+	for i := 0; i < 4; i++ {
+		next := getNestedArray(current, 0)
+		if next == nil {
+			return nil
+		}
+		current = next
+	}
+
+	// URLs at [7]
+	urls := getNestedArray(current, 7)
 	if urls == nil || len(urls) < 2 {
 		return nil
 	}
 
 	thumbnail, _ := urls[0].(string)
 	videoURL, _ := urls[1].(string)
-	if videoURL != "" {
-		videos = append(videos, types.Video{
-			URL:       videoURL,
-			Thumbnail: thumbnail,
-		})
-	}
-
-	return videos
-}
-
-// extractMedia extracts generated music/audio media from candidate data at [86].
-// MP3 at [0][1][7], MP4 at [1][1][7].
-func extractMedia(imageData any) []types.GeneratedMedia {
-	arr, ok := imageData.([]any)
-	if !ok || len(arr) <= 86 {
+	if videoURL == "" {
 		return nil
 	}
 
-	mediaData := getNestedArray(arr, 86)
+	return []types.Video{{
+		URL:       videoURL,
+		Thumbnail: thumbnail,
+	}}
+}
+
+// extractMedia extracts generated music/audio media from candidate data.
+// StreamGenerate path: [86] → MP3 at [0][1][7], MP4 at [1][1][7].
+// ReadChat path: dict key "86" (if present).
+func extractMedia(imageData any) []types.GeneratedMedia {
+	arr, ok := imageData.([]any)
+	if !ok || len(arr) == 0 {
+		return nil
+	}
+
+	// Try StreamGenerate path: arr[86]
+	var mediaData []any
+	if len(arr) > 86 && arr[86] != nil {
+		mediaData, _ = arr[86].([]any)
+	}
+
+	// Try ReadChat path: scan for dict with key "86" or "87"
+	if mediaData == nil {
+		for _, elem := range arr {
+			if m, ok := elem.(map[string]any); ok {
+				for _, key := range []string{"86", "87"} {
+					if v, exists := m[key]; exists {
+						mediaData, _ = v.([]any)
+						if mediaData != nil {
+							break
+						}
+					}
+				}
+				if mediaData != nil {
+					break
+				}
+			}
+		}
+	}
+
 	if mediaData == nil {
 		return nil
 	}

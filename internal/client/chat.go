@@ -413,7 +413,10 @@ func stripCardURLLines(text string) string {
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "http://googleusercontent.com/card_content/") ||
-			strings.HasPrefix(trimmed, "http://googleusercontent.com/video_gen_chip/") {
+			strings.HasPrefix(trimmed, "http://googleusercontent.com/video_gen_chip/") ||
+			strings.HasPrefix(trimmed, "http://googleusercontent.com/generated_video_content/") ||
+			strings.HasPrefix(trimmed, "http://googleusercontent.com/generated_media_content/") ||
+			strings.HasPrefix(trimmed, "http://googleusercontent.com/generated_music_content/") {
 			continue
 		}
 		kept = append(kept, line)
