@@ -24,10 +24,11 @@ var (
 var Version = "dev"
 
 var rootCmd = &cobra.Command{
-	Use:     "gemini-web-cli",
-	Short:   "CLI for Gemini web API",
-	Long:    "Command-line interface for interacting with Google Gemini via web cookies.",
-	Version: Version,
+	Use:          "gemini-web-cli",
+	Short:        "CLI for Gemini web API",
+	Long:         "Command-line interface for interacting with Google Gemini via web cookies.",
+	Version:      Version,
+	SilenceUsage: true,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		if verbose {
 			client.SetVerbose(os.Stderr)
@@ -67,7 +68,7 @@ func init() {
 	downloadCmd.GroupID = "chat"
 
 	researchCmd.GroupID = "research"
-	progressCmd.GroupID = "research"
+	progressCmd.GroupID = "chat"
 	reportCmd.GroupID = "research"
 
 	modelsCmd.GroupID = "util"
