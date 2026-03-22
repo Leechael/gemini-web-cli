@@ -29,6 +29,9 @@ var rootCmd = &cobra.Command{
 	Long:    "Command-line interface for interacting with Google Gemini via web cookies.",
 	Version: Version,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		// Silence usage after Args validation passes — argument errors
+		// still show usage, but runtime errors (network, auth, etc.) don't.
+		cmd.SilenceUsage = true
 		if verbose {
 			client.SetVerbose(os.Stderr)
 		}
@@ -67,7 +70,7 @@ func init() {
 	downloadCmd.GroupID = "chat"
 
 	researchCmd.GroupID = "research"
-	progressCmd.GroupID = "research"
+	progressCmd.GroupID = "chat"
 	reportCmd.GroupID = "research"
 
 	modelsCmd.GroupID = "util"

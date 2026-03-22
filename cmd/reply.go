@@ -48,6 +48,8 @@ var replyCmd = &cobra.Command{
 			}
 			fmt.Println(output.Text)
 			printImages(output)
+			printVideos(output)
+			printMedia(output)
 		} else {
 			output, err := c.SendMessageStream(ctx, prompt, metadata, model, func(out *types.ModelOutput) {
 				if out.TextDelta != "" {
@@ -60,6 +62,8 @@ var replyCmd = &cobra.Command{
 			if output != nil {
 				fmt.Println()
 				printImages(output)
+				printVideos(output)
+				printMedia(output)
 			}
 		}
 
