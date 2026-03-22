@@ -250,7 +250,11 @@ func downloadFile(fileURL string, defaultExt string, poll206 bool) error {
 				ext = extFromContentType(resp.Header.Get("Content-Type"))
 			}
 			if ext == "" {
-				ext = ".png"
+				if poll206 {
+					ext = ".mp4"
+				} else {
+					ext = ".png"
+				}
 			}
 			output = fmt.Sprintf("gemini-%x%s", hash[:4], ext)
 		}
