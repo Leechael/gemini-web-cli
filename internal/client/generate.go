@@ -380,9 +380,11 @@ func (c *Client) parseStreamResponse(body io.Reader, cb StreamCallback) error {
 }
 
 // parseLengthPrefixedFrames parses Google's length-prefixed framing protocol.
-// Format: <digits><content_of_N_utf16_units> repeated.
+// Format: <digits>\n<content_of_N_utf16_units> repeated.
 // The length counts UTF-16 code units starting immediately after the digits
 // (includes the \n after digits and the trailing \n of the JSON payload).
+// Incomplete frames are omitted — the caller should retain the raw buffer
+// and re-parse after more data arrives.
 func parseLengthPrefixedFrames(content string) []string {
 	var frames []string
 	runes := []rune(content)
@@ -408,6 +410,12 @@ func parseLengthPrefixedFrames(content string) []string {
 			pos++
 			continue
 		}
+
+		// Length marker must be followed by \n (matching Python's regex r"(\d+)\n")
+		if pos >= totalLen || runes[pos] != '\n' {
+			break
+		}
+
 		lengthStr := string(runes[numStart:pos])
 
 		// Parse the UTF-16 unit count
@@ -416,18 +424,26 @@ func parseLengthPrefixedFrames(content string) []string {
 			utf16Units = utf16Units*10 + int(ch-'0')
 		}
 
-		// Content starts immediately after the digits (NOT after the newline).
-		// The length includes the \n after digits and the trailing \n.
+		// Content starts immediately after the digits (the \n is counted in the length).
 		contentStart := pos
 		unitsConsumed := 0
 		for pos < totalLen && unitsConsumed < utf16Units {
 			r := runes[pos]
-			pos++
+			// Don't overshoot: a surrogate pair counts as 2 units
+			units := 1
 			if r > 0xFFFF {
-				unitsConsumed += 2
-			} else {
-				unitsConsumed++
+				units = 2
 			}
+			if unitsConsumed+units > utf16Units {
+				break
+			}
+			unitsConsumed += units
+			pos++
+		}
+
+		// Incomplete frame — not enough data yet, stop parsing
+		if unitsConsumed < utf16Units {
+			break
 		}
 
 		chunk := strings.TrimSpace(string(runes[contentStart:pos]))
