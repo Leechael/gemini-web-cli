@@ -36,6 +36,8 @@ type Client struct {
 	accessToken  string
 	buildLabel   string
 	sessionID    string
+	language     string // extracted from init page, default "en"
+	pushID       string // extracted from init page, default "feeds/mcudyrk2a4khkz"
 	reqID        int
 	accountIndex *int
 	accountPath  string // "" or "/u/N"
@@ -162,8 +164,17 @@ func (c *Client) Init(ctx context.Context) error {
 	c.buildLabel = extractRegex(htmlBody, `"cfb2h"\s*:\s*"([^"]*)"`)
 	c.sessionID = extractRegex(htmlBody, `"FdrFJe"\s*:\s*"([^"]*)"`)
 
+	c.language = extractRegex(htmlBody, `"TuX5cc"\s*:\s*"([^"]*)"`)
+	if c.language == "" {
+		c.language = "en"
+	}
+	c.pushID = extractRegex(htmlBody, `"qKIAYe"\s*:\s*"([^"]*)"`)
+	if c.pushID == "" {
+		c.pushID = "feeds/mcudyrk2a4khkz"
+	}
+
 	if c.verbose {
-		fmt.Fprintf(logWriter, "Init OK: token=%s... bl=%s sid=%s\n", token[:min(8, len(token))], c.buildLabel, c.sessionID)
+		fmt.Fprintf(logWriter, "Init OK: token=%s... bl=%s sid=%s lang=%s push=%s\n", token[:min(8, len(token))], c.buildLabel, c.sessionID, c.language, c.pushID)
 	}
 
 	return nil
@@ -201,7 +212,7 @@ func (c *Client) streamURL() string {
 	params := url.Values{}
 	params.Set("_reqid", fmt.Sprintf("%d", c.nextReqID()))
 	params.Set("rt", "c")
-	params.Set("hl", "en")
+	params.Set("hl", c.language)
 	params.Set("pageId", "none")
 	if c.buildLabel != "" {
 		params.Set("bl", c.buildLabel)
@@ -221,7 +232,7 @@ func (c *Client) batchURL(rpcIDs []string, sourcePath string) string {
 	params.Set("rpcids", strings.Join(rpcIDs, ","))
 	params.Set("_reqid", fmt.Sprintf("%d", c.nextReqID()))
 	params.Set("rt", "c")
-	params.Set("hl", "en")
+	params.Set("hl", c.language)
 	params.Set("pageId", "none")
 	if sourcePath != "" {
 		params.Set("source-path", sourcePath)

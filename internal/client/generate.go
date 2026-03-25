@@ -239,7 +239,7 @@ func (c *Client) buildInnerRequest(prompt string, metadata []string, uploads []*
 	}
 
 	// [1] = language
-	req[1] = []any{"en"}
+	req[1] = []any{c.language}
 
 	// [2] = metadata — 10-element array matching browser behavior:
 	// ['', '', '', null, null, null, null, null, null, ''] for new chats

@@ -14,7 +14,6 @@ import (
 
 const (
 	uploadURL = "https://push.clients6.google.com/upload/"
-	pushID    = "feeds/mcudyrk2a4khkz"
 	tenantID  = "bard-storage"
 )
 
@@ -73,7 +72,7 @@ func (c *Client) uploadStart(ctx context.Context, fileName string, size int64) (
 	}
 
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded;charset=UTF-8")
-	req.Header.Set("Push-Id", pushID)
+	req.Header.Set("Push-Id", c.pushID)
 	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Origin", baseURL)
 	req.Header.Set("Referer", baseURL+"/")
@@ -111,7 +110,7 @@ func (c *Client) uploadFinalize(ctx context.Context, targetURL string, r io.Read
 	}
 
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded;charset=utf-8")
-	req.Header.Set("Push-Id", pushID)
+	req.Header.Set("Push-Id", c.pushID)
 	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Origin", baseURL)
 	req.Header.Set("Referer", baseURL+"/")
