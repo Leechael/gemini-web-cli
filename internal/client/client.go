@@ -46,6 +46,10 @@ type Client struct {
 
 	// Cookies for persistence tracking
 	ExtraCookies map[string]string
+
+	// Dynamic model discovery
+	AccountStatus types.AccountStatus
+	modelRegistry map[string]*types.Model // dynamic model registry
 }
 
 // Config holds client construction parameters.
