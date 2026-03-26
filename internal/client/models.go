@@ -213,8 +213,12 @@ func parseUserStatus(body string) (types.AccountStatus, []types.Model, error) {
 				name = modelID // fallback to hex ID
 			}
 
-			// Determine if advanced only
-			advancedOnly := !(capacity == 1 && capacityField == 12)
+			// Determine advancedOnly from hardcoded model definitions (per-model property),
+			// not from account-level capacity (which would mark ALL models as advanced on paid accounts).
+			advancedOnly := false
+			if known := types.FindModel(name); known != nil {
+				advancedOnly = known.AdvancedOnly
+			}
 
 			models = append(models, types.Model{
 				Name:         name,
