@@ -77,6 +77,25 @@ var statusCmd = &cobra.Command{
 		if cookiesJSON != "" {
 			fmt.Printf("  Cookie source: %s\n", cookiesJSON)
 		}
+
+		// Fetch account status
+		status, dynamicModels, fetchErr := c.FetchUserStatus(ctx)
+		if fetchErr != nil {
+			fmt.Printf("  Account status: unknown (fetch failed: %v)\n", fetchErr)
+		} else {
+			fmt.Printf("  Account status: %s — %s\n", status.Name, status.Description)
+			if len(dynamicModels) > 0 {
+				fmt.Printf("  Available models (%d):\n", len(dynamicModels))
+				for _, m := range dynamicModels {
+					suffix := ""
+					if m.AdvancedOnly {
+						suffix = " [advanced]"
+					}
+					fmt.Printf("    %s (%s)%s\n", m.Name, m.DisplayName, suffix)
+				}
+			}
+		}
+
 		return nil
 	},
 }
