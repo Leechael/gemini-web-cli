@@ -12,10 +12,9 @@ import (
 	"strings"
 )
 
-const (
-	uploadURL = "https://push.clients6.google.com/upload/"
-	tenantID  = "bard-storage"
-)
+var uploadURL = "https://push.clients6.google.com/upload/"
+
+const tenantID = "bard-storage"
 
 // UploadResult holds the upload ID and file metadata needed for the request.
 type UploadResult struct {
