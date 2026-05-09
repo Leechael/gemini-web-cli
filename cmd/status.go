@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/Leechael/gemini-web-cli/internal/client"
 	"github.com/Leechael/gemini-web-cli/internal/cookies"
@@ -96,8 +97,44 @@ var statusCmd = &cobra.Command{
 			}
 		}
 
+		printAccountQuotas(ctx, c)
+
 		return nil
 	},
+}
+
+func printAccountQuotas(ctx context.Context, c *client.Client) {
+	quotas, err := c.FetchQuotas(ctx, true, true)
+	if err != nil {
+		fmt.Printf("  Quotas: unavailable (%v)\n", err)
+	} else if len(quotas) > 0 {
+		fmt.Printf("  Quotas (%d):\n", len(quotas))
+		for _, q := range quotas {
+			usage := ""
+			if q.Total > 0 {
+				usage = fmt.Sprintf(" %d/%d remaining", q.Remaining, q.Total)
+			} else if q.Total == 0 && q.Remaining == 0 {
+				usage = " unlimited"
+			}
+			reset := ""
+			if q.ResetTime > 0 {
+				reset = fmt.Sprintf(" (resets %s)", time.Unix(q.ResetTime, 0).Local().Format("2006-01-02 15:04 MST"))
+			}
+			fmt.Printf("    %s [%s]: %.1f%% used%s%s\n", q.Label, q.ID, q.UsagePercent, usage, reset)
+		}
+	}
+
+	if extra, err := c.FetchExtraQuota(ctx); err == nil && extra != nil {
+		state := "ok"
+		if extra.IsBlocked {
+			state = "BLOCKED"
+		}
+		reset := ""
+		if extra.ResetTime > 0 {
+			reset = fmt.Sprintf(" (resets %s)", time.Unix(extra.ResetTime, 0).Local().Format("2006-01-02 15:04 MST"))
+		}
+		fmt.Printf("  Extra-feature quota: %s, %.1f%% used%s\n", state, extra.UsagePercent, reset)
+	}
 }
 
 func init() {
