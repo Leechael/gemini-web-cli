@@ -162,7 +162,7 @@ func parseUserStatus(body string) (types.AccountStatus, []types.Model, error) {
 		}
 
 		capacity, capacityField := computeCapacity(tierFlags, capFlags)
-		idNameMapping := buildModelIDNameMapping()
+		idNameMapping := buildModelIDNameMapping(capacity, capacityField)
 
 		for _, modelData := range modelsList {
 			md, ok := modelData.([]any)
@@ -265,8 +265,22 @@ func computeCapacity(tierFlags, capFlags []float64) (int, int) {
 	return 1, 12 // Free accounts
 }
 
-func buildModelIDNameMapping() map[string]string {
+// buildModelIDNameMapping returns a mapping from server model_id to the name
+// that should surface in `gemini models list` and the registry, picked against
+// the account's tier. Plus accounts see `-plus` names; Advanced accounts see
+// `-advanced`; Free accounts see the bare names. IDs unique to the BASIC tier
+// (e.g. gemini-3-pro) fall back to the bare name regardless of tier so paid
+// accounts can still reference and discover them.
+//
+// capacityField is currently accepted for future tier extensions; the suffix
+// only depends on capacity (4 = Plus, 2 = Advanced/Pro, otherwise Basic).
+func buildModelIDNameMapping(capacity, capacityField int) map[string]string {
+	_ = capacityField
+	primarySuffix := tierSuffixForCapacity(capacity)
+
 	result := make(map[string]string)
+
+	// First pass: register IDs whose canonical name matches the primary tier.
 	for _, m := range types.Models {
 		if m.Name == "unspecified" {
 			continue
@@ -275,14 +289,51 @@ func buildModelIDNameMapping() map[string]string {
 		if id == "" {
 			continue
 		}
-		// Use the base (non-tier) name: strip -plus, -advanced suffix
+		if !nameMatchesTierSuffix(m.Name, primarySuffix) {
+			continue
+		}
+		result[id] = m.Name
+	}
+
+	// Second pass: fill any IDs the primary tier didn't cover (BASIC-only ids
+	// such as `gemini-3-pro` on a Plus/Advanced account).
+	for _, m := range types.Models {
+		if m.Name == "unspecified" {
+			continue
+		}
+		id := m.ModelID()
+		if id == "" {
+			continue
+		}
+		if _, exists := result[id]; exists {
+			continue
+		}
 		baseName := m.Name
 		for _, suffix := range []string{"-plus", "-advanced"} {
 			baseName = strings.TrimSuffix(baseName, suffix)
 		}
-		if _, exists := result[id]; !exists {
-			result[id] = baseName
-		}
+		result[id] = baseName
 	}
 	return result
+}
+
+func tierSuffixForCapacity(capacity int) string {
+	switch capacity {
+	case 4:
+		return "-plus"
+	case 2:
+		return "-advanced"
+	default:
+		return ""
+	}
+}
+
+// nameMatchesTierSuffix reports whether a model Name belongs to the tier
+// identified by suffix. Empty suffix means "BASIC tier" — i.e. names without
+// any tier suffix.
+func nameMatchesTierSuffix(name, suffix string) bool {
+	if suffix == "" {
+		return !strings.HasSuffix(name, "-plus") && !strings.HasSuffix(name, "-advanced")
+	}
+	return strings.HasSuffix(name, suffix)
 }
