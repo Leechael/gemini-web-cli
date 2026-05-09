@@ -73,6 +73,8 @@ var statusCmd = &cobra.Command{
 		}
 		defer cleanup(c, jsonCookies)
 
+		fmt.Printf("=== gemini-web-cli %s (built %s) ===\n", Version, BuildTime)
+		fmt.Println()
 		fmt.Println("=== Account Diagnostics ===")
 		fmt.Printf("  Init: OK (access token obtained)\n")
 		fmt.Printf("  Model: %s\n", modelName)

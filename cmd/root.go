@@ -20,8 +20,12 @@ var (
 	requestTimeout float64
 )
 
-// Version is set at build time via -ldflags.
-var Version = "dev"
+// Version and BuildTime are set at build time via -ldflags. BuildTime should
+// be a UTC timestamp in RFC 3339 form (e.g. 2026-05-09T13:45:00Z).
+var (
+	Version   = "dev"
+	BuildTime = "unknown"
+)
 
 var rootCmd = &cobra.Command{
 	Use:     "gemini-web-cli",
