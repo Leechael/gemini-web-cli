@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Leechael/gemini-web-cli/internal/client"
@@ -98,9 +99,37 @@ var statusCmd = &cobra.Command{
 		}
 
 		printAccountQuotas(ctx, c)
+		printAbuseStatus(ctx, c)
 
 		return nil
 	},
+}
+
+func printAbuseStatus(ctx context.Context, c *client.Client) {
+	abuse, err := c.FetchAbuseStatus(ctx)
+	if err != nil {
+		fmt.Printf("  Abuse status: unavailable (%v)\n", err)
+		return
+	}
+	if abuse == nil {
+		return
+	}
+	if abuse.IsClean {
+		fmt.Printf("  Abuse status: clean (no flags)\n")
+		return
+	}
+	parts := []string{}
+	if abuse.StatusCode != 0 {
+		parts = append(parts, fmt.Sprintf("status=%d", abuse.StatusCode))
+	}
+	if abuse.Signal != "" {
+		parts = append(parts, fmt.Sprintf("signal=%s", abuse.Signal))
+	}
+	detail := ""
+	if len(parts) > 0 {
+		detail = " (" + strings.Join(parts, ", ") + ")"
+	}
+	fmt.Printf("  Abuse status: FLAGGED%s — Google has marked this account; expect throttling or rejections\n", detail)
 }
 
 func printAccountQuotas(ctx context.Context, c *client.Client) {
