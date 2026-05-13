@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -78,8 +79,10 @@ var statusCmd = &cobra.Command{
 		fmt.Println("=== Account Diagnostics ===")
 		fmt.Printf("  Init: OK (access token obtained)\n")
 		fmt.Printf("  Model: %s\n", modelName)
-		if cookiesJSON != "" {
-			fmt.Printf("  Cookie source: %s\n", cookiesJSON)
+		if effective := resolveCookiesJSON(); effective != "" {
+			fmt.Printf("  Cookie source: %s (%s)\n", effective, cookieSourceOrigin())
+		} else {
+			fmt.Printf("  Cookie source: <none — using env vars or no cookies>\n")
 		}
 
 		// Fetch account status
@@ -105,6 +108,18 @@ var statusCmd = &cobra.Command{
 
 		return nil
 	},
+}
+
+// cookieSourceOrigin reports which input the cookies path was resolved from,
+// matching the priority order in resolveCookiesJSON.
+func cookieSourceOrigin() string {
+	if cookiesJSON != "" {
+		return "--cookies-json flag"
+	}
+	if os.Getenv("GEMINI_WEB_COOKIES_JSON_PATH") != "" {
+		return "$GEMINI_WEB_COOKIES_JSON_PATH"
+	}
+	return "auto-discovered"
 }
 
 func printAbuseStatus(ctx context.Context, c *client.Client) {
