@@ -47,43 +47,42 @@ var statusCmd = &cobra.Command{
 			return nil
 		}
 
-		// Full check requires client init
-		ctx := context.Background()
-		c, jsonCookies, err := initClient(ctx)
-		if err != nil {
-			var rle *client.RateLimitError
-			if errors.As(err, &rle) {
-				report := map[string]any{
-					"status":  "rate_limited",
-					"code":    rle.StatusCode,
-					"message": "Google returned HTTP 429 — your exit node is likely rate-limited.",
-					"hints": []string{
-						"Try a different proxy or exit node.",
-						"Wait a few minutes and retry.",
-						"Verify you can load gemini.google.com/app in a browser through the same proxy.",
-					},
-				}
-				if proxy != "" {
-					report["proxy"] = proxy
-				}
-				data, _ := json.MarshalIndent(report, "", "  ")
-				fmt.Println(string(data))
-				return nil
-			}
-			return err
-		}
-		defer cleanup(c, jsonCookies)
-
+		// Full diagnostics — always show header + cookie source before init,
+		// so users get useful output even when init fails (expired cookies,
+		// rate limit, etc.). status is best-effort by design; we never bubble
+		// init failures up as exit-code errors here.
 		fmt.Printf("=== gemini-web-cli %s (built %s) ===\n", Version, BuildTime)
 		fmt.Println()
 		fmt.Println("=== Account Diagnostics ===")
-		fmt.Printf("  Init: OK (access token obtained)\n")
 		fmt.Printf("  Model: %s\n", modelName)
 		if effective := resolveCookiesJSON(); effective != "" {
 			fmt.Printf("  Cookie source: %s (%s)\n", effective, cookieSourceOrigin())
 		} else {
 			fmt.Printf("  Cookie source: <none — using env vars or no cookies>\n")
 		}
+
+		ctx := context.Background()
+		c, jsonCookies, err := initClient(ctx)
+		if err != nil {
+			var rle *client.RateLimitError
+			if errors.As(err, &rle) {
+				fmt.Printf("  Init: FAILED — HTTP %d (rate limited)\n", rle.StatusCode)
+				fmt.Println("  Hints:")
+				fmt.Println("    - Try a different proxy or exit node.")
+				fmt.Println("    - Wait a few minutes and retry.")
+				fmt.Println("    - Verify gemini.google.com/app loads in a browser via the same proxy.")
+				if proxy != "" {
+					fmt.Printf("  Proxy: %s\n", proxy)
+				}
+				return nil
+			}
+			fmt.Printf("  Init: FAILED — %v\n", err)
+			fmt.Println("  Hint: cookies may be expired or incomplete; re-export __Secure-1PSID + __Secure-1PSIDTS from your browser.")
+			return nil
+		}
+		defer cleanup(c, jsonCookies)
+
+		fmt.Printf("  Init: OK (access token obtained)\n")
 
 		// Fetch account status
 		status, dynamicModels, fetchErr := c.FetchUserStatus(ctx)
