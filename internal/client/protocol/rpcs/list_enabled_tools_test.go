@@ -28,6 +28,9 @@ func TestDecodeListEnabledTools_FromSampleFixture(t *testing.T) {
 	if len(tools) < 1 {
 		t.Fatalf("len(tools) = %d, want at least 1", len(tools))
 	}
+	if tools[0].Name != "OpenStax" {
+		t.Fatalf("tools[0].Name = %q, want OpenStax", tools[0].Name)
+	}
 	for _, tool := range tools {
 		if tool.Name == "" {
 			t.Fatalf("tool has empty Name: %#v", tool)

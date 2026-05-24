@@ -40,6 +40,9 @@ func TestListEnabledTools(t *testing.T) {
 	if len(tools) != 2 {
 		t.Fatalf("len(tools) = %d, want 2", len(tools))
 	}
+	if tools[0].Name != "OpenStax" {
+		t.Fatalf("tools[0].Name = %q, want OpenStax", tools[0].Name)
+	}
 }
 
 func TestListExtensionCatalog(t *testing.T) {
@@ -73,7 +76,7 @@ func TestGetUploadLimits(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetUploadLimits: %v", err)
 	}
-	if limits.MaxFiles != 500 || limits.MaxFileMB != 300 || limits.MaxTotalBytes != 500000 {
+	if limits.Limit0 != 500 || limits.Limit1 != 300 || limits.Limit2 != 500000 {
 		t.Fatalf("limits = %#v", limits)
 	}
 }
@@ -113,6 +116,30 @@ func TestPrefetchBootstrap_ConcurrencyTiming(t *testing.T) {
 	assertBootstrapFilled(t, bs)
 	if elapsed >= delay*3 {
 		t.Fatalf("elapsed = %s, want less than %s", elapsed, delay*3)
+	}
+}
+
+func TestPrefetchViaBatch_RequestFailure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+	origBase := baseURL
+	baseURL = srv.URL
+	t.Cleanup(func() { baseURL = origBase })
+	c := newTestClient()
+	c.accessToken = "token"
+	c.language = "en"
+	c.reqID = 1
+	c.httpClient = srv.Client()
+	bs := c.prefetchViaBatch(t.Context())
+	if len(bs.Errors) != 6 {
+		t.Fatalf("len(Errors) = %d, want 6: %#v", len(bs.Errors), bs.Errors)
+	}
+	for _, key := range []string{"profile", "location", "tools", "extensions", "flags", "limits"} {
+		if bs.Errors[key] == nil {
+			t.Fatalf("Errors[%s] is nil", key)
+		}
 	}
 }
 

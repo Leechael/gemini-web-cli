@@ -17,7 +17,7 @@
 // Test fixture: testdata/get_upload_limits_basic.txt
 //
 // Notes:
-//   - MaxTotalBytes keeps the raw server value. The exact unit is not yet confirmed.
+//   - The three response values are exposed as raw slots until their units are confirmed.
 package rpcs
 
 import (
@@ -30,11 +30,11 @@ import (
 
 const getUploadLimitsRPCID = "mhs1xe"
 
-// UploadLimits is the decoded upload capability limit tuple.
+// UploadLimits is the decoded raw upload capability limit tuple.
 type UploadLimits struct {
-	MaxFiles      int
-	MaxFileMB     int
-	MaxTotalBytes int
+	Limit0 int
+	Limit1 int
+	Limit2 int
 }
 
 // EncodeGetUploadLimits returns (rpcID, payload JSON string).
@@ -60,11 +60,11 @@ func DecodeGetUploadLimits(body []byte) (*UploadLimits, error) {
 	}
 
 	limits := &UploadLimits{
-		MaxFiles:      protocol.IntAt(limitsData, 0),
-		MaxFileMB:     protocol.IntAt(limitsData, 1),
-		MaxTotalBytes: protocol.IntAt(limitsData, 2),
+		Limit0: protocol.IntAt(limitsData, 0),
+		Limit1: protocol.IntAt(limitsData, 1),
+		Limit2: protocol.IntAt(limitsData, 2),
 	}
-	if limits.MaxFiles == 0 && limits.MaxFileMB == 0 && limits.MaxTotalBytes == 0 {
+	if limits.Limit0 == 0 && limits.Limit1 == 0 && limits.Limit2 == 0 {
 		return nil, fmt.Errorf("GetUploadLimits response did not contain limits")
 	}
 	return limits, nil

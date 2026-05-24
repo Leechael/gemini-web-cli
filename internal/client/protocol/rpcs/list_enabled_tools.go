@@ -90,9 +90,12 @@ func enabledToolName(item []any) string {
 		if first == "workspace_tool" && second != "" {
 			return second
 		}
-		if first != "" {
-			return first
-		}
 	}
-	return protocol.StringAt(item, 1)
+	if displayName := protocol.StringAt(item, 1); displayName != "" {
+		return displayName
+	}
+	if ok {
+		return protocol.StringAt(ids, 0)
+	}
+	return ""
 }

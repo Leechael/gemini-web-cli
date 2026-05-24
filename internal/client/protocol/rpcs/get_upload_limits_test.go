@@ -24,7 +24,7 @@ func TestDecodeGetUploadLimits_FromSampleFixture(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecodeGetUploadLimits: %v", err)
 	}
-	if limits.MaxFiles != 500 || limits.MaxFileMB != 300 || limits.MaxTotalBytes != 500000 {
+	if limits.Limit0 != 500 || limits.Limit1 != 300 || limits.Limit2 != 500000 {
 		t.Fatalf("limits = %#v", limits)
 	}
 }

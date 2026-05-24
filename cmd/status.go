@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -106,12 +107,15 @@ var statusCmd = &cobra.Command{
 			fmt.Printf("  Feature flags: %d active\n", activeFeatureFlagCount(bs.Flags))
 		}
 		if bs.Limits != nil {
-			fmt.Printf("  Upload limits: max %d files / %d MB per file / %d total bytes\n",
-				bs.Limits.MaxFiles, bs.Limits.MaxFileMB, bs.Limits.MaxTotalBytes)
+			fmt.Printf("  Upload limits: raw [%d, %d, %d]\n", bs.Limits.Limit0, bs.Limits.Limit1, bs.Limits.Limit2)
 		}
-		if verbose && len(bs.Errors) > 0 {
-			for _, key := range bootstrapErrorKeys(bs.Errors) {
-				fmt.Fprintf(os.Stderr, "bootstrap RPC %s failed: %v\n", key, bs.Errors[key])
+		if len(bs.Errors) > 0 {
+			if verbose {
+				for _, key := range bootstrapErrorKeys(bs.Errors) {
+					fmt.Fprintf(os.Stderr, "bootstrap RPC %s failed: %v\n", key, bs.Errors[key])
+				}
+			} else {
+				fmt.Fprintf(os.Stderr, "Bootstrap: %d of 6 RPCs failed (run with -v for details)\n", len(bs.Errors))
 			}
 		}
 
@@ -258,11 +262,7 @@ func bootstrapErrorKeys(errors map[string]error) []string {
 	for key := range errors {
 		keys = append(keys, key)
 	}
-	for i := 1; i < len(keys); i++ {
-		for j := i; j > 0 && keys[j] < keys[j-1]; j-- {
-			keys[j], keys[j-1] = keys[j-1], keys[j]
-		}
-	}
+	sort.Strings(keys)
 	return keys
 }
 
@@ -275,10 +275,6 @@ func sortedKeys(m map[string]string) []string {
 	for k := range m {
 		keys = append(keys, k)
 	}
-	for i := 1; i < len(keys); i++ {
-		for j := i; j > 0 && keys[j] < keys[j-1]; j-- {
-			keys[j], keys[j-1] = keys[j-1], keys[j]
-		}
-	}
+	sort.Strings(keys)
 	return keys
 }

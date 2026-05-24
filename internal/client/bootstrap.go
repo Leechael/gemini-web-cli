@@ -163,46 +163,45 @@ func (c *Client) prefetchViaGoroutine(ctx context.Context) *Bootstrap {
 
 func (c *Client) prefetchViaBatch(ctx context.Context) *Bootstrap {
 	bs := &Bootstrap{Errors: map[string]error{}}
-	calls := []RPCCall{
-		newBootstrapCall(rpcs.EncodeGetUserProfile),
-		newBootstrapCall(rpcs.EncodeGetUserLocation),
-		newBootstrapCall(rpcs.EncodeListEnabledTools),
-		newBootstrapCall(rpcs.EncodeListExtensionCatalog),
-		newBootstrapCall(rpcs.EncodeListFeatureFlags),
-		newBootstrapCall(rpcs.EncodeGetUploadLimits),
-	}
+	profileCall := newBootstrapCall(rpcs.EncodeGetUserProfile)
+	locationCall := newBootstrapCall(rpcs.EncodeGetUserLocation)
+	toolsCall := newBootstrapCall(rpcs.EncodeListEnabledTools)
+	extensionsCall := newBootstrapCall(rpcs.EncodeListExtensionCatalog)
+	flagsCall := newBootstrapCall(rpcs.EncodeListFeatureFlags)
+	limitsCall := newBootstrapCall(rpcs.EncodeGetUploadLimits)
+	calls := []RPCCall{profileCall, locationCall, toolsCall, extensionsCall, flagsCall, limitsCall}
 	bodies, rejectCodes, err := c.CallRPCBatch(ctx, calls)
 	if err != nil {
-		bs.Errors["batch"] = err
+		recordBatchFailure(bs, err)
 		return bs
 	}
 
-	decodeBatchBody(bs, "profile", rpcs.EncodeGetUserProfile, bodies, rejectCodes, func(body []byte) error {
+	decodeBatchBody(bs, "profile", profileCall.ID, bodies, rejectCodes, func(body []byte) error {
 		profile, err := rpcs.DecodeGetUserProfile(body)
 		bs.Profile = profile
 		return err
 	})
-	decodeBatchBody(bs, "location", rpcs.EncodeGetUserLocation, bodies, rejectCodes, func(body []byte) error {
+	decodeBatchBody(bs, "location", locationCall.ID, bodies, rejectCodes, func(body []byte) error {
 		location, err := rpcs.DecodeGetUserLocation(body)
 		bs.Location = location
 		return err
 	})
-	decodeBatchBody(bs, "tools", rpcs.EncodeListEnabledTools, bodies, rejectCodes, func(body []byte) error {
+	decodeBatchBody(bs, "tools", toolsCall.ID, bodies, rejectCodes, func(body []byte) error {
 		tools, err := rpcs.DecodeListEnabledTools(body)
 		bs.Tools = tools
 		return err
 	})
-	decodeBatchBody(bs, "extensions", rpcs.EncodeListExtensionCatalog, bodies, rejectCodes, func(body []byte) error {
+	decodeBatchBody(bs, "extensions", extensionsCall.ID, bodies, rejectCodes, func(body []byte) error {
 		extensions, err := rpcs.DecodeListExtensionCatalog(body)
 		bs.Extensions = extensions
 		return err
 	})
-	decodeBatchBody(bs, "flags", rpcs.EncodeListFeatureFlags, bodies, rejectCodes, func(body []byte) error {
+	decodeBatchBody(bs, "flags", flagsCall.ID, bodies, rejectCodes, func(body []byte) error {
 		flags, err := rpcs.DecodeListFeatureFlags(body)
 		bs.Flags = flags
 		return err
 	})
-	decodeBatchBody(bs, "limits", rpcs.EncodeGetUploadLimits, bodies, rejectCodes, func(body []byte) error {
+	decodeBatchBody(bs, "limits", limitsCall.ID, bodies, rejectCodes, func(body []byte) error {
 		limits, err := rpcs.DecodeGetUploadLimits(body)
 		bs.Limits = limits
 		return err
@@ -215,8 +214,13 @@ func newBootstrapCall(encode func() (string, string)) RPCCall {
 	return RPCCall{ID: rpcID, Payload: payload}
 }
 
-func decodeBatchBody(bs *Bootstrap, key string, encode func() (string, string), bodies map[string][]byte, rejectCodes map[string]int, decode func([]byte) error) {
-	rpcID, _ := encode()
+func recordBatchFailure(bs *Bootstrap, err error) {
+	for _, key := range []string{"profile", "location", "tools", "extensions", "flags", "limits"} {
+		bs.Errors[key] = err
+	}
+}
+
+func decodeBatchBody(bs *Bootstrap, key string, rpcID string, bodies map[string][]byte, rejectCodes map[string]int, decode func([]byte) error) {
 	if code := rejectCodes[rpcID]; code != 0 {
 		bs.Errors[key] = fmt.Errorf("%s rejected with code=%d", key, code)
 		return

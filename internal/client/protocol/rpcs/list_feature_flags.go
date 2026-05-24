@@ -65,10 +65,7 @@ func DecodeListFeatureFlags(body []byte) ([]FeatureFlag, error) {
 		if !ok {
 			continue
 		}
-		id := protocol.StringAt(item, 0)
-		if id == "" {
-			id = strconv.Itoa(protocol.IntAt(item, 0))
-		}
+		id := strconv.Itoa(protocol.IntAt(item, 0))
 		if id == "0" {
 			continue
 		}
