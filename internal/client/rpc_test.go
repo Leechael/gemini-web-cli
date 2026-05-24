@@ -21,11 +21,13 @@ func TestCallRPC(t *testing.T) {
 		gotSourcePath = r.URL.Query().Get("source-path")
 		gotReqID = r.URL.Query().Get("_reqid")
 		if err := r.ParseForm(); err != nil {
-			t.Fatal(err)
+			t.Errorf("ParseForm: %v", err)
+			return
 		}
 		var outer [][][]any
 		if err := json.Unmarshal([]byte(r.PostForm.Get("f.req")), &outer); err != nil {
-			t.Fatal(err)
+			t.Errorf("Unmarshal f.req: %v", err)
+			return
 		}
 		gotFormRPCID, _ = outer[0][0][0].(string)
 		gotFormPayload, _ = outer[0][0][1].(string)
@@ -67,6 +69,35 @@ func TestCallRPC(t *testing.T) {
 	}
 	if gotFormRPCID != "rpc" || gotFormPayload != "[1]" {
 		t.Fatalf("form rpc/payload = %q/%q", gotFormRPCID, gotFormPayload)
+	}
+}
+
+func TestCallRPC_SourcePathOverridesSourceCid(t *testing.T) {
+	var gotSourcePath string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotSourcePath = r.URL.Query().Get("source-path")
+		_, _ = w.Write(makeTestBatchResponse("rpc", `[]`, 0))
+	}))
+	defer srv.Close()
+
+	origBase := baseURL
+	baseURL = srv.URL
+	defer func() { baseURL = origBase }()
+
+	c := newTestClient()
+	c.accessToken = "token"
+	c.language = "en"
+	c.reqID = 1
+	c.accountPath = "/u/1"
+	c.httpClient = srv.Client()
+
+	_, _, err := c.CallRPC(t.Context(), "rpc", "[]", WithSourcePath("/manual"), WithSourceCid("c_1"))
+	if err != nil {
+		t.Fatalf("CallRPC: %v", err)
+	}
+	if gotSourcePath != "/manual" {
+		t.Fatalf("source-path = %q, want /manual", gotSourcePath)
 	}
 }
 

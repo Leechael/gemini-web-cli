@@ -8,8 +8,9 @@ import (
 )
 
 type rpcConfig struct {
-	sourcePath string
-	sourceCid  string
+	sourcePath    string
+	sourcePathSet bool
+	sourceCid     string
 }
 
 // RPCOpt configures a single CallRPC invocation.
@@ -19,6 +20,7 @@ type RPCOpt func(*rpcConfig)
 func WithSourcePath(sp string) RPCOpt {
 	return func(cfg *rpcConfig) {
 		cfg.sourcePath = sp
+		cfg.sourcePathSet = true
 	}
 }
 
@@ -35,7 +37,7 @@ func (c *Client) CallRPC(ctx context.Context, rpcID, payload string, opts ...RPC
 	for _, opt := range opts {
 		opt(&cfg)
 	}
-	if cfg.sourceCid != "" {
+	if cfg.sourceCid != "" && !cfg.sourcePathSet {
 		cfg.sourcePath = c.appPath() + "/" + cfg.sourceCid
 	}
 
