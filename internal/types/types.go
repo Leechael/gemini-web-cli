@@ -46,6 +46,11 @@ type GeneratedMedia struct {
 	MP3Thumbnail string
 	MP4URL       string
 	MP4Thumbnail string
+	VTTURL       string
+	Title        string
+	Artist       string
+	Genre        string
+	Moods        []string
 }
 
 // DeepResearchPlan holds the plan returned by create_deep_research_plan.

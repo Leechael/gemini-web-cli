@@ -179,11 +179,17 @@ func printMedia(output *types.ModelOutput) {
 	fmt.Println("\n---\nGenerated media:")
 	for i, m := range output.Media {
 		fmt.Printf("  %d)", i+1)
+		if m.Title != "" {
+			fmt.Printf(" %s", m.Title)
+		}
 		if m.MP3URL != "" {
 			fmt.Printf(" MP3: %s", m.MP3URL)
 		}
 		if m.MP4URL != "" {
 			fmt.Printf(" MP4: %s", m.MP4URL)
+		}
+		if m.VTTURL != "" {
+			fmt.Printf(" VTT: %s", m.VTTURL)
 		}
 		fmt.Println()
 	}

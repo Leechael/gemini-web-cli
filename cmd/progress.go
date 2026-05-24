@@ -74,11 +74,18 @@ var progressCmd = &cobra.Command{
 			fmt.Printf("  Type: music generation\n")
 			fmt.Printf("  Status: ready\n")
 			for i, m := range last.Media {
+				label := fmt.Sprintf("Media %d", i+1)
+				if m.Title != "" {
+					label += " " + m.Title
+				}
 				if m.MP3URL != "" {
-					fmt.Printf("  Media %d MP3: %s\n", i+1, m.MP3URL)
+					fmt.Printf("  %s MP3: %s\n", label, m.MP3URL)
 				}
 				if m.MP4URL != "" {
-					fmt.Printf("  Media %d MP4: %s\n", i+1, m.MP4URL)
+					fmt.Printf("  %s MP4: %s\n", label, m.MP4URL)
+				}
+				if m.VTTURL != "" {
+					fmt.Printf("  %s VTT: %s\n", label, m.VTTURL)
 				}
 			}
 			fmt.Printf("\n  Use 'download %s' to save.\n", cid)

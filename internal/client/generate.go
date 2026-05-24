@@ -828,7 +828,7 @@ func extractMedia(imageData any) []types.GeneratedMedia {
 		}
 	}
 
-	var mp4URL, mp4Thumb string
+	var mp4URL, mp4Thumb, vttURL string
 	mp4Part := getNestedArray(mediaData, 1)
 	if mp4Part != nil {
 		mp4Inner := getNestedArray(mp4Part, 1)
@@ -839,10 +839,41 @@ func extractMedia(imageData any) []types.GeneratedMedia {
 				mp4URL, _ = mp4URLs[1].(string)
 			}
 		}
+		vttInner := getNestedArray(mp4Part, 3)
+		if vttInner != nil {
+			vttURLs := getNestedArray(vttInner, 7)
+			if vttURLs != nil && len(vttURLs) >= 2 {
+				vttURL, _ = vttURLs[1].(string)
+			}
+		}
 	}
 
 	if mp3URL == "" && mp4URL == "" {
 		return nil
+	}
+
+	meta := getNestedArray(mediaData, 2)
+	var title, artist, genre string
+	var moods []string
+	if meta != nil {
+		if len(meta) > 0 {
+			title, _ = meta[0].(string)
+		}
+		if len(meta) > 2 {
+			artist, _ = meta[2].(string)
+		}
+		if len(meta) > 4 {
+			genre, _ = meta[4].(string)
+		}
+		if len(meta) > 5 {
+			if arr, ok := meta[5].([]any); ok {
+				for _, item := range arr {
+					if s, ok := item.(string); ok && s != "" {
+						moods = append(moods, s)
+					}
+				}
+			}
+		}
 	}
 
 	return []types.GeneratedMedia{{
@@ -850,6 +881,11 @@ func extractMedia(imageData any) []types.GeneratedMedia {
 		MP3Thumbnail: mp3Thumb,
 		MP4URL:       mp4URL,
 		MP4Thumbnail: mp4Thumb,
+		VTTURL:       vttURL,
+		Title:        title,
+		Artist:       artist,
+		Genre:        genre,
+		Moods:        moods,
 	}}
 }
 

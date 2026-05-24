@@ -236,6 +236,52 @@ func TestExtractImages_WebImage(t *testing.T) {
 	}
 }
 
+func TestExtractVideos_ReadChatDictKey60(t *testing.T) {
+	videoElem := make([]any, 8)
+	videoElem[7] = []any{"https://lh3.googleusercontent.com/thumb", "https://contribution.usercontent.google.com/download?video"}
+	imageData := []any{map[string]any{
+		"60": []any{[]any{[]any{[]any{videoElem}}}},
+	}}
+
+	videos := extractVideos(imageData)
+	if len(videos) != 1 {
+		t.Fatalf("videos = %d, want 1", len(videos))
+	}
+	if videos[0].URL != "https://contribution.usercontent.google.com/download?video" {
+		t.Errorf("video URL = %q", videos[0].URL)
+	}
+}
+
+func TestExtractMedia_ReadChatDictKey87Metadata(t *testing.T) {
+	mp3 := make([]any, 8)
+	mp3[7] = []any{"https://lh3.googleusercontent.com/mp3-thumb", "https://contribution.usercontent.google.com/download?mp3"}
+	mp4 := make([]any, 8)
+	mp4[7] = []any{"https://lh3.googleusercontent.com/mp4-thumb", "https://contribution.usercontent.google.com/download?mp4"}
+	vtt := make([]any, 8)
+	vtt[7] = []any{"", "https://contribution.usercontent.google.com/download?vtt"}
+	mediaData := []any{
+		[]any{nil, mp3},
+		[]any{nil, mp4, nil, vtt},
+		[]any{"Late July Transit", nil, "Afternoon Horizon", nil, "K-Pop / City Pop", []any{"Nostalgic", "Breezy"}},
+	}
+	imageData := []any{map[string]any{"87": mediaData}}
+
+	media := extractMedia(imageData)
+	if len(media) != 1 {
+		t.Fatalf("media = %d, want 1", len(media))
+	}
+	m := media[0]
+	if m.MP3URL == "" || m.MP4URL == "" || m.VTTURL == "" {
+		t.Fatalf("missing URLs: %+v", m)
+	}
+	if m.Title != "Late July Transit" || m.Artist != "Afternoon Horizon" || m.Genre != "K-Pop / City Pop" {
+		t.Fatalf("metadata = %+v", m)
+	}
+	if len(m.Moods) != 2 || m.Moods[0] != "Nostalgic" || m.Moods[1] != "Breezy" {
+		t.Fatalf("moods = %#v", m.Moods)
+	}
+}
+
 // ============================================================================
 // Deep research plan extraction
 //

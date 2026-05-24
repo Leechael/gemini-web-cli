@@ -105,6 +105,14 @@ func collectDownloadables(turns []types.ChatTurn) []downloadable {
 					Poll206: true,
 				})
 			}
+			if m.VTTURL != "" {
+				items = append(items, downloadable{
+					URL:     m.VTTURL,
+					Label:   "vtt",
+					DefExt:  ".vtt",
+					Poll206: true,
+				})
+			}
 		}
 	}
 	return items
@@ -284,7 +292,7 @@ func extFromContentType(ct string) string {
 		// Prefer common extensions over obscure ones
 		for _, e := range exts {
 			switch e {
-			case ".mp4", ".mp3", ".png", ".jpg", ".webm", ".wav":
+			case ".mp4", ".mp3", ".png", ".jpg", ".webm", ".wav", ".vtt":
 				return e
 			}
 		}
