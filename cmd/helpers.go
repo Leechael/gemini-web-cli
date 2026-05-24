@@ -159,7 +159,18 @@ func setGenerationMode(c *client.Client, mode string) error {
 	}
 }
 
-func resolveModelForClient(ctx context.Context, c *client.Client) *types.Model {
+func resolveModelForClient(ctx context.Context, c *client.Client, preferred ...string) *types.Model {
+	if modelName == "" || modelName == "unspecified" {
+		for _, name := range preferred {
+			if name == "" {
+				continue
+			}
+			if model := types.FindModel(name); model != nil {
+				return model
+			}
+		}
+		return types.FindModel("unspecified")
+	}
 	if model := types.FindModel(modelName); model != nil {
 		return model
 	}
@@ -169,8 +180,27 @@ func resolveModelForClient(ctx context.Context, c *client.Client) *types.Model {
 			return model
 		}
 	}
-	if modelName != "" && modelName != "unspecified" {
-		fmt.Fprintf(os.Stderr, "Warning: model %q not found; using Gemini auto-select.\n", modelName)
-	}
+	fmt.Fprintf(os.Stderr, "Warning: model %q not found; using Gemini auto-select.\n", modelName)
 	return types.FindModel("unspecified")
+}
+
+func preferredModelForGenerationMode(mode string, prompt string, hasUploads bool) string {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	if mode == "auto" || mode == "" {
+		lower := strings.ToLower(prompt)
+		switch {
+		case hasUploads && (strings.Contains(lower, "video") || strings.Contains(lower, "视频")):
+			mode = "image-to-video"
+		case strings.Contains(lower, "music") || strings.Contains(lower, "song") || strings.Contains(lower, "audio") || strings.Contains(lower, "音乐") || strings.Contains(lower, "歌曲"):
+			mode = "music"
+		case strings.Contains(lower, "video") || strings.Contains(lower, "视频"):
+			mode = "video"
+		}
+	}
+	switch mode {
+	case "video", "image-to-video", "music":
+		return "gemini-3.5-flash"
+	default:
+		return ""
+	}
 }

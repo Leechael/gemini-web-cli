@@ -54,7 +54,6 @@ var askCmd = &cobra.Command{
 		}
 
 		prompt := args[0]
-		model := resolveModelForClient(ctx, c)
 
 		// Process --file: text files inlined, binary files uploaded via resumable protocol
 		var uploads []*client.UploadResult
@@ -77,6 +76,8 @@ var askCmd = &cobra.Command{
 				fmt.Fprintf(cmd.ErrOrStderr(), "Uploaded %s (ID: %s)\n", u.FileName, u.ID)
 			}
 		}
+
+		model := resolveModelForClient(ctx, c, preferredModelForGenerationMode(askGenerationMode, prompt, len(uploads) > 0))
 
 		if askNoStream {
 			var output *types.ModelOutput
