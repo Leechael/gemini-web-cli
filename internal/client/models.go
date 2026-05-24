@@ -109,6 +109,22 @@ func (c *Client) AvailableModels() []types.Model {
 	return result
 }
 
+// ResolveModel returns a dynamically discovered model by name, display name, or model ID.
+func (c *Client) ResolveModel(name string) *types.Model {
+	if c == nil || c.modelRegistry == nil || name == "" {
+		return nil
+	}
+	if m := c.modelRegistry[name]; m != nil {
+		return m
+	}
+	for _, m := range c.modelRegistry {
+		if m.Name == name || m.DisplayName == name || m.ModelID() == name {
+			return m
+		}
+	}
+	return nil
+}
+
 func parseUserStatus(body string) (types.AccountStatus, []types.Model, error) {
 	if body == "" || body == "[]" {
 		return types.StatusAvailable, nil, nil
@@ -162,7 +178,7 @@ func parseUserStatus(body string) (types.AccountStatus, []types.Model, error) {
 		}
 
 		capacity, capacityField := computeCapacity(tierFlags, capFlags)
-		idNameMapping := buildModelIDNameMapping()
+		idNameMapping := buildModelIDNameMapping(capacity, capacityField)
 
 		for _, modelData := range modelsList {
 			md, ok := modelData.([]any)
@@ -200,22 +216,24 @@ func parseUserStatus(body string) (types.AccountStatus, []types.Model, error) {
 				}
 			}
 
-			// Build capacity tail for header construction
-			var capacityTail string
-			if capacityField == 13 {
-				capacityTail = fmt.Sprintf("null,%d", capacity)
-			} else {
-				capacityTail = fmt.Sprintf("%d", capacity)
+			selector := capacity
+			if len(md) > 17 {
+				if f, ok := md[17].(float64); ok && f != 0 {
+					selector = int(f)
+				}
 			}
 
-			name := idNameMapping[modelID]
+			name := dynamicModelName(md, modelID, displayName)
 			if name == "" {
-				name = modelID // fallback to hex ID
+				name = idNameMapping[modelID]
+			}
+			if name == "" {
+				name = modelID
 			}
 
-			// Determine advancedOnly from hardcoded model definitions (per-model property),
-			// not from account-level capacity (which would mark ALL models as advanced on paid accounts).
-			advancedOnly := false
+			// Determine advancedOnly from the dynamic selector when available, with
+			// hardcoded definitions as a fallback.
+			advancedOnly := selector == 3 || strings.Contains(name, "pro")
 			if known := types.FindModel(name); known != nil {
 				advancedOnly = known.AdvancedOnly
 			}
@@ -224,13 +242,46 @@ func parseUserStatus(body string) (types.AccountStatus, []types.Model, error) {
 				Name:         name,
 				DisplayName:  displayName,
 				AdvancedOnly: advancedOnly,
-				Headers:      types.BuildModelHeader(modelID, capacityTail),
+				Headers:      types.BuildModelHeader(modelID, selector),
 				Description:  description,
 			})
 		}
 	}
 
 	return accountStatus, models, nil
+}
+
+func dynamicModelName(modelData []any, modelID string, displayName string) string {
+	candidates := []string{}
+	for _, idx := range []int{19, 11, 10, 1} {
+		if idx < len(modelData) {
+			if s, ok := modelData[idx].(string); ok && s != "" {
+				candidates = append(candidates, s)
+			}
+		}
+	}
+	for _, s := range candidates {
+		name := strings.ToLower(strings.TrimSpace(s))
+		name = strings.ReplaceAll(name, " ", "-")
+		name = strings.ReplaceAll(name, "_", "-")
+		name = strings.Trim(name, "-")
+		if name == "" {
+			continue
+		}
+		if !strings.HasPrefix(name, "gemini-") {
+			name = "gemini-" + name
+		}
+		return name
+	}
+	if displayName != "" {
+		name := strings.ToLower(strings.TrimSpace(displayName))
+		name = strings.ReplaceAll(name, " ", "-")
+		if !strings.HasPrefix(name, "gemini-") {
+			name = "gemini-" + name
+		}
+		return name
+	}
+	return modelID
 }
 
 func computeCapacity(tierFlags, capFlags []float64) (int, int) {
@@ -265,8 +316,22 @@ func computeCapacity(tierFlags, capFlags []float64) (int, int) {
 	return 1, 12 // Free accounts
 }
 
-func buildModelIDNameMapping() map[string]string {
+// buildModelIDNameMapping returns a mapping from server model_id to the name
+// that should surface in `gemini models list` and the registry, picked against
+// the account's tier. Plus accounts see `-plus` names; Advanced accounts see
+// `-advanced`; Free accounts see the bare names. IDs unique to the BASIC tier
+// (e.g. gemini-3-pro) fall back to the bare name regardless of tier so paid
+// accounts can still reference and discover them.
+//
+// capacityField is currently accepted for future tier extensions; the suffix
+// only depends on capacity (4 = Plus, 2 = Advanced/Pro, otherwise Basic).
+func buildModelIDNameMapping(capacity, capacityField int) map[string]string {
+	_ = capacityField
+	primarySuffix := tierSuffixForCapacity(capacity)
+
 	result := make(map[string]string)
+
+	// First pass: register IDs whose canonical name matches the primary tier.
 	for _, m := range types.Models {
 		if m.Name == "unspecified" {
 			continue
@@ -275,14 +340,51 @@ func buildModelIDNameMapping() map[string]string {
 		if id == "" {
 			continue
 		}
-		// Use the base (non-tier) name: strip -plus, -advanced suffix
+		if !nameMatchesTierSuffix(m.Name, primarySuffix) {
+			continue
+		}
+		result[id] = m.Name
+	}
+
+	// Second pass: fill any IDs the primary tier didn't cover (BASIC-only ids
+	// such as `gemini-3-pro` on a Plus/Advanced account).
+	for _, m := range types.Models {
+		if m.Name == "unspecified" {
+			continue
+		}
+		id := m.ModelID()
+		if id == "" {
+			continue
+		}
+		if _, exists := result[id]; exists {
+			continue
+		}
 		baseName := m.Name
 		for _, suffix := range []string{"-plus", "-advanced"} {
 			baseName = strings.TrimSuffix(baseName, suffix)
 		}
-		if _, exists := result[id]; !exists {
-			result[id] = baseName
-		}
+		result[id] = baseName
 	}
 	return result
+}
+
+func tierSuffixForCapacity(capacity int) string {
+	switch capacity {
+	case 4:
+		return "-plus"
+	case 2:
+		return "-advanced"
+	default:
+		return ""
+	}
+}
+
+// nameMatchesTierSuffix reports whether a model Name belongs to the tier
+// identified by suffix. Empty suffix means "BASIC tier" — i.e. names without
+// any tier suffix.
+func nameMatchesTierSuffix(name, suffix string) bool {
+	if suffix == "" {
+		return !strings.HasSuffix(name, "-plus") && !strings.HasSuffix(name, "-advanced")
+	}
+	return strings.HasSuffix(name, suffix)
 }

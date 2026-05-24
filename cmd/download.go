@@ -105,6 +105,14 @@ func collectDownloadables(turns []types.ChatTurn) []downloadable {
 					Poll206: true,
 				})
 			}
+			if m.VTTURL != "" {
+				items = append(items, downloadable{
+					URL:     m.VTTURL,
+					Label:   "vtt",
+					DefExt:  ".vtt",
+					Poll206: true,
+				})
+			}
 		}
 	}
 	return items
@@ -188,7 +196,7 @@ func downloadFile(fileURL string, defaultExt string, poll206 bool) error {
 
 	// Append size param for full-size images
 	dlURL := fileURL
-	if defaultExt == "" && strings.Contains(fileURL, "googleusercontent.com") {
+	if defaultExt == "" && isGoogleusercontentURL(fileURL) {
 		parts := strings.Split(fileURL, "/")
 		if !strings.Contains(parts[len(parts)-1], "=") {
 			dlURL = fileURL + "=s2048"
@@ -273,6 +281,15 @@ func downloadFile(fileURL string, defaultExt string, poll206 bool) error {
 	}
 }
 
+func isGoogleusercontentURL(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	return host == "googleusercontent.com" || strings.HasSuffix(host, ".googleusercontent.com")
+}
+
 // extFromContentType returns a file extension (e.g. ".mp3") from a Content-Type header.
 func extFromContentType(ct string) string {
 	if ct == "" {
@@ -284,7 +301,7 @@ func extFromContentType(ct string) string {
 		// Prefer common extensions over obscure ones
 		for _, e := range exts {
 			switch e {
-			case ".mp4", ".mp3", ".png", ".jpg", ".webm", ".wav":
+			case ".mp4", ".mp3", ".png", ".jpg", ".webm", ".wav", ".vtt":
 				return e
 			}
 		}

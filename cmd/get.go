@@ -71,11 +71,21 @@ var getCmd = &cobra.Command{
 			}
 			for _, m := range turn.Media {
 				mediaSeq++
+				label := fmt.Sprintf("[Generated Media %d]", mediaSeq)
+				if m.Title != "" {
+					label += " " + m.Title
+				}
 				if m.MP3URL != "" {
-					lines = append(lines, fmt.Sprintf("[Generated Media %d] MP3: %s", mediaSeq, m.MP3URL))
+					lines = append(lines, fmt.Sprintf("%s MP3: %s", label, m.MP3URL))
 				}
 				if m.MP4URL != "" {
-					lines = append(lines, fmt.Sprintf("[Generated Media %d] MP4: %s", mediaSeq, m.MP4URL))
+					lines = append(lines, fmt.Sprintf("%s MP4: %s", label, m.MP4URL))
+				}
+				if m.VTTURL != "" {
+					lines = append(lines, fmt.Sprintf("%s VTT: %s", label, m.VTTURL))
+				}
+				if m.Genre != "" || len(m.Moods) > 0 {
+					lines = append(lines, fmt.Sprintf("%s Style: %s %s", label, m.Genre, strings.Join(m.Moods, ", ")))
 				}
 			}
 			if len(turn.Videos) == 0 && len(turn.Media) == 0 && len(turn.Images) == 0 &&

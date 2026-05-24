@@ -7,3 +7,5 @@ gemini-web-cli
 *.json
 *.har
 data/
+.pi
+.claude

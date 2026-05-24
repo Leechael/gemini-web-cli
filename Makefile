@@ -4,7 +4,8 @@ BIN_PATH := $(BIN_DIR)/$(BINARY_NAME)
 OUT_DIR := dist
 CMD := .
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
-LDFLAGS := -ldflags "-X github.com/Leechael/gemini-web-cli/cmd.Version=$(VERSION)"
+BUILD_TIME ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+LDFLAGS := -ldflags "-X github.com/Leechael/gemini-web-cli/cmd.Version=$(VERSION) -X github.com/Leechael/gemini-web-cli/cmd.BuildTime=$(BUILD_TIME)"
 GOFLAGS ?= -buildvcs=false
 
 export GOFLAGS

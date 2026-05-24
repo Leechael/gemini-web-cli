@@ -165,7 +165,7 @@ func (c *Client) streamGenerate(ctx context.Context, prompt string, metadata []s
 	uuid := generateUUID()
 	hasCid := len(metadata) > 0 && metadata[0] != ""
 
-	innerReq := c.buildInnerRequest(prompt, metadata, uploads, deepResearch, hasCid, uuid)
+	innerReq := c.buildInnerRequest(prompt, metadata, uploads, model, deepResearch, hasCid, uuid)
 	innerJSON, err := json.Marshal(innerReq)
 	if err != nil {
 		return fmt.Errorf("marshaling inner request: %w", err)
@@ -218,13 +218,15 @@ func (c *Client) streamGenerate(ctx context.Context, prompt string, metadata []s
 	return c.parseStreamResponse(resp.Body, cb)
 }
 
-func (c *Client) buildInnerRequest(prompt string, metadata []string, uploads []*UploadResult, deepResearch bool, hasCid bool, uuid string) []any {
-	// Build a 69-element array matching the Python library format
-	req := make([]any, 69)
+func (c *Client) buildInnerRequest(prompt string, metadata []string, uploads []*UploadResult, model *types.Model, deepResearch bool, hasCid bool, uuid string) []any {
+	// Build an 81-element array matching the current browser StreamGenerate format.
+	req := make([]any, 81)
+	mode := c.resolveGenerationMode(prompt, uploads)
 
 	// [0] = message content
 	// With file attachments (from HAR capture):
 	//   [prompt, 0, null, [[[uploadId, 1, null, "mime/type"], "filename"]], null, null, 0]
+	var message []any
 	if len(uploads) > 0 {
 		var fileRefs []any
 		for _, u := range uploads {
@@ -233,10 +235,17 @@ func (c *Client) buildInnerRequest(prompt string, metadata []string, uploads []*
 				u.FileName,
 			})
 		}
-		req[0] = []any{prompt, 0, nil, fileRefs, nil, nil, 0}
+		message = []any{prompt, 0, nil, fileRefs, nil, nil, 0}
 	} else {
-		req[0] = []any{prompt, 0, nil, nil, nil, nil, 0}
+		message = []any{prompt, 0, nil, nil, nil, nil, 0}
 	}
+	if mode == "video" {
+		for len(message) < 10 {
+			message = append(message, nil)
+		}
+		message[9] = []any{nil, nil, nil, nil, nil, nil, []any{[]any{nil, nil, nil, 1}}}
+	}
+	req[0] = message
 
 	// [1] = language
 	req[1] = []any{c.language}
@@ -261,6 +270,10 @@ func (c *Client) buildInnerRequest(prompt string, metadata []string, uploads []*
 		req[2] = meta
 	}
 
+	// Browser now sends request entropy for all StreamGenerate requests, not just deep research.
+	req[3] = "!" + generateURLSafeToken(2600)
+	req[4] = generateHexUUID()
+
 	// Common fields for all requests
 	req[6] = []any{0}
 	req[7] = 1 // Enable Snapshot Streaming
@@ -279,11 +292,25 @@ func (c *Client) buildInnerRequest(prompt string, metadata []string, uploads []*
 	req[53] = 0
 	req[59] = uuid
 	req[61] = []any{}
+	req[79] = modelSelector(model)
+	req[80] = 1
+
+	// Mode-specific fields observed in browser HAR captures.
+	if !deepResearch {
+		switch mode {
+		case "video":
+			req[49] = 11
+			req[54] = []any{}
+			req[55] = []any{[]any{16}}
+		case "image-to-video":
+			req[49] = 14
+		case "music":
+			req[49] = 21
+		}
+	}
 
 	// Deep research-specific fields
 	if deepResearch {
-		req[3] = "!" + generateURLSafeToken(2600)
-		req[4] = generateHexUUID()
 		req[49] = 1
 		req[54] = []any{[]any{[]any{[]any{[]any{1}}}}}
 		req[55] = []any{[]any{1}}
@@ -801,7 +828,7 @@ func extractMedia(imageData any) []types.GeneratedMedia {
 		}
 	}
 
-	var mp4URL, mp4Thumb string
+	var mp4URL, mp4Thumb, vttURL string
 	mp4Part := getNestedArray(mediaData, 1)
 	if mp4Part != nil {
 		mp4Inner := getNestedArray(mp4Part, 1)
@@ -812,10 +839,41 @@ func extractMedia(imageData any) []types.GeneratedMedia {
 				mp4URL, _ = mp4URLs[1].(string)
 			}
 		}
+		vttInner := getNestedArray(mp4Part, 3)
+		if vttInner != nil {
+			vttURLs := getNestedArray(vttInner, 7)
+			if vttURLs != nil && len(vttURLs) >= 2 {
+				vttURL, _ = vttURLs[1].(string)
+			}
+		}
 	}
 
 	if mp3URL == "" && mp4URL == "" {
 		return nil
+	}
+
+	meta := getNestedArray(mediaData, 2)
+	var title, artist, genre string
+	var moods []string
+	if meta != nil {
+		if len(meta) > 0 {
+			title, _ = meta[0].(string)
+		}
+		if len(meta) > 2 {
+			artist, _ = meta[2].(string)
+		}
+		if len(meta) > 4 {
+			genre, _ = meta[4].(string)
+		}
+		if len(meta) > 5 {
+			if arr, ok := meta[5].([]any); ok {
+				for _, item := range arr {
+					if s, ok := item.(string); ok && s != "" {
+						moods = append(moods, s)
+					}
+				}
+			}
+		}
 	}
 
 	return []types.GeneratedMedia{{
@@ -823,6 +881,11 @@ func extractMedia(imageData any) []types.GeneratedMedia {
 		MP3Thumbnail: mp3Thumb,
 		MP4URL:       mp4URL,
 		MP4Thumbnail: mp4Thumb,
+		VTTURL:       vttURL,
+		Title:        title,
+		Artist:       artist,
+		Genre:        genre,
+		Moods:        moods,
 	}}
 }
 
@@ -973,6 +1036,52 @@ func generateHexUUID() string {
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+func (c *Client) resolveGenerationMode(prompt string, uploads []*UploadResult) string {
+	mode := strings.ToLower(strings.TrimSpace(c.generationMode))
+	switch mode {
+	case "text", "", "auto":
+		// continue below
+	case "video", "image-to-video", "music":
+		return mode
+	default:
+		return ""
+	}
+	if mode == "text" {
+		return ""
+	}
+	lower := strings.ToLower(prompt)
+	if len(uploads) > 0 && (strings.Contains(lower, "video") || strings.Contains(lower, "视频")) {
+		return "image-to-video"
+	}
+	if strings.Contains(lower, "music") || strings.Contains(lower, "song") || strings.Contains(lower, "audio") || strings.Contains(lower, "音乐") || strings.Contains(lower, "歌曲") {
+		return "music"
+	}
+	if strings.Contains(lower, "video") || strings.Contains(lower, "视频") {
+		return "video"
+	}
+	return ""
+}
+
+func modelSelector(model *types.Model) int {
+	if model == nil {
+		return 1
+	}
+	header := model.Headers[types.ModelHeaderKey]
+	if header == "" {
+		return 1
+	}
+	var arr []any
+	if err := json.Unmarshal([]byte(header), &arr); err != nil {
+		return 1
+	}
+	if len(arr) > 14 {
+		if f, ok := arr[14].(float64); ok && f != 0 {
+			return int(f)
+		}
+	}
+	return 1
 }
 
 // extractErrorCode tries multiple known paths to find an error code in the envelope.

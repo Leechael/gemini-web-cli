@@ -13,8 +13,9 @@ import (
 )
 
 var (
-	askNoStream bool
-	askFiles    []string
+	askNoStream       bool
+	askFiles          []string
+	askGenerationMode string
 )
 
 // textExtensions lists file extensions that should be inlined into the prompt.
@@ -48,9 +49,11 @@ var askCmd = &cobra.Command{
 			return err
 		}
 		defer cleanup(c, jsonCookies)
+		if err := setGenerationMode(c, askGenerationMode); err != nil {
+			return err
+		}
 
 		prompt := args[0]
-		model := resolveModel()
 
 		// Process --file: text files inlined, binary files uploaded via resumable protocol
 		var uploads []*client.UploadResult
@@ -73,6 +76,8 @@ var askCmd = &cobra.Command{
 				fmt.Fprintf(cmd.ErrOrStderr(), "Uploaded %s (ID: %s)\n", u.FileName, u.ID)
 			}
 		}
+
+		model := resolveModelForClient(ctx, c, preferredModelForGenerationMode(askGenerationMode, prompt, len(uploads) > 0))
 
 		if askNoStream {
 			var output *types.ModelOutput
@@ -122,6 +127,7 @@ var askCmd = &cobra.Command{
 func init() {
 	askCmd.Flags().BoolVar(&askNoStream, "no-stream", false, "Wait for complete response")
 	askCmd.Flags().StringArrayVarP(&askFiles, "file", "f", nil, "Attach file(s) (can be specified multiple times)")
+	askCmd.Flags().StringVar(&askGenerationMode, "mode", "auto", "Generation mode: auto, text, video, image-to-video, music")
 }
 
 func printImages(output *types.ModelOutput) {
@@ -174,11 +180,17 @@ func printMedia(output *types.ModelOutput) {
 	fmt.Println("\n---\nGenerated media:")
 	for i, m := range output.Media {
 		fmt.Printf("  %d)", i+1)
+		if m.Title != "" {
+			fmt.Printf(" %s", m.Title)
+		}
 		if m.MP3URL != "" {
 			fmt.Printf(" MP3: %s", m.MP3URL)
 		}
 		if m.MP4URL != "" {
 			fmt.Printf(" MP4: %s", m.MP4URL)
+		}
+		if m.VTTURL != "" {
+			fmt.Printf(" VTT: %s", m.VTTURL)
 		}
 		fmt.Println()
 	}

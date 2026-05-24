@@ -46,6 +46,11 @@ type GeneratedMedia struct {
 	MP3Thumbnail string
 	MP4URL       string
 	MP4Thumbnail string
+	VTTURL       string
+	Title        string
+	Artist       string
+	Genre        string
+	Moods        []string
 }
 
 // DeepResearchPlan holds the plan returned by create_deep_research_plan.
@@ -93,11 +98,14 @@ type Model struct {
 const ModelHeaderKey = "x-goog-ext-525001261-jspb"
 
 // BuildModelHeader constructs the HTTP headers required for model selection.
-func BuildModelHeader(modelID string, capacityTail string) map[string]string {
+func BuildModelHeader(modelID string, selector int) map[string]string {
+	if selector == 0 {
+		selector = 1
+	}
 	return map[string]string{
-		ModelHeaderKey:             fmt.Sprintf(`[1,null,null,null,"%s",null,null,0,[4],null,null,%s]`, modelID, capacityTail),
+		ModelHeaderKey:             fmt.Sprintf(`[1,null,null,null,"%s",null,null,0,[4,5,6,8],null,null,2,null,null,%d,1,"FDC4D579-7A5D-4C69-A864-7188BDCFC8FF"]`, modelID, selector),
 		"x-goog-ext-73010989-jspb": "[0]",
-		"x-goog-ext-73010990-jspb": "[0]",
+		"x-goog-ext-73010990-jspb": "[0,0,0]",
 	}
 }
 
@@ -123,15 +131,18 @@ func (m *Model) ModelID() string {
 // Known models matching the Python library constants.
 var Models = []Model{
 	{Name: "unspecified", DisplayName: "Auto-select", Headers: map[string]string{}},
-	{Name: "gemini-3-pro", DisplayName: "Gemini 3 Pro", Headers: BuildModelHeader("9d8ca3786ebdfbea", "1")},
-	{Name: "gemini-3-flash", DisplayName: "Gemini 3 Flash", Headers: BuildModelHeader("fbb127bbb056c959", "1")},
-	{Name: "gemini-3-flash-thinking", DisplayName: "Gemini 3 Flash Thinking", Headers: BuildModelHeader("5bf011840784117a", "1")},
-	{Name: "gemini-3-pro-plus", DisplayName: "Gemini 3 Pro Plus", AdvancedOnly: true, Headers: BuildModelHeader("e6fa609c3fa255c0", "4")},
-	{Name: "gemini-3-flash-plus", DisplayName: "Gemini 3 Flash Plus", AdvancedOnly: true, Headers: BuildModelHeader("56fdd199312815e2", "4")},
-	{Name: "gemini-3-flash-thinking-plus", DisplayName: "Gemini 3 Flash Thinking Plus", AdvancedOnly: true, Headers: BuildModelHeader("e051ce1aa80aa576", "4")},
-	{Name: "gemini-3-pro-advanced", DisplayName: "Gemini 3 Pro Advanced", AdvancedOnly: true, Headers: BuildModelHeader("e6fa609c3fa255c0", "2")},
-	{Name: "gemini-3-flash-advanced", DisplayName: "Gemini 3 Flash Advanced", AdvancedOnly: true, Headers: BuildModelHeader("56fdd199312815e2", "2")},
-	{Name: "gemini-3-flash-thinking-advanced", DisplayName: "Gemini 3 Flash Thinking Advanced", AdvancedOnly: true, Headers: BuildModelHeader("e051ce1aa80aa576", "2")},
+	{Name: "gemini-3.1-flash-lite", DisplayName: "Gemini 3.1 Flash-Lite", Headers: BuildModelHeader("8c46e95b1a07cecc", 6)},
+	{Name: "gemini-3.5-flash", DisplayName: "Gemini 3.5 Flash", Headers: BuildModelHeader("56fdd199312815e2", 1)},
+	{Name: "gemini-3.1-pro", DisplayName: "Gemini 3.1 Pro", AdvancedOnly: true, Headers: BuildModelHeader("e6fa609c3fa255c0", 3)},
+	{Name: "gemini-3-pro", DisplayName: "Gemini 3 Pro", Headers: BuildModelHeader("9d8ca3786ebdfbea", 3)},
+	{Name: "gemini-3-flash", DisplayName: "Gemini 3 Flash", Headers: BuildModelHeader("fbb127bbb056c959", 1)},
+	{Name: "gemini-3-flash-thinking", DisplayName: "Gemini 3 Flash Thinking", Headers: BuildModelHeader("5bf011840784117a", 2)},
+	{Name: "gemini-3-pro-plus", DisplayName: "Gemini 3 Pro Plus", AdvancedOnly: true, Headers: BuildModelHeader("e6fa609c3fa255c0", 3)},
+	{Name: "gemini-3-flash-plus", DisplayName: "Gemini 3 Flash Plus", AdvancedOnly: true, Headers: BuildModelHeader("56fdd199312815e2", 1)},
+	{Name: "gemini-3-flash-thinking-plus", DisplayName: "Gemini 3 Flash Thinking Plus", AdvancedOnly: true, Headers: BuildModelHeader("e051ce1aa80aa576", 2)},
+	{Name: "gemini-3-pro-advanced", DisplayName: "Gemini 3 Pro Advanced", AdvancedOnly: true, Headers: BuildModelHeader("e6fa609c3fa255c0", 3)},
+	{Name: "gemini-3-flash-advanced", DisplayName: "Gemini 3 Flash Advanced", AdvancedOnly: true, Headers: BuildModelHeader("56fdd199312815e2", 1)},
+	{Name: "gemini-3-flash-thinking-advanced", DisplayName: "Gemini 3 Flash Thinking Advanced", AdvancedOnly: true, Headers: BuildModelHeader("e051ce1aa80aa576", 2)},
 }
 
 // FallbackModelName is the model to use when error 1052 (model unavailable) is encountered.

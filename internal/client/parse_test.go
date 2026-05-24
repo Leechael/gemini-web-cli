@@ -236,6 +236,52 @@ func TestExtractImages_WebImage(t *testing.T) {
 	}
 }
 
+func TestExtractVideos_ReadChatDictKey60(t *testing.T) {
+	videoElem := make([]any, 8)
+	videoElem[7] = []any{"https://lh3.googleusercontent.com/thumb", "https://contribution.usercontent.google.com/download?video"}
+	imageData := []any{map[string]any{
+		"60": []any{[]any{[]any{[]any{videoElem}}}},
+	}}
+
+	videos := extractVideos(imageData)
+	if len(videos) != 1 {
+		t.Fatalf("videos = %d, want 1", len(videos))
+	}
+	if videos[0].URL != "https://contribution.usercontent.google.com/download?video" {
+		t.Errorf("video URL = %q", videos[0].URL)
+	}
+}
+
+func TestExtractMedia_ReadChatDictKey87Metadata(t *testing.T) {
+	mp3 := make([]any, 8)
+	mp3[7] = []any{"https://lh3.googleusercontent.com/mp3-thumb", "https://contribution.usercontent.google.com/download?mp3"}
+	mp4 := make([]any, 8)
+	mp4[7] = []any{"https://lh3.googleusercontent.com/mp4-thumb", "https://contribution.usercontent.google.com/download?mp4"}
+	vtt := make([]any, 8)
+	vtt[7] = []any{"", "https://contribution.usercontent.google.com/download?vtt"}
+	mediaData := []any{
+		[]any{nil, mp3},
+		[]any{nil, mp4, nil, vtt},
+		[]any{"Late July Transit", nil, "Afternoon Horizon", nil, "K-Pop / City Pop", []any{"Nostalgic", "Breezy"}},
+	}
+	imageData := []any{map[string]any{"87": mediaData}}
+
+	media := extractMedia(imageData)
+	if len(media) != 1 {
+		t.Fatalf("media = %d, want 1", len(media))
+	}
+	m := media[0]
+	if m.MP3URL == "" || m.MP4URL == "" || m.VTTURL == "" {
+		t.Fatalf("missing URLs: %+v", m)
+	}
+	if m.Title != "Late July Transit" || m.Artist != "Afternoon Horizon" || m.Genre != "K-Pop / City Pop" {
+		t.Fatalf("metadata = %+v", m)
+	}
+	if len(m.Moods) != 2 || m.Moods[0] != "Nostalgic" || m.Moods[1] != "Breezy" {
+		t.Fatalf("moods = %#v", m.Moods)
+	}
+}
+
 // ============================================================================
 // Deep research plan extraction
 //
@@ -478,14 +524,14 @@ func TestExtractResearchResultFromRaw(t *testing.T) {
 // ============================================================================
 // Inner request array construction
 //
-// The request to StreamGenerate uses a 69-element array.
+// The request to StreamGenerate uses an 81-element array.
 // Key indices for deep research (from HAR analysis):
 //
 //   [0]  = [prompt, 0, null, null, null, null, 0]  # message content
 //   [1]  = ["en"]                                   # language
 //   [2]  = metadata (10 elements for new chat, preserved for continuations)
-//   [3]  = "!" + url_safe_token(2600)               # deep research only
-//   [4]  = hex_uuid                                  # deep research only
+//   [3]  = "!" + url_safe_token(2600)
+//   [4]  = hex_uuid
 //   [6]  = [0]
 //   [7]  = 1                                        # enable snapshot streaming
 //   [10] = 1
@@ -503,14 +549,16 @@ func TestExtractResearchResultFromRaw(t *testing.T) {
 //   [59] = "UUID"                                   # per-request UUID
 //   [61] = []
 //   [68] = 2 for deep research / 1 for normal
+//   [79] = model selector
+//   [80] = 1
 // ============================================================================
 
 func TestBuildInnerRequest_NewChat(t *testing.T) {
 	c := &Client{}
-	req := c.buildInnerRequest("hello", nil, nil, false, false, "TEST-UUID")
+	req := c.buildInnerRequest("hello", nil, nil, nil, false, false, "TEST-UUID")
 
-	if len(req) != 69 {
-		t.Fatalf("len = %d, want 69", len(req))
+	if len(req) != 81 {
+		t.Fatalf("len = %d, want 81", len(req))
 	}
 
 	// Metadata should be 10 elements for new chat
@@ -541,11 +589,45 @@ func TestBuildInnerRequest_NewChat(t *testing.T) {
 	if req[59] != "TEST-UUID" {
 		t.Errorf("[59] = %v", req[59])
 	}
+	if req[79] != 1 {
+		t.Errorf("[79] = %v, want 1", req[79])
+	}
+	if req[80] != 1 {
+		t.Errorf("[80] = %v, want 1", req[80])
+	}
+}
+
+func TestBuildInnerRequest_GenerationModes(t *testing.T) {
+	cases := []struct {
+		mode string
+		want any
+	}{
+		{"video", 11},
+		{"image-to-video", 14},
+		{"music", 21},
+	}
+	for _, tc := range cases {
+		c := &Client{generationMode: tc.mode}
+		req := c.buildInnerRequest("make something", nil, nil, nil, false, false, "UUID")
+		if req[49] != tc.want {
+			t.Errorf("mode %s: [49] = %v, want %v", tc.mode, req[49], tc.want)
+		}
+	}
+
+	c := &Client{generationMode: "video"}
+	req := c.buildInnerRequest("make a video", nil, nil, nil, false, false, "UUID")
+	msg := req[0].([]any)
+	if len(msg) < 10 || msg[9] == nil {
+		t.Fatalf("video mode message marker missing: %v", msg)
+	}
+	if req[54] == nil || req[55] == nil {
+		t.Fatalf("video mode slots missing: [54]=%v [55]=%v", req[54], req[55])
+	}
 }
 
 func TestBuildInnerRequest_DeepResearch(t *testing.T) {
 	c := &Client{}
-	req := c.buildInnerRequest("research topic", nil, nil, true, false, "UUID")
+	req := c.buildInnerRequest("research topic", nil, nil, nil, true, false, "UUID")
 
 	// Deep research flags
 	if req[49] != 1 {
@@ -571,7 +653,7 @@ func TestBuildInnerRequest_DeepResearch(t *testing.T) {
 func TestBuildInnerRequest_ContinuationMetadata(t *testing.T) {
 	c := &Client{}
 	meta := []string{"c_abc", "r_def", "rc_ghi", "", "", "", "", "", "", "ctx"}
-	req := c.buildInnerRequest("follow-up", meta, nil, false, true, "UUID")
+	req := c.buildInnerRequest("follow-up", meta, nil, nil, false, true, "UUID")
 
 	// [17] should be [[1]] for existing chat
 	outer, ok := req[17].([]any)
