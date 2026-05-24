@@ -24,7 +24,7 @@ var googCmd = &cobra.Command{
 		defer cleanup(c, jsonCookies)
 
 		prompt := "@Google " + strings.Join(args, " ")
-		model := resolveModel()
+		model := resolveModelForClient(ctx, c)
 
 		if googNoStream {
 			output, err := c.GenerateContent(ctx, prompt, model)

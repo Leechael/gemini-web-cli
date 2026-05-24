@@ -109,6 +109,22 @@ func (c *Client) AvailableModels() []types.Model {
 	return result
 }
 
+// ResolveModel returns a dynamically discovered model by name, display name, or model ID.
+func (c *Client) ResolveModel(name string) *types.Model {
+	if c == nil || c.modelRegistry == nil || name == "" {
+		return nil
+	}
+	if m := c.modelRegistry[name]; m != nil {
+		return m
+	}
+	for _, m := range c.modelRegistry {
+		if m.Name == name || m.DisplayName == name || m.ModelID() == name {
+			return m
+		}
+	}
+	return nil
+}
+
 func parseUserStatus(body string) (types.AccountStatus, []types.Model, error) {
 	if body == "" || body == "[]" {
 		return types.StatusAvailable, nil, nil
@@ -200,22 +216,24 @@ func parseUserStatus(body string) (types.AccountStatus, []types.Model, error) {
 				}
 			}
 
-			// Build capacity tail for header construction
-			var capacityTail string
-			if capacityField == 13 {
-				capacityTail = fmt.Sprintf("null,%d", capacity)
-			} else {
-				capacityTail = fmt.Sprintf("%d", capacity)
+			selector := capacity
+			if len(md) > 17 {
+				if f, ok := md[17].(float64); ok && f != 0 {
+					selector = int(f)
+				}
 			}
 
-			name := idNameMapping[modelID]
+			name := dynamicModelName(md, modelID, displayName)
 			if name == "" {
-				name = modelID // fallback to hex ID
+				name = idNameMapping[modelID]
+			}
+			if name == "" {
+				name = modelID
 			}
 
-			// Determine advancedOnly from hardcoded model definitions (per-model property),
-			// not from account-level capacity (which would mark ALL models as advanced on paid accounts).
-			advancedOnly := false
+			// Determine advancedOnly from the dynamic selector when available, with
+			// hardcoded definitions as a fallback.
+			advancedOnly := selector == 3 || strings.Contains(name, "pro")
 			if known := types.FindModel(name); known != nil {
 				advancedOnly = known.AdvancedOnly
 			}
@@ -224,13 +242,46 @@ func parseUserStatus(body string) (types.AccountStatus, []types.Model, error) {
 				Name:         name,
 				DisplayName:  displayName,
 				AdvancedOnly: advancedOnly,
-				Headers:      types.BuildModelHeader(modelID, capacityTail),
+				Headers:      types.BuildModelHeader(modelID, selector),
 				Description:  description,
 			})
 		}
 	}
 
 	return accountStatus, models, nil
+}
+
+func dynamicModelName(modelData []any, modelID string, displayName string) string {
+	candidates := []string{}
+	for _, idx := range []int{19, 11, 10, 1} {
+		if idx < len(modelData) {
+			if s, ok := modelData[idx].(string); ok && s != "" {
+				candidates = append(candidates, s)
+			}
+		}
+	}
+	for _, s := range candidates {
+		name := strings.ToLower(strings.TrimSpace(s))
+		name = strings.ReplaceAll(name, " ", "-")
+		name = strings.ReplaceAll(name, "_", "-")
+		name = strings.Trim(name, "-")
+		if name == "" {
+			continue
+		}
+		if !strings.HasPrefix(name, "gemini-") {
+			name = "gemini-" + name
+		}
+		return name
+	}
+	if displayName != "" {
+		name := strings.ToLower(strings.TrimSpace(displayName))
+		name = strings.ReplaceAll(name, " ", "-")
+		if !strings.HasPrefix(name, "gemini-") {
+			name = "gemini-" + name
+		}
+		return name
+	}
+	return modelID
 }
 
 func computeCapacity(tierFlags, capFlags []float64) (int, int) {

@@ -20,7 +20,7 @@ var researchCmd = &cobra.Command{
 		defer cleanup(c, jsonCookies)
 
 		prompt := args[0]
-		model := resolveModel()
+		model := resolveModelForClient(ctx, c)
 		plan, err := c.CreateAndStartDeepResearch(ctx, prompt, model)
 		if err != nil {
 			return err

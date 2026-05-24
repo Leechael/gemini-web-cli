@@ -148,3 +148,19 @@ func cleanup(c *client.Client, jsonCookies map[string]string) {
 func resolveModel() *types.Model {
 	return types.FindModel(modelName)
 }
+
+func resolveModelForClient(ctx context.Context, c *client.Client) *types.Model {
+	if model := types.FindModel(modelName); model != nil {
+		return model
+	}
+	if c != nil {
+		_ = c.FetchAndCacheModels(ctx)
+		if model := c.ResolveModel(modelName); model != nil {
+			return model
+		}
+	}
+	if modelName != "" && modelName != "unspecified" {
+		fmt.Fprintf(os.Stderr, "Warning: model %q not found; using Gemini auto-select.\n", modelName)
+	}
+	return types.FindModel("unspecified")
+}

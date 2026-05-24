@@ -24,7 +24,7 @@ var replyCmd = &cobra.Command{
 
 		chatID := args[0]
 		prompt := args[1]
-		model := resolveModel()
+		model := resolveModelForClient(ctx, c)
 
 		// Fetch latest turn to get rid/rcid for proper conversation continuation
 		// (matching Python's cmd_reply: metadata=[cid, rid, rcid])

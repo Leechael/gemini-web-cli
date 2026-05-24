@@ -50,7 +50,7 @@ var askCmd = &cobra.Command{
 		defer cleanup(c, jsonCookies)
 
 		prompt := args[0]
-		model := resolveModel()
+		model := resolveModelForClient(ctx, c)
 
 		// Process --file: text files inlined, binary files uploaded via resumable protocol
 		var uploads []*client.UploadResult

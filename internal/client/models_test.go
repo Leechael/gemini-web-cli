@@ -31,8 +31,8 @@ func TestBuildModelIDNameMapping_Basic(t *testing.T) {
 		modelID(t, "gemini-3-pro"):                 "gemini-3-pro",
 		modelID(t, "gemini-3-flash"):               "gemini-3-flash",
 		modelID(t, "gemini-3-flash-thinking"):      "gemini-3-flash-thinking",
-		modelID(t, "gemini-3-pro-plus"):            "gemini-3-pro",
-		modelID(t, "gemini-3-flash-plus"):          "gemini-3-flash",
+		modelID(t, "gemini-3-pro-plus"):            "gemini-3.1-pro",
+		modelID(t, "gemini-3-flash-plus"):          "gemini-3.5-flash",
 		modelID(t, "gemini-3-flash-thinking-plus"): "gemini-3-flash-thinking",
 	}
 	for id, want := range cases {
