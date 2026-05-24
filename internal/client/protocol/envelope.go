@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"strings"
+	"unicode/utf8"
 )
 
 // StripResponsePrefix removes Google's XSSI prefix from a batchexecute response.
@@ -57,12 +57,11 @@ func ExtractRPCBody(response []byte, rpcID string) ([]byte, int, error) {
 // The length counts UTF-16 code units starting immediately after the digits.
 func ParseLengthPrefixedFrames(content []byte) [][]byte {
 	var frames [][]byte
-	runes := []rune(string(content))
 	pos := 0
-	totalLen := len(runes)
+	totalLen := len(content)
 
 	for pos < totalLen {
-		for pos < totalLen && (runes[pos] == ' ' || runes[pos] == '\t' || runes[pos] == '\n' || runes[pos] == '\r') {
+		for pos < totalLen && (content[pos] == ' ' || content[pos] == '\t' || content[pos] == '\n' || content[pos] == '\r') {
 			pos++
 		}
 		if pos >= totalLen {
@@ -70,7 +69,7 @@ func ParseLengthPrefixedFrames(content []byte) [][]byte {
 		}
 
 		numStart := pos
-		for pos < totalLen && runes[pos] >= '0' && runes[pos] <= '9' {
+		for pos < totalLen && content[pos] >= '0' && content[pos] <= '9' {
 			pos++
 		}
 		if pos == numStart {
@@ -78,19 +77,22 @@ func ParseLengthPrefixedFrames(content []byte) [][]byte {
 			continue
 		}
 
-		if pos >= totalLen || runes[pos] != '\n' {
+		if pos >= totalLen || content[pos] != '\n' {
 			break
 		}
 
 		utf16Units := 0
-		for _, ch := range string(runes[numStart:pos]) {
+		for _, ch := range content[numStart:pos] {
 			utf16Units = utf16Units*10 + int(ch-'0')
 		}
 
 		contentStart := pos
 		unitsConsumed := 0
 		for pos < totalLen && unitsConsumed < utf16Units {
-			r := runes[pos]
+			r, size := utf8.DecodeRune(content[pos:])
+			if r == utf8.RuneError && size == 0 {
+				break
+			}
 			units := 1
 			if r > 0xFFFF {
 				units = 2
@@ -99,16 +101,16 @@ func ParseLengthPrefixedFrames(content []byte) [][]byte {
 				break
 			}
 			unitsConsumed += units
-			pos++
+			pos += size
 		}
 
 		if unitsConsumed < utf16Units {
 			break
 		}
 
-		chunk := strings.TrimSpace(string(runes[contentStart:pos]))
-		if chunk != "" {
-			frames = append(frames, []byte(chunk))
+		chunk := bytes.TrimSpace(content[contentStart:pos])
+		if len(chunk) != 0 {
+			frames = append(frames, chunk)
 		}
 	}
 

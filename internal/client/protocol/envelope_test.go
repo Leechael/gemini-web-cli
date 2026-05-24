@@ -3,6 +3,7 @@ package protocol
 import (
 	"embed"
 	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -83,19 +84,5 @@ func utf16LenString(s string) string {
 			units++
 		}
 	}
-	return strconvItoa(units)
-}
-
-func strconvItoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var digits [20]byte
-	i := len(digits)
-	for n > 0 {
-		i--
-		digits[i] = byte('0' + n%10)
-		n /= 10
-	}
-	return string(digits[i:])
+	return strconv.Itoa(units)
 }

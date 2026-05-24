@@ -10,15 +10,21 @@
 //
 // Response shape (after StripResponsePrefix + ExtractRPCBody):
 //
-//	[[["me", 1, ["<userId>", [null,...,[null,["me"]]], [profile_arr]]]]]
-//	              ↑           ↑                       ↑
-//	              user id    metadata               profile data
+//	[[["me", 1, userData, null, []]]]
+//	              ↑
+//	              data[0][0][2]
 //
-//	profile_arr structure:
-//	  [0]:  [true, 0, true, null, ..., "<userId>", ..., [unix_seconds, nanos]]
-//	  [1]:  "<display name>"
-//	  [3]:  "<email>"  (may be absent if scope not granted)
-//	  ...   photo URL nesting: needs further reverse-engineering from HAR sample
+//	userData structure:
+//	  [0]: "<userId>"
+//	  [1]: metadata, including [21][1] == ["me"]
+//	  [2]: name blocks; display name is userData[2][0][1]
+//	  [3]: photo blocks; photo URL is userData[3][0][1] when present
+//	  [9]: email blocks; email is userData[9][0][1] when present
+//
+//	name block structure:
+//	  [0]: [true, 0, true, null, ..., "<userId>", ..., [unix_seconds, nanos]]
+//	  [1]: "<display name>"
+//	  [15]: alternate "<display name>"
 //
 // Notes:
 //   - "me" can also be a specific account id; HAR only uses "me"
@@ -129,13 +135,14 @@ func firstString(values ...string) string {
 }
 
 func findEmail(v any) string {
-	s, ok := v.(string)
-	if ok && strings.Contains(s, "@") {
-		return s
-	}
 	arr, ok := v.([]any)
 	if !ok {
 		return ""
+	}
+	if len(arr) > 1 {
+		if s, ok := arr[1].(string); ok && isEmailCandidate(s) {
+			return s
+		}
 	}
 	for _, item := range arr {
 		if email := findEmail(item); email != "" {
@@ -143,4 +150,12 @@ func findEmail(v any) string {
 		}
 	}
 	return ""
+}
+
+func isEmailCandidate(s string) bool {
+	if strings.ContainsAny(s, " \t\r\n") {
+		return false
+	}
+	at := strings.IndexByte(s, '@')
+	return at > 0 && at < len(s)-1 && strings.LastIndexByte(s, '@') == at && strings.Contains(s[at+1:], ".")
 }

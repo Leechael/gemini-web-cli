@@ -72,6 +72,35 @@ func TestCallRPC(t *testing.T) {
 	}
 }
 
+func TestCallRPC_WithSourcePath(t *testing.T) {
+	var gotSourcePath string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotSourcePath = r.URL.Query().Get("source-path")
+		_, _ = w.Write(makeTestBatchResponse("rpc", `[]`, 0))
+	}))
+	defer srv.Close()
+
+	origBase := baseURL
+	baseURL = srv.URL
+	defer func() { baseURL = origBase }()
+
+	c := newTestClient()
+	c.accessToken = "token"
+	c.language = "en"
+	c.reqID = 1
+	c.accountPath = "/u/1"
+	c.httpClient = srv.Client()
+
+	_, _, err := c.CallRPC(t.Context(), "rpc", "[]", WithSourcePath("/manual"))
+	if err != nil {
+		t.Fatalf("CallRPC: %v", err)
+	}
+	if gotSourcePath != "/manual" {
+		t.Fatalf("source-path = %q, want /manual", gotSourcePath)
+	}
+}
+
 func TestCallRPC_SourcePathOverridesSourceCid(t *testing.T) {
 	var gotSourcePath string
 

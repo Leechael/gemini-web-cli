@@ -17,6 +17,7 @@ type rpcConfig struct {
 type RPCOpt func(*rpcConfig)
 
 // WithSourcePath overrides the source-path query parameter.
+// If both WithSourcePath and WithSourceCid are passed, WithSourcePath wins.
 func WithSourcePath(sp string) RPCOpt {
 	return func(cfg *rpcConfig) {
 		cfg.sourcePath = sp
@@ -24,7 +25,7 @@ func WithSourcePath(sp string) RPCOpt {
 	}
 }
 
-// WithSourceCid sets source-path to c.appPath() + "/" + cid.
+// WithSourceCid sets source-path to c.appPath() + "/" + cid unless WithSourcePath is also passed.
 func WithSourceCid(cid string) RPCOpt {
 	return func(cfg *rpcConfig) {
 		cfg.sourceCid = cid
