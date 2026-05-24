@@ -84,6 +84,17 @@ var statusCmd = &cobra.Command{
 
 		fmt.Printf("  Init: OK (access token obtained)\n")
 
+		// User profile — first user-visible validation point for the three-layer architecture.
+		if user, err := c.GetUserProfile(ctx); err == nil && user != nil {
+			label := user.DisplayName
+			if user.Email != "" {
+				label = fmt.Sprintf("%s <%s>", user.DisplayName, user.Email)
+			}
+			fmt.Printf("  User: %s\n", label)
+		} else if verbose && err != nil {
+			fmt.Fprintf(os.Stderr, "GetUserProfile failed: %v\n", err)
+		}
+
 		// Fetch account status
 		status, dynamicModels, fetchErr := c.FetchUserStatus(ctx)
 		if fetchErr != nil {
