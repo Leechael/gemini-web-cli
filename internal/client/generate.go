@@ -165,7 +165,7 @@ func (c *Client) streamGenerate(ctx context.Context, prompt string, metadata []s
 	uuid := generateUUID()
 	hasCid := len(metadata) > 0 && metadata[0] != ""
 
-	innerReq := c.buildInnerRequest(prompt, metadata, uploads, deepResearch, hasCid, uuid)
+	innerReq := c.buildInnerRequest(prompt, metadata, uploads, model, deepResearch, hasCid, uuid)
 	innerJSON, err := json.Marshal(innerReq)
 	if err != nil {
 		return fmt.Errorf("marshaling inner request: %w", err)
@@ -218,9 +218,9 @@ func (c *Client) streamGenerate(ctx context.Context, prompt string, metadata []s
 	return c.parseStreamResponse(resp.Body, cb)
 }
 
-func (c *Client) buildInnerRequest(prompt string, metadata []string, uploads []*UploadResult, deepResearch bool, hasCid bool, uuid string) []any {
-	// Build a 69-element array matching the Python library format
-	req := make([]any, 69)
+func (c *Client) buildInnerRequest(prompt string, metadata []string, uploads []*UploadResult, model *types.Model, deepResearch bool, hasCid bool, uuid string) []any {
+	// Build an 81-element array matching the current browser StreamGenerate format.
+	req := make([]any, 81)
 
 	// [0] = message content
 	// With file attachments (from HAR capture):
@@ -261,6 +261,10 @@ func (c *Client) buildInnerRequest(prompt string, metadata []string, uploads []*
 		req[2] = meta
 	}
 
+	// Browser now sends request entropy for all StreamGenerate requests, not just deep research.
+	req[3] = "!" + generateURLSafeToken(2600)
+	req[4] = generateHexUUID()
+
 	// Common fields for all requests
 	req[6] = []any{0}
 	req[7] = 1 // Enable Snapshot Streaming
@@ -279,11 +283,11 @@ func (c *Client) buildInnerRequest(prompt string, metadata []string, uploads []*
 	req[53] = 0
 	req[59] = uuid
 	req[61] = []any{}
+	req[79] = modelSelector(model)
+	req[80] = 1
 
 	// Deep research-specific fields
 	if deepResearch {
-		req[3] = "!" + generateURLSafeToken(2600)
-		req[4] = generateHexUUID()
 		req[49] = 1
 		req[54] = []any{[]any{[]any{[]any{[]any{1}}}}}
 		req[55] = []any{[]any{1}}
@@ -973,6 +977,26 @@ func generateHexUUID() string {
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+func modelSelector(model *types.Model) int {
+	if model == nil {
+		return 1
+	}
+	header := model.Headers[types.ModelHeaderKey]
+	if header == "" {
+		return 1
+	}
+	var arr []any
+	if err := json.Unmarshal([]byte(header), &arr); err != nil {
+		return 1
+	}
+	if len(arr) > 14 {
+		if f, ok := arr[14].(float64); ok && f != 0 {
+			return int(f)
+		}
+	}
+	return 1
 }
 
 // extractErrorCode tries multiple known paths to find an error code in the envelope.

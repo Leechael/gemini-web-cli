@@ -478,14 +478,14 @@ func TestExtractResearchResultFromRaw(t *testing.T) {
 // ============================================================================
 // Inner request array construction
 //
-// The request to StreamGenerate uses a 69-element array.
+// The request to StreamGenerate uses an 81-element array.
 // Key indices for deep research (from HAR analysis):
 //
 //   [0]  = [prompt, 0, null, null, null, null, 0]  # message content
 //   [1]  = ["en"]                                   # language
 //   [2]  = metadata (10 elements for new chat, preserved for continuations)
-//   [3]  = "!" + url_safe_token(2600)               # deep research only
-//   [4]  = hex_uuid                                  # deep research only
+//   [3]  = "!" + url_safe_token(2600)
+//   [4]  = hex_uuid
 //   [6]  = [0]
 //   [7]  = 1                                        # enable snapshot streaming
 //   [10] = 1
@@ -503,14 +503,16 @@ func TestExtractResearchResultFromRaw(t *testing.T) {
 //   [59] = "UUID"                                   # per-request UUID
 //   [61] = []
 //   [68] = 2 for deep research / 1 for normal
+//   [79] = model selector
+//   [80] = 1
 // ============================================================================
 
 func TestBuildInnerRequest_NewChat(t *testing.T) {
 	c := &Client{}
-	req := c.buildInnerRequest("hello", nil, nil, false, false, "TEST-UUID")
+	req := c.buildInnerRequest("hello", nil, nil, nil, false, false, "TEST-UUID")
 
-	if len(req) != 69 {
-		t.Fatalf("len = %d, want 69", len(req))
+	if len(req) != 81 {
+		t.Fatalf("len = %d, want 81", len(req))
 	}
 
 	// Metadata should be 10 elements for new chat
@@ -541,11 +543,17 @@ func TestBuildInnerRequest_NewChat(t *testing.T) {
 	if req[59] != "TEST-UUID" {
 		t.Errorf("[59] = %v", req[59])
 	}
+	if req[79] != 1 {
+		t.Errorf("[79] = %v, want 1", req[79])
+	}
+	if req[80] != 1 {
+		t.Errorf("[80] = %v, want 1", req[80])
+	}
 }
 
 func TestBuildInnerRequest_DeepResearch(t *testing.T) {
 	c := &Client{}
-	req := c.buildInnerRequest("research topic", nil, nil, true, false, "UUID")
+	req := c.buildInnerRequest("research topic", nil, nil, nil, true, false, "UUID")
 
 	// Deep research flags
 	if req[49] != 1 {
@@ -571,7 +579,7 @@ func TestBuildInnerRequest_DeepResearch(t *testing.T) {
 func TestBuildInnerRequest_ContinuationMetadata(t *testing.T) {
 	c := &Client{}
 	meta := []string{"c_abc", "r_def", "rc_ghi", "", "", "", "", "", "", "ctx"}
-	req := c.buildInnerRequest("follow-up", meta, nil, false, true, "UUID")
+	req := c.buildInnerRequest("follow-up", meta, nil, nil, false, true, "UUID")
 
 	// [17] should be [[1]] for existing chat
 	outer, ok := req[17].([]any)
