@@ -44,19 +44,68 @@ func ExtractRPCBody(response []byte, rpcID string) ([]byte, int, error) {
 			if s, ok := itemArr[2].(string); ok {
 				body = []byte(s)
 			}
-			var rejectCode int
-			if len(itemArr) > 5 {
-				if codeArr, ok := itemArr[5].([]any); ok && len(codeArr) > 0 {
-					if f, ok := codeArr[0].(float64); ok {
-						rejectCode = int(f)
-					}
-				}
-			}
-			return body, rejectCode, nil
+			return body, rejectCodeFromWrbFrItem(itemArr), nil
 		}
 	}
 
 	return nil, 0, fmt.Errorf("RPC response for %s not found", rpcID)
+}
+
+// ExtractRPCBodies parses a batchexecute response containing multiple wrb.fr frames.
+// It returns each RPC body keyed by RPC ID and reject codes keyed by RPC ID.
+func ExtractRPCBodies(response []byte, rpcIDs []string) (map[string][]byte, map[string]int, error) {
+	wanted := map[string]bool{}
+	for _, rpcID := range rpcIDs {
+		wanted[rpcID] = true
+	}
+
+	bodies := map[string][]byte{}
+	rejectCodes := map[string]int{}
+	frames := ParseLengthPrefixedFrames(response)
+	for _, frame := range frames {
+		var arr []any
+		if err := json.Unmarshal(frame, &arr); err != nil {
+			continue
+		}
+		items := findWrbFrItems(arr)
+		for _, itemArr := range items {
+			if len(itemArr) < 3 {
+				continue
+			}
+			tag, _ := itemArr[0].(string)
+			id, _ := itemArr[1].(string)
+			if tag != "wrb.fr" || !wanted[id] {
+				continue
+			}
+			if _, exists := bodies[id]; exists {
+				continue
+			}
+			body := []byte{}
+			if s, ok := itemArr[2].(string); ok {
+				body = []byte(s)
+			}
+			bodies[id] = body
+			if code := rejectCodeFromWrbFrItem(itemArr); code != 0 {
+				rejectCodes[id] = code
+			}
+		}
+	}
+	return bodies, rejectCodes, nil
+}
+
+func rejectCodeFromWrbFrItem(itemArr []any) int {
+	if len(itemArr) <= 5 {
+		return 0
+	}
+	codeArr, ok := itemArr[5].([]any)
+	if !ok || len(codeArr) == 0 {
+		return 0
+	}
+	f, ok := codeArr[0].(float64)
+	if !ok {
+		return 0
+	}
+	return int(f)
 }
 
 // ParseLengthPrefixedFrames parses Google's length-prefixed framing protocol.

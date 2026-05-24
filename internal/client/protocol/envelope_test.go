@@ -43,6 +43,51 @@ func TestExtractRPCBody(t *testing.T) {
 	}
 }
 
+func TestExtractRPCBodies_FromSampleFixture(t *testing.T) {
+	response := StripResponsePrefix(makeFramedResponse(
+		`[["wrb.fr","one","[1]",null,null,[0]]]`,
+		`[["wrb.fr","two","[2]",null,null,[0]]]`,
+	))
+	bodies, rejectCodes, err := ExtractRPCBodies(response, []string{"one", "two"})
+	if err != nil {
+		t.Fatalf("ExtractRPCBodies: %v", err)
+	}
+	if string(bodies["one"]) != "[1]" || string(bodies["two"]) != "[2]" {
+		t.Fatalf("bodies = %#v", bodies)
+	}
+	if len(rejectCodes) != 0 {
+		t.Fatalf("rejectCodes = %#v, want empty", rejectCodes)
+	}
+}
+
+func TestExtractRPCBodies_MissingRPC(t *testing.T) {
+	response := StripResponsePrefix(makeFramedResponse(`[["wrb.fr","one","[1]",null,null,[0]]]`))
+	bodies, rejectCodes, err := ExtractRPCBodies(response, []string{"one", "missing"})
+	if err != nil {
+		t.Fatalf("ExtractRPCBodies: %v", err)
+	}
+	if _, ok := bodies["one"]; !ok {
+		t.Fatalf("one missing from bodies")
+	}
+	if _, ok := bodies["missing"]; ok {
+		t.Fatalf("missing RPC present in bodies")
+	}
+	if _, ok := rejectCodes["missing"]; ok {
+		t.Fatalf("missing RPC present in rejectCodes")
+	}
+}
+
+func TestExtractRPCBodies_RejectCodes(t *testing.T) {
+	response := StripResponsePrefix(makeFramedResponse(`[["wrb.fr","one","[]",null,null,[7]]]`))
+	_, rejectCodes, err := ExtractRPCBodies(response, []string{"one"})
+	if err != nil {
+		t.Fatalf("ExtractRPCBodies: %v", err)
+	}
+	if rejectCodes["one"] != 7 {
+		t.Fatalf("rejectCodes[one] = %d, want 7", rejectCodes["one"])
+	}
+}
+
 func TestExtractRPCBody_FromHARSample(t *testing.T) {
 	raw, err := testdata.ReadFile("testdata/get_user_profile_basic.txt")
 	if err != nil {
