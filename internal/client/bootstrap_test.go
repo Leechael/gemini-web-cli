@@ -3,6 +3,8 @@ package client
 import (
 	"net/http"
 	"net/http/httptest"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -114,6 +116,16 @@ func TestPrefetchBootstrap_ConcurrencyTiming(t *testing.T) {
 	}
 }
 
+func TestPrefetchViaBatch_Parity(t *testing.T) {
+	c, srv := newBootstrapTestClient(t, 0, "")
+	defer srv.Close()
+	goroutineResult := c.prefetchViaGoroutine(t.Context())
+	batchResult := c.prefetchViaBatch(t.Context())
+	if !reflect.DeepEqual(goroutineResult, batchResult) {
+		t.Fatalf("batch result mismatch\ngoroutine=%#v\nbatch=%#v", goroutineResult, batchResult)
+	}
+}
+
 func newBootstrapTestClient(t *testing.T, delay time.Duration, failRPC string) (*Client, *httptest.Server) {
 	t.Helper()
 	srv := httptest.NewServer(newBootstrapTestHandler(delay, failRPC))
@@ -135,6 +147,10 @@ func newBootstrapTestHandler(delay time.Duration, failRPC string) http.Handler {
 			time.Sleep(delay)
 		}
 		rpcids := r.URL.Query().Get("rpcids")
+		if strings.Contains(rpcids, ",") {
+			_, _ = w.Write(makeTestMultiBatchResponse(bootstrapBodies, nil))
+			return
+		}
 		if rpcids == failRPC {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
