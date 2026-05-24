@@ -86,6 +86,9 @@ func runDebugRPC(cmd *cobra.Command, args []string) error {
 		fmt.Fprintln(os.Stderr, "warning: body is not valid JSON, printing raw")
 	}
 	_, _ = os.Stdout.Write(body)
+	if len(body) > 0 && body[len(body)-1] != '\n' {
+		fmt.Println()
+	}
 	return nil
 }
 
