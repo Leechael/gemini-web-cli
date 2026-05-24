@@ -88,7 +88,7 @@ func TestExtractRPCBodies_RejectCodes(t *testing.T) {
 	}
 }
 
-func TestExtractRPCBody_FromHARSample(t *testing.T) {
+func TestExtractRPCBody_FromSampleFixture(t *testing.T) {
 	raw, err := testdata.ReadFile("testdata/get_user_profile_basic.txt")
 	if err != nil {
 		t.Fatal(err)
