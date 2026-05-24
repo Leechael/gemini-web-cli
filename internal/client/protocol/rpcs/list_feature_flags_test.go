@@ -35,6 +35,16 @@ func TestDecodeListFeatureFlags_FromSampleFixture(t *testing.T) {
 	}
 }
 
+func TestDecodeListFeatureFlags_StringID(t *testing.T) {
+	flags, err := DecodeListFeatureFlags([]byte(`[false,[["string_flag",true,1]]]`))
+	if err != nil {
+		t.Fatalf("DecodeListFeatureFlags: %v", err)
+	}
+	if len(flags) != 1 || flags[0].ID != "string_flag" {
+		t.Fatalf("flags = %#v", flags)
+	}
+}
+
 func TestDecodeListFeatureFlags_EmptyBody(t *testing.T) {
 	if _, err := DecodeListFeatureFlags(nil); err == nil {
 		t.Fatalf("DecodeListFeatureFlags(nil) error = nil")

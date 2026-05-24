@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-//go:embed testdata/get_user_profile_basic.txt
+//go:embed testdata/*.txt
 var testdata embed.FS
 
 func TestStripResponsePrefix(t *testing.T) {
@@ -88,6 +88,31 @@ func TestExtractRPCBodies_RejectCodes(t *testing.T) {
 	}
 }
 
+func TestSampleFixtureLengthPrefixes(t *testing.T) {
+	entries, err := testdata.ReadDir("testdata")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		raw, err := testdata.ReadFile("testdata/" + entry.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		content := string(StripResponsePrefix(raw))
+		lineEnd := strings.IndexByte(content, '\n')
+		if lineEnd < 0 {
+			t.Fatalf("%s missing length prefix", entry.Name())
+		}
+		declared, err := strconv.Atoi(content[:lineEnd])
+		if err != nil {
+			t.Fatalf("%s length prefix is not numeric: %v", entry.Name(), err)
+		}
+		if got := utf16Len(content[lineEnd:]); got != declared {
+			t.Fatalf("%s length prefix = %d, want %d", entry.Name(), declared, got)
+		}
+	}
+}
+
 func TestExtractRPCBody_FromSampleFixture(t *testing.T) {
 	raw, err := testdata.ReadFile("testdata/get_user_profile_basic.txt")
 	if err != nil {
@@ -121,6 +146,10 @@ func makeFramedResponse(frames ...string) []byte {
 }
 
 func utf16LenString(s string) string {
+	return strconv.Itoa(utf16Len(s))
+}
+
+func utf16Len(s string) int {
 	units := 0
 	for _, r := range s {
 		if r > 0xFFFF {
@@ -129,5 +158,5 @@ func utf16LenString(s string) string {
 			units++
 		}
 	}
-	return strconv.Itoa(units)
+	return units
 }

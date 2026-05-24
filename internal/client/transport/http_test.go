@@ -61,6 +61,9 @@ func TestPostBatch(t *testing.T) {
 func TestPostBatchMulti(t *testing.T) {
 	var gotForm url.Values
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("method = %s, want POST", r.Method)
+		}
 		if err := r.ParseForm(); err != nil {
 			t.Fatal(err)
 		}
@@ -95,7 +98,7 @@ func TestPostBatchMulti(t *testing.T) {
 	if len(outer) != 2 {
 		t.Fatalf("len(outer) = %d, want 2", len(outer))
 	}
-	if outer[0][0][0] != "one" || outer[1][0][0] != "two" {
+	if outer[0][0][0] != "one" || outer[0][0][1] != "[1]" || outer[1][0][0] != "two" || outer[1][0][1] != "[2]" {
 		t.Fatalf("unexpected f.req = %s", gotForm.Get("f.req"))
 	}
 }

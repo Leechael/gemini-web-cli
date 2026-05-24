@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/Leechael/gemini-web-cli/internal/client/protocol"
 	"github.com/Leechael/gemini-web-cli/internal/client/transport"
@@ -81,7 +82,12 @@ func (c *Client) CallRPCBatch(ctx context.Context, calls []RPCCall, opts ...RPCO
 	}
 
 	rpcIDs := make([]string, 0, len(calls))
+	seen := map[string]bool{}
 	for _, call := range calls {
+		if seen[call.ID] {
+			return nil, nil, fmt.Errorf("duplicate RPC ID in batch: %s", call.ID)
+		}
+		seen[call.ID] = true
 		rpcIDs = append(rpcIDs, call.ID)
 	}
 	raw, err := transport.PostBatchMulti(ctx, transport.PostBatchMultiRequest{

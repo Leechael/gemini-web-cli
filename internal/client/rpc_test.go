@@ -177,6 +177,14 @@ func TestCallRPCBatch_HappyPath(t *testing.T) {
 	}
 }
 
+func TestCallRPCBatch_DuplicateID(t *testing.T) {
+	c := newTestClient()
+	_, _, err := c.CallRPCBatch(t.Context(), []RPCCall{{ID: "dup", Payload: "[1]"}, {ID: "dup", Payload: "[2]"}})
+	if err == nil {
+		t.Fatalf("CallRPCBatch duplicate ID error = nil")
+	}
+}
+
 func TestCallRPCBatch_PartialResponse(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write(makeTestMultiBatchResponse(map[string]string{"one": `[1]`, "two": `[2]`}, nil))

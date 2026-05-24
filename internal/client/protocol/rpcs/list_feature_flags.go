@@ -65,8 +65,8 @@ func DecodeListFeatureFlags(body []byte) ([]FeatureFlag, error) {
 		if !ok {
 			continue
 		}
-		id := strconv.Itoa(protocol.IntAt(item, 0))
-		if id == "0" {
+		id := featureFlagID(item)
+		if id == "" || id == "0" {
 			continue
 		}
 		value, _ := protocol.ValueAt(item, 2)
@@ -80,4 +80,11 @@ func DecodeListFeatureFlags(body []byte) ([]FeatureFlag, error) {
 		return nil, fmt.Errorf("ListFeatureFlags response did not contain flags")
 	}
 	return flags, nil
+}
+
+func featureFlagID(item []any) string {
+	if id := protocol.StringAt(item, 0); id != "" {
+		return id
+	}
+	return strconv.Itoa(protocol.IntAt(item, 0))
 }
