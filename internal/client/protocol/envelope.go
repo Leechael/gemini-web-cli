@@ -1,3 +1,8 @@
+// Package protocol contains protocol-level helpers for Gemini batchexecute RPCs.
+//
+// envelope.go handles the response wrapper around every RPC result: the XSSI prefix,
+// Google's length-prefixed frames, and the wrb.fr item that carries one RPC body.
+// RPC-specific decoders should receive only the inner body returned by ExtractRPCBody.
 package protocol
 
 import (
@@ -8,11 +13,13 @@ import (
 )
 
 // StripResponsePrefix removes Google's XSSI prefix from a batchexecute response.
+// The prefix is not part of the length-prefixed frame stream.
 func StripResponsePrefix(response []byte) []byte {
 	return bytes.TrimPrefix(response, []byte(")]}'\n"))
 }
 
 // ExtractRPCBody parses a batchexecute response and returns the wrb.fr body for rpcID.
+// The returned body is the inner JSON string encoded as bytes; rejectCode is zero for accepted RPCs.
 func ExtractRPCBody(response []byte, rpcID string) ([]byte, int, error) {
 	frames := ParseLengthPrefixedFrames(response)
 
@@ -55,6 +62,7 @@ func ExtractRPCBody(response []byte, rpcID string) ([]byte, int, error) {
 // ParseLengthPrefixedFrames parses Google's length-prefixed framing protocol.
 // Format: <digits>\n<content_of_N_utf16_units> repeated.
 // The length counts UTF-16 code units starting immediately after the digits.
+// Incomplete frames are omitted so callers can retry after reading more bytes.
 func ParseLengthPrefixedFrames(content []byte) [][]byte {
 	var frames [][]byte
 	pos := 0
@@ -117,6 +125,8 @@ func ParseLengthPrefixedFrames(content []byte) [][]byte {
 	return frames
 }
 
+// findWrbFrItems finds wrb.fr arrays at the top level or one level deeper.
+// Browser responses commonly wrap wrb.fr items as [["wrb.fr", ...]] or [[["wrb.fr", ...]]].
 func findWrbFrItems(arr []any) [][]any {
 	var results [][]any
 	for _, item := range arr {

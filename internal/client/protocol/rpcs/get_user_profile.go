@@ -37,6 +37,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/Leechael/gemini-web-cli/internal/client/protocol"
 )
 
 const getUserProfileRPCID = "o30O0e"
@@ -73,26 +75,26 @@ func DecodeGetUserProfile(body []byte) (*UserProfile, error) {
 		return nil, fmt.Errorf("decode GetUserProfile JSON: %w", err)
 	}
 
-	userData, ok := arrayAt(data, 0, 0, 2)
+	userData, ok := protocol.ArrayAt(data, 0, 0, 2)
 	if !ok {
 		return nil, fmt.Errorf("GetUserProfile response missing user profile data")
 	}
 
 	profile := &UserProfile{
-		UserID: stringAt(userData, 0),
+		UserID: protocol.StringAt(userData, 0),
 	}
 
-	if nameBlock, ok := arrayAt(userData, 2, 0); ok {
-		profile.DisplayName = firstString(
-			stringAt(nameBlock, 1),
-			stringAt(nameBlock, 15),
+	if nameBlock, ok := protocol.ArrayAt(userData, 2, 0); ok {
+		profile.DisplayName = protocol.FirstString(
+			protocol.StringAt(nameBlock, 1),
+			protocol.StringAt(nameBlock, 15),
 		)
 	}
-	if photoBlock, ok := arrayAt(userData, 3, 0); ok {
-		profile.PhotoURL = stringAt(photoBlock, 1)
+	if photoBlock, ok := protocol.ArrayAt(userData, 3, 0); ok {
+		profile.PhotoURL = protocol.StringAt(photoBlock, 1)
 	}
-	if emailBlock, ok := arrayAt(userData, 9, 0); ok {
-		profile.Email = stringAt(emailBlock, 1)
+	if emailBlock, ok := protocol.ArrayAt(userData, 9, 0); ok {
+		profile.Email = protocol.StringAt(emailBlock, 1)
 	}
 	if profile.Email == "" {
 		profile.Email = findEmail(data)
@@ -102,36 +104,6 @@ func DecodeGetUserProfile(body []byte) (*UserProfile, error) {
 		return nil, fmt.Errorf("GetUserProfile response did not contain profile fields")
 	}
 	return profile, nil
-}
-
-func arrayAt(root []any, path ...int) ([]any, bool) {
-	var cur any = root
-	for _, idx := range path {
-		arr, ok := cur.([]any)
-		if !ok || idx < 0 || idx >= len(arr) {
-			return nil, false
-		}
-		cur = arr[idx]
-	}
-	arr, ok := cur.([]any)
-	return arr, ok
-}
-
-func stringAt(root []any, idx int) string {
-	if idx < 0 || idx >= len(root) {
-		return ""
-	}
-	s, _ := root[idx].(string)
-	return s
-}
-
-func firstString(values ...string) string {
-	for _, v := range values {
-		if v != "" {
-			return v
-		}
-	}
-	return ""
 }
 
 func findEmail(v any) string {
