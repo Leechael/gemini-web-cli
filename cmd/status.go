@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Leechael/gemini-web-cli/internal/client"
+	"github.com/Leechael/gemini-web-cli/internal/client/protocol/rpcs"
 	"github.com/Leechael/gemini-web-cli/internal/cookies"
 	"github.com/spf13/cobra"
 )
@@ -84,15 +85,34 @@ var statusCmd = &cobra.Command{
 
 		fmt.Printf("  Init: OK (access token obtained)\n")
 
-		// User profile — first user-visible validation point for the three-layer architecture.
-		if user, err := c.GetUserProfile(ctx); err == nil && user != nil {
-			label := user.DisplayName
-			if user.Email != "" {
-				label = fmt.Sprintf("%s <%s>", user.DisplayName, user.Email)
+		bs := c.PrefetchBootstrap(ctx)
+		if bs.Profile != nil {
+			label := bs.Profile.DisplayName
+			if bs.Profile.Email != "" {
+				label = fmt.Sprintf("%s <%s>", bs.Profile.DisplayName, bs.Profile.Email)
 			}
 			fmt.Printf("  User: %s\n", label)
-		} else if verbose && err != nil {
-			fmt.Fprintf(os.Stderr, "GetUserProfile failed: %v\n", err)
+		}
+		if bs.Location != nil && bs.Location.Region != "" {
+			fmt.Printf("  Location: %s\n", bs.Location.Region)
+		}
+		if len(bs.Tools) > 0 {
+			fmt.Printf("  Enabled tools: %d (%s)\n", len(bs.Tools), toolNamesPreview(bs.Tools, 3))
+		}
+		if len(bs.Extensions) > 0 {
+			fmt.Printf("  Extension catalog: %d entries (%s)\n", len(bs.Extensions), extensionIDsPreview(bs.Extensions, 7))
+		}
+		if len(bs.Flags) > 0 {
+			fmt.Printf("  Feature flags: %d active\n", activeFeatureFlagCount(bs.Flags))
+		}
+		if bs.Limits != nil {
+			fmt.Printf("  Upload limits: max %d files / %d MB per file / %d total bytes\n",
+				bs.Limits.MaxFiles, bs.Limits.MaxFileMB, bs.Limits.MaxTotalBytes)
+		}
+		if verbose && len(bs.Errors) > 0 {
+			for _, key := range bootstrapErrorKeys(bs.Errors) {
+				fmt.Fprintf(os.Stderr, "bootstrap RPC %s failed: %v\n", key, bs.Errors[key])
+			}
 		}
 
 		// Fetch account status
@@ -191,6 +211,59 @@ func printAccountQuotas(ctx context.Context, c *client.Client) {
 		}
 		fmt.Printf("  Extra-feature quota: %s, %.1f%% used%s\n", state, extra.UsagePercent, reset)
 	}
+}
+
+func toolNamesPreview(tools []rpcs.EnabledTool, limit int) string {
+	parts := make([]string, 0, len(tools))
+	for _, tool := range tools {
+		if tool.Name != "" {
+			parts = append(parts, tool.Name)
+		}
+	}
+	return previewStrings(parts, limit)
+}
+
+func extensionIDsPreview(extensions []rpcs.Extension, limit int) string {
+	parts := make([]string, 0, len(extensions))
+	for _, ext := range extensions {
+		if ext.ID != "" {
+			parts = append(parts, ext.ID)
+		}
+	}
+	return previewStrings(parts, limit)
+}
+
+func activeFeatureFlagCount(flags []rpcs.FeatureFlag) int {
+	count := 0
+	for _, flag := range flags {
+		if flag.Enabled {
+			count++
+		}
+	}
+	return count
+}
+
+func previewStrings(values []string, limit int) string {
+	if limit <= 0 || len(values) == 0 {
+		return ""
+	}
+	if len(values) <= limit {
+		return strings.Join(values, ", ")
+	}
+	return strings.Join(values[:limit], ", ") + ", ..."
+}
+
+func bootstrapErrorKeys(errors map[string]error) []string {
+	keys := make([]string, 0, len(errors))
+	for key := range errors {
+		keys = append(keys, key)
+	}
+	for i := 1; i < len(keys); i++ {
+		for j := i; j > 0 && keys[j] < keys[j-1]; j-- {
+			keys[j], keys[j-1] = keys[j-1], keys[j]
+		}
+	}
+	return keys
 }
 
 func init() {
