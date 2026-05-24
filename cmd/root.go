@@ -64,6 +64,7 @@ func init() {
 		&cobra.Group{ID: "chat", Title: "Chat:"},
 		&cobra.Group{ID: "research", Title: "Deep Research:"},
 		&cobra.Group{ID: "util", Title: "Utilities:"},
+		&cobra.Group{ID: "debug", Title: "Debugging:"},
 	)
 
 	askCmd.GroupID = "chat"
@@ -81,9 +82,12 @@ func init() {
 	statusCmd.GroupID = "util"
 	importCmd.GroupID = "util"
 
+	debugCmd.GroupID = "debug"
+
 	rootCmd.AddCommand(askCmd, replyCmd, googCmd, listCmd, getCmd, downloadCmd)
 	rootCmd.AddCommand(researchCmd, progressCmd, reportCmd)
 	rootCmd.AddCommand(modelsCmd, statusCmd, importCmd)
+	rootCmd.AddCommand(debugCmd)
 }
 
 // Execute runs the root command.
