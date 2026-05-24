@@ -221,10 +221,12 @@ func (c *Client) streamGenerate(ctx context.Context, prompt string, metadata []s
 func (c *Client) buildInnerRequest(prompt string, metadata []string, uploads []*UploadResult, model *types.Model, deepResearch bool, hasCid bool, uuid string) []any {
 	// Build an 81-element array matching the current browser StreamGenerate format.
 	req := make([]any, 81)
+	mode := c.resolveGenerationMode(prompt, uploads)
 
 	// [0] = message content
 	// With file attachments (from HAR capture):
 	//   [prompt, 0, null, [[[uploadId, 1, null, "mime/type"], "filename"]], null, null, 0]
+	var message []any
 	if len(uploads) > 0 {
 		var fileRefs []any
 		for _, u := range uploads {
@@ -233,10 +235,17 @@ func (c *Client) buildInnerRequest(prompt string, metadata []string, uploads []*
 				u.FileName,
 			})
 		}
-		req[0] = []any{prompt, 0, nil, fileRefs, nil, nil, 0}
+		message = []any{prompt, 0, nil, fileRefs, nil, nil, 0}
 	} else {
-		req[0] = []any{prompt, 0, nil, nil, nil, nil, 0}
+		message = []any{prompt, 0, nil, nil, nil, nil, 0}
 	}
+	if mode == "video" {
+		for len(message) < 10 {
+			message = append(message, nil)
+		}
+		message[9] = []any{nil, nil, nil, nil, nil, nil, []any{[]any{nil, nil, nil, 1}}}
+	}
+	req[0] = message
 
 	// [1] = language
 	req[1] = []any{c.language}
@@ -285,6 +294,20 @@ func (c *Client) buildInnerRequest(prompt string, metadata []string, uploads []*
 	req[61] = []any{}
 	req[79] = modelSelector(model)
 	req[80] = 1
+
+	// Mode-specific fields observed in browser HAR captures.
+	if !deepResearch {
+		switch mode {
+		case "video":
+			req[49] = 11
+			req[54] = []any{}
+			req[55] = []any{[]any{16}}
+		case "image-to-video":
+			req[49] = 14
+		case "music":
+			req[49] = 21
+		}
+	}
 
 	// Deep research-specific fields
 	if deepResearch {
@@ -977,6 +1000,32 @@ func generateHexUUID() string {
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+func (c *Client) resolveGenerationMode(prompt string, uploads []*UploadResult) string {
+	mode := strings.ToLower(strings.TrimSpace(c.generationMode))
+	switch mode {
+	case "text", "", "auto":
+		// continue below
+	case "video", "image-to-video", "music":
+		return mode
+	default:
+		return ""
+	}
+	if mode == "text" {
+		return ""
+	}
+	lower := strings.ToLower(prompt)
+	if len(uploads) > 0 && (strings.Contains(lower, "video") || strings.Contains(lower, "视频")) {
+		return "image-to-video"
+	}
+	if strings.Contains(lower, "music") || strings.Contains(lower, "song") || strings.Contains(lower, "audio") || strings.Contains(lower, "音乐") || strings.Contains(lower, "歌曲") {
+		return "music"
+	}
+	if strings.Contains(lower, "video") || strings.Contains(lower, "视频") {
+		return "video"
+	}
+	return ""
 }
 
 func modelSelector(model *types.Model) int {

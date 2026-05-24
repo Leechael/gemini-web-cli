@@ -33,19 +33,20 @@ func (e *RateLimitError) Error() string {
 
 // Client communicates with the Gemini web API.
 type Client struct {
-	httpClient   *http.Client
-	accessToken  string
-	buildLabel   string
-	sessionID    string
-	language     string // extracted from init page, default "en"
-	pushID       string // extracted from init page, default "feeds/mcudyrk2a4khkz"
-	reqID        int
-	accountIndex *int
-	accountPath  string // "" or "/u/N"
-	model        *types.Model
-	proxy        string
-	verbose      bool
-	timeout      time.Duration
+	httpClient     *http.Client
+	accessToken    string
+	buildLabel     string
+	sessionID      string
+	language       string // extracted from init page, default "en"
+	pushID         string // extracted from init page, default "feeds/mcudyrk2a4khkz"
+	reqID          int
+	accountIndex   *int
+	accountPath    string // "" or "/u/N"
+	model          *types.Model
+	generationMode string
+	proxy          string
+	verbose        bool
+	timeout        time.Duration
 
 	// Cookies for persistence tracking
 	ExtraCookies map[string]string
@@ -183,6 +184,11 @@ func (c *Client) Init(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// SetGenerationMode selects a browser generation mode for the next request.
+func (c *Client) SetGenerationMode(mode string) {
+	c.generationMode = mode
 }
 
 // Close releases resources.

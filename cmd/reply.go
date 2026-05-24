@@ -8,7 +8,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var replyNoStream bool
+var (
+	replyNoStream       bool
+	replyGenerationMode string
+)
 
 var replyCmd = &cobra.Command{
 	Use:   "reply [chat_id] [prompt]",
@@ -21,6 +24,9 @@ var replyCmd = &cobra.Command{
 			return err
 		}
 		defer cleanup(c, jsonCookies)
+		if err := setGenerationMode(c, replyGenerationMode); err != nil {
+			return err
+		}
 
 		chatID := args[0]
 		prompt := args[1]
@@ -74,4 +80,5 @@ var replyCmd = &cobra.Command{
 
 func init() {
 	replyCmd.Flags().BoolVar(&replyNoStream, "no-stream", false, "Wait for complete response")
+	replyCmd.Flags().StringVar(&replyGenerationMode, "mode", "auto", "Generation mode: auto, text, video, image-to-video, music")
 }

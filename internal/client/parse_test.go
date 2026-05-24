@@ -551,6 +551,34 @@ func TestBuildInnerRequest_NewChat(t *testing.T) {
 	}
 }
 
+func TestBuildInnerRequest_GenerationModes(t *testing.T) {
+	cases := []struct {
+		mode string
+		want any
+	}{
+		{"video", 11},
+		{"image-to-video", 14},
+		{"music", 21},
+	}
+	for _, tc := range cases {
+		c := &Client{generationMode: tc.mode}
+		req := c.buildInnerRequest("make something", nil, nil, nil, false, false, "UUID")
+		if req[49] != tc.want {
+			t.Errorf("mode %s: [49] = %v, want %v", tc.mode, req[49], tc.want)
+		}
+	}
+
+	c := &Client{generationMode: "video"}
+	req := c.buildInnerRequest("make a video", nil, nil, nil, false, false, "UUID")
+	msg := req[0].([]any)
+	if len(msg) < 10 || msg[9] == nil {
+		t.Fatalf("video mode message marker missing: %v", msg)
+	}
+	if req[54] == nil || req[55] == nil {
+		t.Fatalf("video mode slots missing: [54]=%v [55]=%v", req[54], req[55])
+	}
+}
+
 func TestBuildInnerRequest_DeepResearch(t *testing.T) {
 	c := &Client{}
 	req := c.buildInnerRequest("research topic", nil, nil, nil, true, false, "UUID")

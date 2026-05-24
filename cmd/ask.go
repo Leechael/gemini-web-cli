@@ -13,8 +13,9 @@ import (
 )
 
 var (
-	askNoStream bool
-	askFiles    []string
+	askNoStream       bool
+	askFiles          []string
+	askGenerationMode string
 )
 
 // textExtensions lists file extensions that should be inlined into the prompt.
@@ -48,6 +49,9 @@ var askCmd = &cobra.Command{
 			return err
 		}
 		defer cleanup(c, jsonCookies)
+		if err := setGenerationMode(c, askGenerationMode); err != nil {
+			return err
+		}
 
 		prompt := args[0]
 		model := resolveModelForClient(ctx, c)
@@ -122,6 +126,7 @@ var askCmd = &cobra.Command{
 func init() {
 	askCmd.Flags().BoolVar(&askNoStream, "no-stream", false, "Wait for complete response")
 	askCmd.Flags().StringArrayVarP(&askFiles, "file", "f", nil, "Attach file(s) (can be specified multiple times)")
+	askCmd.Flags().StringVar(&askGenerationMode, "mode", "auto", "Generation mode: auto, text, video, image-to-video, music")
 }
 
 func printImages(output *types.ModelOutput) {

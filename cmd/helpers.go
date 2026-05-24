@@ -149,6 +149,16 @@ func resolveModel() *types.Model {
 	return types.FindModel(modelName)
 }
 
+func setGenerationMode(c *client.Client, mode string) error {
+	switch mode {
+	case "", "auto", "text", "video", "image-to-video", "music":
+		c.SetGenerationMode(mode)
+		return nil
+	default:
+		return fmt.Errorf("invalid generation mode %q — use auto, text, video, image-to-video, or music", mode)
+	}
+}
+
 func resolveModelForClient(ctx context.Context, c *client.Client) *types.Model {
 	if model := types.FindModel(modelName); model != nil {
 		return model
