@@ -106,7 +106,7 @@ func TestPrefetchBootstrap_PartialFailure(t *testing.T) {
 	}
 }
 
-func TestPrefetchBootstrap_ConcurrencyTiming(t *testing.T) {
+func TestPrefetchBootstrap_BatchTiming(t *testing.T) {
 	delay := 50 * time.Millisecond
 	c, srv := newBootstrapTestClient(t, delay, "")
 	defer srv.Close()
@@ -175,7 +175,13 @@ func newBootstrapTestHandler(delay time.Duration, failRPC string) http.Handler {
 		}
 		rpcids := r.URL.Query().Get("rpcids")
 		if strings.Contains(rpcids, ",") {
-			_, _ = w.Write(makeTestMultiBatchResponse(bootstrapBodies, nil))
+			bodies := map[string]string{}
+			for rpcID, body := range bootstrapBodies {
+				if rpcID != failRPC {
+					bodies[rpcID] = body
+				}
+			}
+			_, _ = w.Write(makeTestMultiBatchResponse(bodies, nil))
 			return
 		}
 		if rpcids == failRPC {
