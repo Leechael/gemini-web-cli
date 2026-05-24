@@ -1,5 +1,5 @@
 // RPC: o30O0e — GetUserProfile
-// Source-path: /app （或任何页面均可）
+// Source-path: /app (or any Gemini page)
 // Reject codes: none observed in HAR 20260524
 //
 // Payload shape:

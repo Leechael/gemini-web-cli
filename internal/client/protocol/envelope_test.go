@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-//go:embed testdata/o30o0e_basic.txt
+//go:embed testdata/get_user_profile_basic.txt
 var testdata embed.FS
 
 func TestStripResponsePrefix(t *testing.T) {
@@ -44,7 +44,7 @@ func TestExtractRPCBody(t *testing.T) {
 }
 
 func TestExtractRPCBody_FromHARSample(t *testing.T) {
-	raw, err := testdata.ReadFile("testdata/o30o0e_basic.txt")
+	raw, err := testdata.ReadFile("testdata/get_user_profile_basic.txt")
 	if err != nil {
 		t.Fatal(err)
 	}
