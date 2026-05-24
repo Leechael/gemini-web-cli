@@ -196,7 +196,7 @@ func downloadFile(fileURL string, defaultExt string, poll206 bool) error {
 
 	// Append size param for full-size images
 	dlURL := fileURL
-	if defaultExt == "" && strings.Contains(fileURL, "googleusercontent.com") {
+	if defaultExt == "" && isGoogleusercontentURL(fileURL) {
 		parts := strings.Split(fileURL, "/")
 		if !strings.Contains(parts[len(parts)-1], "=") {
 			dlURL = fileURL + "=s2048"
@@ -279,6 +279,15 @@ func downloadFile(fileURL string, defaultExt string, poll206 bool) error {
 		fmt.Printf("Saved to %s (%.1f KB)\n", output, sizeKB)
 		return nil
 	}
+}
+
+func isGoogleusercontentURL(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	return host == "googleusercontent.com" || strings.HasSuffix(host, ".googleusercontent.com")
 }
 
 // extFromContentType returns a file extension (e.g. ".mp3") from a Content-Type header.
