@@ -1,0 +1,10 @@
+[[repos]]
+repo = "local"
+
+[[repos.hooks]]
+id = "go-ci"
+name = "go ci"
+language = "system"
+entry = "make ci"
+pass_filenames = false
+always_run = true
