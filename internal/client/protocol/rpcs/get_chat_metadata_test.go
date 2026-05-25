@@ -30,6 +30,24 @@ func TestDecodeGetChatMetadata_FromSampleFixture(t *testing.T) {
 	}
 }
 
+func TestDecodeGetChatMetadata_PositionalShape(t *testing.T) {
+	body, _ := json.Marshal([]any{[]any{"c_000000000000001", "c_prefixed sample title", float64(1700000000), false, true}})
+	meta, err := DecodeGetChatMetadata(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if meta.Title != "c_prefixed sample title" || meta.Unread {
+		t.Fatalf("meta = %+v", meta)
+	}
+}
+
+func TestDecodeGetChatMetadata_MissingShape(t *testing.T) {
+	body, _ := json.Marshal([]any{[]any{"noise", true}, []any{"c_000000000000001", "Sample chat title", float64(1700000000), false}})
+	if _, err := DecodeGetChatMetadata(body); err == nil {
+		t.Fatal("expected error")
+	}
+}
+
 func TestDecodeGetChatMetadata_EmptyBody(t *testing.T) {
 	if _, err := DecodeGetChatMetadata(nil); err == nil {
 		t.Fatal("expected error")

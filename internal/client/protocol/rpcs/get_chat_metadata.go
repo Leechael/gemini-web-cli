@@ -11,12 +11,17 @@
 //	[["<chat_id>", "<title>", <updated_unix_seconds>, <unread_bool>]]
 //
 // Test fixture: testdata/get_chat_metadata_basic.txt
+//
+// Notes:
+//   - Empty bodies are errors because this RPC fetches one exact chat record.
 package rpcs
 
 import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/Leechael/gemini-web-cli/internal/client/protocol"
 )
 
 const getChatMetadataRPCID = "MUAZcd"
@@ -40,35 +45,31 @@ func DecodeGetChatMetadata(body []byte) (*ChatMetadata, error) {
 	if strings.TrimSpace(string(body)) == "" {
 		return nil, fmt.Errorf("GetChatMetadata body is empty")
 	}
-	var data any
+	var data []any
 	if err := json.Unmarshal(body, &data); err != nil {
 		return nil, fmt.Errorf("decode GetChatMetadata JSON: %w", err)
 	}
-	meta := &ChatMetadata{}
-	fillMetadata(meta, data)
-	if meta.Cid == "" && meta.Title == "" && meta.UpdatedAt == 0 {
-		return nil, fmt.Errorf("GetChatMetadata response did not contain metadata fields")
+	row, ok := protocol.ArrayAt(data, 0)
+	if !ok {
+		return nil, fmt.Errorf("GetChatMetadata response missing metadata row")
+	}
+
+	updatedAt := int64(0)
+	if v, ok := protocol.ValueAt(row, 2); ok {
+		epoch, ok := v.(float64)
+		if !ok {
+			return nil, fmt.Errorf("GetChatMetadata updated timestamp is not numeric")
+		}
+		updatedAt = int64(epoch)
+	}
+	meta := &ChatMetadata{
+		Cid:       protocol.StringAt(row, 0),
+		Title:     protocol.StringAt(row, 1),
+		UpdatedAt: updatedAt,
+		Unread:    protocol.BoolAt(row, 3),
+	}
+	if !strings.HasPrefix(meta.Cid, "c_") || meta.Title == "" || meta.UpdatedAt == 0 {
+		return nil, fmt.Errorf("GetChatMetadata response did not match expected metadata shape")
 	}
 	return meta, nil
-}
-
-func fillMetadata(meta *ChatMetadata, v any) {
-	switch x := v.(type) {
-	case []any:
-		for _, item := range x {
-			fillMetadata(meta, item)
-		}
-	case string:
-		if strings.HasPrefix(x, "c_") && meta.Cid == "" {
-			meta.Cid = x
-		} else if x != "" && meta.Title == "" && !strings.HasPrefix(x, "r_") && !strings.HasPrefix(x, "rcid_") {
-			meta.Title = x
-		}
-	case float64:
-		if meta.UpdatedAt == 0 && x > 0 {
-			meta.UpdatedAt = int64(x)
-		}
-	case bool:
-		meta.Unread = meta.Unread || x
-	}
 }

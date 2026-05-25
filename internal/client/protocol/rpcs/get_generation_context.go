@@ -11,12 +11,17 @@
 //	["<chat_id>", "<prompt>", "<request_id>"]
 //
 // Test fixture: testdata/get_generation_context_basic.txt
+//
+// Notes:
+//   - Empty bodies are errors because this RPC fetches one exact generation context.
 package rpcs
 
 import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/Leechael/gemini-web-cli/internal/client/protocol"
 )
 
 const getGenerationContextRPCID = "kwDCne"
@@ -39,32 +44,17 @@ func DecodeGetGenerationContext(body []byte) (*GenerationContext, error) {
 	if strings.TrimSpace(string(body)) == "" {
 		return nil, fmt.Errorf("GetGenerationContext body is empty")
 	}
-	var data any
+	var data []any
 	if err := json.Unmarshal(body, &data); err != nil {
 		return nil, fmt.Errorf("decode GetGenerationContext JSON: %w", err)
 	}
-	ctx := &GenerationContext{}
-	fillGenerationContext(ctx, data)
-	if ctx.ChatID == "" && ctx.Prompt == "" && ctx.RequestID == "" {
-		return nil, fmt.Errorf("GetGenerationContext response did not contain context fields")
+	ctx := &GenerationContext{
+		ChatID:    protocol.StringAt(data, 0),
+		Prompt:    protocol.StringAt(data, 1),
+		RequestID: protocol.StringAt(data, 2),
+	}
+	if !strings.HasPrefix(ctx.ChatID, "c_") || ctx.Prompt == "" || !strings.HasPrefix(ctx.RequestID, "r_") {
+		return nil, fmt.Errorf("GetGenerationContext response did not match expected context shape")
 	}
 	return ctx, nil
-}
-
-func fillGenerationContext(ctx *GenerationContext, v any) {
-	switch x := v.(type) {
-	case []any:
-		for _, item := range x {
-			fillGenerationContext(ctx, item)
-		}
-	case string:
-		switch {
-		case strings.HasPrefix(x, "c_") && ctx.ChatID == "":
-			ctx.ChatID = x
-		case strings.HasPrefix(x, "r_") && ctx.RequestID == "":
-			ctx.RequestID = x
-		case x != "" && ctx.Prompt == "" && !strings.HasPrefix(x, "rcid_"):
-			ctx.Prompt = x
-		}
-	}
 }

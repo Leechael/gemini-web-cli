@@ -11,6 +11,9 @@
 //	turn_arr or [turn_arr]
 //
 // Test fixture: testdata/get_conversation_turn_basic.txt
+//
+// Notes:
+//   - Empty bodies are errors because this RPC fetches one exact turn.
 package rpcs
 
 import (

@@ -55,6 +55,25 @@ func TestDecodeReadChat_MalformedJSON(t *testing.T) {
 	}
 }
 
+func TestDecodeReadChat_PureMediaTurn(t *testing.T) {
+	item := []any{nil, nil, nil, []any{nil, 1, "file.png", "https://lh3.googleusercontent.com/sample"}}
+	mediaData := make([]any, 8)
+	mediaData[7] = []any{[]any{[]any{item}}}
+	candidate := make([]any, 13)
+	candidate[0] = "rcid_000000000000001"
+	candidate[1] = []any{"http://googleusercontent.com/image_generation_content/0"}
+	candidate[12] = mediaData
+	turn := []any{[]any{"c_000000000000001", "r_000000000000001"}, nil, []any{[]any{""}}, []any{[]any{candidate}}}
+	body, _ := json.Marshal([]any{[]any{turn}})
+	turns, err := DecodeReadChat(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(turns) != 1 || len(turns[0].Images) != 1 || turns[0].AssistantResponse != "" {
+		t.Fatalf("turns = %+v", turns)
+	}
+}
+
 func TestDecodeReadChat_CardURLLines(t *testing.T) {
 	candidate := []any{"rcid_000000000000001", []any{"Sample assistant response.\nhttp://googleusercontent.com/card_content/0"}}
 	turn := []any{[]any{"c_000000000000001", "r_000000000000001"}, nil, []any{[]any{"Sample user prompt"}}, []any{[]any{candidate}}}

@@ -11,6 +11,9 @@
 //	[]
 //
 // Test fixture: testdata/mark_chat_read_basic.txt
+//
+// Notes:
+//   - Empty bodies are accepted because this write RPC only needs reject-code validation.
 package rpcs
 
 import (

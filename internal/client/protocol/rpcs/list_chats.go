@@ -19,12 +19,16 @@
 //	  other slots: snippets, flags, and model metadata decoded lazily
 //
 // Test fixture: testdata/list_chats_basic.txt
+//
+// Notes:
+//   - Empty bodies decode to an empty result because chat lists can be empty.
 package rpcs
 
 import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/Leechael/gemini-web-cli/internal/client/protocol"
 	"github.com/Leechael/gemini-web-cli/internal/types"
@@ -92,7 +96,7 @@ func DecodeListChats(body []byte) ([]types.ChatItem, string, error) {
 		}
 		if ts, ok := protocol.ValueAt(chatArr, 5, 0); ok {
 			if epoch, ok := ts.(float64); ok {
-				item.UpdatedAt = formatUnixMinuteUTC(int64(epoch))
+				item.UpdatedAt = time.Unix(int64(epoch), 0).UTC().Format("2006-01-02T15:04")
 			}
 		}
 		if item.Cid != "" {
@@ -100,37 +104,4 @@ func DecodeListChats(body []byte) ([]types.ChatItem, string, error) {
 		}
 	}
 	return items, nextCursor, nil
-}
-
-func formatUnixMinuteUTC(epoch int64) string {
-	days := epoch / 86400
-	rem := epoch % 86400
-	if rem < 0 {
-		rem += 86400
-		days--
-	}
-	year, month, day := civilFromDays(days)
-	hour := rem / 3600
-	minute := (rem % 3600) / 60
-	return fmt.Sprintf("%04d-%02d-%02dT%02d:%02d", year, month, day, hour, minute)
-}
-
-func civilFromDays(days int64) (int64, int64, int64) {
-	z := days + 719468
-	era := z / 146097
-	if z < 0 {
-		era = (z - 146096) / 146097
-	}
-	doe := z - era*146097
-	yoe := (doe - doe/1460 + doe/36524 - doe/146096) / 365
-	year := yoe + era*400
-	doy := doe - (365*yoe + yoe/4 - yoe/100)
-	mp := (5*doy + 2) / 153
-	day := doy - (153*mp+2)/5 + 1
-	month := mp + 3
-	if mp >= 10 {
-		month = mp - 9
-		year++
-	}
-	return year, month, day
 }

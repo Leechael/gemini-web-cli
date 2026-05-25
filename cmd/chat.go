@@ -89,7 +89,9 @@ func runChatTurn(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("User:       %s\n", turn.UserPrompt)
 	fmt.Printf("Assistant:  %s\n", turn.AssistantResponse)
-	fmt.Printf("RCid:       %s\n", turn.RCid)
+	if turn.RCid != "" {
+		fmt.Printf("RCid:       %s\n", turn.RCid)
+	}
 	if turn.Rid != "" {
 		fmt.Printf("Rid:        %s\n", turn.Rid)
 	}

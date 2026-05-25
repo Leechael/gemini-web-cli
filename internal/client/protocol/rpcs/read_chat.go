@@ -22,6 +22,7 @@
 //
 // Notes:
 //   - Assistant text can contain googleusercontent card URL lines; they are stripped during decode.
+//   - Empty bodies decode to no turns because list-style chat reads can be empty.
 package rpcs
 
 import (
@@ -65,7 +66,7 @@ func DecodeReadChat(body []byte) ([]types.ChatTurn, error) {
 			continue
 		}
 		ct := decodeChatTurnArray(turnArr)
-		if ct.UserPrompt != "" || ct.AssistantResponse != "" {
+		if ct.UserPrompt != "" || ct.AssistantResponse != "" || len(ct.Images) > 0 || len(ct.Videos) > 0 || len(ct.Media) > 0 {
 			turns = append(turns, ct)
 		}
 	}
@@ -85,8 +86,8 @@ func decodeChatTurnArray(turnArr []any) types.ChatTurn {
 		ct.Rid = rid
 	}
 
-	cand := nestedArray(turnArr, 3, 0, 0)
-	if cand == nil {
+	cand, ok := protocol.ArrayAt(turnArr, 3, 0, 0)
+	if !ok {
 		return ct
 	}
 	ct.RCid = protocol.StringAt(cand, 0)
@@ -108,29 +109,13 @@ func decodeChatTurnArray(turnArr []any) types.ChatTurn {
 	return ct
 }
 
-func nestedArray(root any, path ...int) []any {
-	arr, ok := protocol.ArrayAt(root, path...)
-	if !ok {
-		return nil
-	}
-	return arr
-}
-
-func childArray(arr []any, idx int) []any {
-	if idx < 0 || idx >= len(arr) {
-		return nil
-	}
-	out, _ := arr[idx].([]any)
-	return out
-}
-
 func decodeImages(imageData any) []types.Image {
 	arr, ok := imageData.([]any)
 	if !ok || len(arr) == 0 {
 		return nil
 	}
 	var images []types.Image
-	if webImgs := childArray(arr, 1); webImgs != nil {
+	if webImgs, ok := protocol.ArrayAt(arr, 1); ok {
 		for _, wi := range webImgs {
 			wiArr, ok := wi.([]any)
 			if !ok {
@@ -199,14 +184,14 @@ func decodeVideos(imageData any) []types.Video {
 		return nil
 	}
 	for range 4 {
-		next := childArray(current, 0)
-		if next == nil {
+		next, ok := protocol.ArrayAt(current, 0)
+		if !ok {
 			return nil
 		}
 		current = next
 	}
-	urls := childArray(current, 7)
-	if len(urls) < 2 {
+	urls, ok := protocol.ArrayAt(current, 7)
+	if !ok || len(urls) < 2 {
 		return nil
 	}
 	thumbnail, _ := urls[0].(string)
@@ -242,22 +227,18 @@ func decodeMedia(imageData any) []types.GeneratedMedia {
 		return nil
 	}
 	media := types.GeneratedMedia{}
-	if urls := childArray(childArray(mediaData, 0), 1); urls != nil {
-		if u := childArray(urls, 7); len(u) >= 2 {
-			media.MP3Thumbnail, _ = u[0].(string)
-			media.MP3URL, _ = u[1].(string)
-		}
+	if u, ok := protocol.ArrayAt(mediaData, 0, 1, 7); ok && len(u) >= 2 {
+		media.MP3Thumbnail, _ = u[0].(string)
+		media.MP3URL, _ = u[1].(string)
 	}
-	if mp4Part := childArray(mediaData, 1); mp4Part != nil {
-		if urls := childArray(childArray(mp4Part, 1), 7); len(urls) >= 2 {
-			media.MP4Thumbnail, _ = urls[0].(string)
-			media.MP4URL, _ = urls[1].(string)
-		}
-		if urls := childArray(childArray(mp4Part, 3), 7); len(urls) >= 2 {
-			media.VTTURL, _ = urls[1].(string)
-		}
+	if urls, ok := protocol.ArrayAt(mediaData, 1, 1, 7); ok && len(urls) >= 2 {
+		media.MP4Thumbnail, _ = urls[0].(string)
+		media.MP4URL, _ = urls[1].(string)
 	}
-	if meta := childArray(mediaData, 2); meta != nil {
+	if urls, ok := protocol.ArrayAt(mediaData, 1, 3, 7); ok && len(urls) >= 2 {
+		media.VTTURL, _ = urls[1].(string)
+	}
+	if meta, ok := protocol.ArrayAt(mediaData, 2); ok {
 		if len(meta) > 0 {
 			media.Title, _ = meta[0].(string)
 		}
