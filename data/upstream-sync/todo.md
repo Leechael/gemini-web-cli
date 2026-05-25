@@ -8,12 +8,6 @@ Features to potentially implement, sourced from upstream commits/PRs.
 
 - [x] **a2fd77f — URL hostname validation in download command** — already fixed by `isGoogleusercontentURL` in `cmd/download.go`.
 
-- [ ] **PR #304 — Banana Pro image generation** (waiting for upstream merge)
-  - Source: open upstream PR `#304`
-  - Where: StreamGenerate inner request builder and CLI flag plumbing
-  - Change: add `pro_image` flag → extend inner_req_list to 80 elements, set slots 72=7, 79=3, append `[None,None,[None,None,None,None,None,None,[None,[1]]]]` to message_content.
-  - Block: PR is unmerged upstream; handle with P9 Stage 2 template id wiring after image generation HAR capture.
-
 - [x] **PR #309 — Veo/Lyria URL extraction** — Stage 5 adds protocol-layer extractor tests for the old video path and new `[12][8]["60"]` / `[12][0]["87"]` paths.
 
 - [x] **PR #312 — Tier-aware model naming** — already implemented by dynamic discovery (`buildModelIDNameMapping`, `tierSuffixForCapacity`, `nameMatchesTierSuffix`) and preserved during GetUserStatus facade migration.
@@ -40,6 +34,12 @@ Features to potentially implement, sourced from upstream commits/PRs.
 - [ ] **Housekeeping dI8W6e completion**
   - Where: `internal/client/protocol/rpcs/housekeeping_log_event.go` currently keeps `dI8W6e` as a stub.
   - Block: needs a real payload sample with device id field semantics.
+  - Risk: MyActivity iframe token plus device id context is not understood; main-page token may be rejected.
+
+- [ ] **P9 Stage 2 — Banana Pro image generation (PR #304)**
+  - Source: open upstream PR `#304`.
+  - Block: PR is unmerged upstream; handle with P9 Stage 2 template id wiring after image generation HAR capture.
+  - Change: add `pro_image` flag, set StreamGenerate slots 72=7 and 79=3, and append the Banana Pro message content extension.
 
 ## Ready to implement
 

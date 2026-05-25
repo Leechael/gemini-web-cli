@@ -17,7 +17,7 @@ func TestDecodeExpandMediaPrompt_FromMusicFixture(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecodeExpandMediaPrompt: %v", err)
 	}
-	assertExpandMediaPromptVariations(t, variations)
+	assertExpandMediaPromptVariations(t, variations, "Expanded music variation")
 }
 
 func TestDecodeExpandMediaPrompt_FromImageFixture(t *testing.T) {
@@ -25,7 +25,7 @@ func TestDecodeExpandMediaPrompt_FromImageFixture(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecodeExpandMediaPrompt: %v", err)
 	}
-	assertExpandMediaPromptVariations(t, variations)
+	assertExpandMediaPromptVariations(t, variations, "Expanded image variation")
 }
 
 func TestDecodeExpandMediaPrompt_EmptyBody(t *testing.T) {
@@ -44,15 +44,15 @@ func TestDecodeExpandMediaPrompt_MalformedJSON(t *testing.T) {
 	}
 }
 
-func assertExpandMediaPromptVariations(t *testing.T, variations []string) {
+func assertExpandMediaPromptVariations(t *testing.T, variations []string, prefix string) {
 	t.Helper()
 	if len(variations) != 3 {
 		t.Fatalf("variations = %d, want 3", len(variations))
 	}
-	if variations[0] != "Expanded variation 1" {
+	if variations[0] != prefix+" 1" {
 		t.Fatalf("variation 1 = %q", variations[0])
 	}
-	if variations[2] != "Expanded variation 3" {
+	if variations[2] != prefix+" 3" {
 		t.Fatalf("variation 3 = %q", variations[2])
 	}
 }

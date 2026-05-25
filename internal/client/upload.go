@@ -49,7 +49,7 @@ func (c *Client) UploadFile(ctx context.Context, filePath string) (*UploadResult
 }
 
 func (c *Client) resumableUpload(ctx context.Context, r io.Reader, fileName, mimeType string, size int64) (string, error) {
-	uploadID, err := c.CallUpload(ctx, transport.UploadRequest{
+	uploadID, err := c.callUpload(ctx, transport.UploadRequest{
 		PushURL:      uploadURL,
 		PushID:       c.pushID,
 		TenantID:     tenantID,
@@ -67,8 +67,7 @@ func (c *Client) resumableUpload(ctx context.Context, r io.Reader, fileName, mim
 	return uploadID, nil
 }
 
-// CallUpload sends a resumable upload request through the transport layer.
-func (c *Client) CallUpload(ctx context.Context, req transport.UploadRequest) (string, error) {
+func (c *Client) callUpload(ctx context.Context, req transport.UploadRequest) (string, error) {
 	req.Client = c.httpClient
 	return transport.PostUpload(ctx, req)
 }

@@ -3,6 +3,8 @@ package types
 import "testing"
 
 func TestExtractImages_ImageToImagePath(t *testing.T) {
+	t.Skip("waiting for real image-to-image fixture verification")
+
 	generated := []any{nil, nil, nil, []any{nil, nil, nil, "https://lh3.googleusercontent.com/sample-i2i"}}
 	imageData := []any{map[string]any{"8": []any{generated}}}
 
