@@ -4,7 +4,7 @@
 //
 // Payload shape:
 //
-//	[<filter_flags_array>, <count>]
+//	[<filter_flags_array>, <count>, <cursor when present>]
 //	  9-slot filter mask   max reports to return
 //
 // Response shape (after StripResponsePrefix + ExtractRPCBody):
@@ -47,8 +47,9 @@ type ResearchReport struct {
 
 // ListReportsFilter controls the ListResearchReports query.
 type ListReportsFilter struct {
-	Flags []int
-	Count int
+	Flags  []int
+	Count  int
+	Cursor string
 }
 
 // EncodeListResearchReports returns the ListResearchReports payload.
@@ -61,22 +62,41 @@ func EncodeListResearchReports(f ListReportsFilter) (rpcID, payload string) {
 	if count <= 0 {
 		count = 4
 	}
-	payloadBytes, _ := json.Marshal([]any{flags, count})
+	payloadArr := []any{flags, count}
+	if f.Cursor != "" {
+		payloadArr = append(payloadArr, f.Cursor)
+	}
+	payloadBytes, _ := json.Marshal(payloadArr)
 	return listResearchReportsRPCID, string(payloadBytes)
 }
 
 // DecodeListResearchReports parses the wrb.fr body JSON returned by ExtractRPCBody.
 func DecodeListResearchReports(body []byte) ([]ResearchReport, error) {
+	reports, _, err := DecodeListResearchReportsPage(body)
+	return reports, err
+}
+
+// DecodeListResearchReportsPage parses reports and the next-page cursor.
+func DecodeListResearchReportsPage(body []byte) ([]ResearchReport, string, error) {
 	if strings.TrimSpace(string(body)) == "" || strings.TrimSpace(string(body)) == "[]" {
-		return nil, nil
+		return nil, "", nil
 	}
 	var data any
 	if err := json.Unmarshal(body, &data); err != nil {
-		return nil, fmt.Errorf("decode ListResearchReports JSON: %w", err)
+		return nil, "", fmt.Errorf("decode ListResearchReports JSON: %w", err)
 	}
 	var reports []ResearchReport
 	collectResearchReports(data, &reports)
-	return reports, nil
+	return reports, researchReportsCursor(data), nil
+}
+
+func researchReportsCursor(value any) string {
+	arr, ok := value.([]any)
+	if !ok || len(arr) < 2 {
+		return ""
+	}
+	cursor, _ := arr[1].(string)
+	return cursor
 }
 
 func collectResearchReports(value any, reports *[]ResearchReport) {

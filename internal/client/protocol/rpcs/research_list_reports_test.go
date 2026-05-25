@@ -26,11 +26,21 @@ func TestEncodeListResearchReports_CustomFilter(t *testing.T) {
 	}
 }
 
+func TestEncodeListResearchReports_WithCursor(t *testing.T) {
+	_, payload := EncodeListResearchReports(ListReportsFilter{Count: 4, Cursor: "next_cursor"})
+	if payload != `[[0,0,0,1,1,0,0,1,0],4,"next_cursor"]` {
+		t.Fatalf("payload = %s", payload)
+	}
+}
+
 func TestDecodeListResearchReports_FromSampleFixture(t *testing.T) {
 	body := rpcFixtureBody(t, "research_list_reports_basic.txt", "jGArJ")
-	reports, err := DecodeListResearchReports(body)
+	reports, cursor, err := DecodeListResearchReportsPage(body)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if cursor != "sample_cursor" {
+		t.Fatalf("cursor = %q", cursor)
 	}
 	if len(reports) != 2 {
 		t.Fatalf("reports = %d", len(reports))

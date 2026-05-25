@@ -10,8 +10,9 @@ import (
 )
 
 var (
-	researchListCount int
-	researchListJSON  bool
+	researchListCount  int
+	researchListCursor string
+	researchListJSON   bool
 )
 
 var researchCmd = &cobra.Command{
@@ -80,7 +81,7 @@ func runResearchList(cmd *cobra.Command, args []string) error {
 	}
 	defer cleanup(c, jsonCookies)
 
-	reports, err := c.ListResearchReports(ctx, researchListCount)
+	reports, nextCursor, err := c.ListResearchReportsPage(ctx, researchListCount, researchListCursor)
 	if err != nil {
 		return err
 	}
@@ -109,11 +110,15 @@ func runResearchList(cmd *cobra.Command, args []string) error {
 		fmt.Printf("Report: %s\n", report.ReportID)
 		fmt.Println("---")
 	}
+	if nextCursor != "" {
+		fmt.Printf("\n(next page: --cursor %s)\n", nextCursor)
+	}
 	return nil
 }
 
 func init() {
 	researchListCmd.Flags().IntVar(&researchListCount, "count", 4, "max reports to return")
+	researchListCmd.Flags().StringVar(&researchListCursor, "cursor", "", "Pagination cursor")
 	researchListCmd.Flags().BoolVar(&researchListJSON, "json", false, "Output JSON")
 	researchCmd.AddCommand(researchRunCmd, researchListCmd)
 }
