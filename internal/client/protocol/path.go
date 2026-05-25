@@ -36,6 +36,35 @@ func StringAt(root any, path ...int) string {
 	return s
 }
 
+// IntAt walks array-encoded protobuf JSON with numeric indexes and returns the integer at that path.
+// JSON numbers decode as float64; non-integral values return zero.
+func IntAt(root any, path ...int) int {
+	value, ok := ValueAt(root, path...)
+	if !ok {
+		return 0
+	}
+	switch v := value.(type) {
+	case float64:
+		if v == float64(int(v)) {
+			return int(v)
+		}
+	case int:
+		return v
+	}
+	return 0
+}
+
+// BoolAt walks array-encoded protobuf JSON with numeric indexes and returns the bool at that path.
+// It returns false when the path is missing or the value is not a bool.
+func BoolAt(root any, path ...int) bool {
+	value, ok := ValueAt(root, path...)
+	if !ok {
+		return false
+	}
+	b, _ := value.(bool)
+	return b
+}
+
 // FirstString returns the first non-empty string from values.
 // RPC decoders use it when the same logical field appears in multiple observed slots.
 func FirstString(values ...string) string {

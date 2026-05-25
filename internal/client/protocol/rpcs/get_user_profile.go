@@ -1,6 +1,6 @@
 // RPC: o30O0e — GetUserProfile
 // Source-path: /app (or any Gemini page)
-// Reject codes: none observed in HAR 20260524
+// Reject codes: none observed in sample fixtures
 //
 // Payload shape:
 //
@@ -27,8 +27,8 @@
 //	  [15]: alternate "<display name>"
 //
 // Notes:
-//   - "me" can also be a specific account id; HAR only uses "me"
-//   - Field [1,7] in payload is unclear; HAR shows it constant; pass-through
+//   - "me" can also be a specific account id; sample fixtures use "me"
+//   - Field [1,7] in payload is unclear; sample fixtures show it constant; pass-through
 //   - Photo URL location not yet decoded — leave PhotoURL empty if not found,
 //     don't error; this is acceptable for first iteration
 package rpcs

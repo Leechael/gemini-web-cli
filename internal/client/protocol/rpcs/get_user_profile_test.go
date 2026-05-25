@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-const harGetUserProfileBody = "[[[\"me\",1,[\"user-1234567890\",[],[[null,\"Test User\"]],[[null,\"https://example.com/photo.jpg\"]],null,null,null,null,null,[[null,\"test@example.com\"]]],null,[]]]]"
+const sampleGetUserProfileBody = "[[[\"me\",1,[\"user-1234567890\",[],[[null,\"Test User\"]],[[null,\"https://example.com/photo.jpg\"]],null,null,null,null,null,[[null,\"test@example.com\"]]],null,[]]]]"
 
 func TestEncodeGetUserProfile_PayloadShape(t *testing.T) {
 	rpcID, payload := EncodeGetUserProfile()
@@ -23,8 +23,8 @@ func TestEncodeGetUserProfile_PayloadShape(t *testing.T) {
 	}
 }
 
-func TestDecodeGetUserProfile_FromHARSample(t *testing.T) {
-	profile, err := DecodeGetUserProfile([]byte(harGetUserProfileBody))
+func TestDecodeGetUserProfile_FromSampleFixture(t *testing.T) {
+	profile, err := DecodeGetUserProfile([]byte(sampleGetUserProfileBody))
 	if err != nil {
 		t.Fatalf("DecodeGetUserProfile: %v", err)
 	}

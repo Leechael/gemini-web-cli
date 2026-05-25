@@ -44,6 +44,29 @@ func TestStringAt(t *testing.T) {
 	}
 }
 
+func TestIntAt(t *testing.T) {
+	root := []any{[]any{float64(42), 1.5, "nope"}}
+	if got := IntAt(root, 0, 0); got != 42 {
+		t.Fatalf("IntAt = %d, want 42", got)
+	}
+	if got := IntAt(root, 0, 1); got != 0 {
+		t.Fatalf("IntAt non-integral = %d, want 0", got)
+	}
+	if got := IntAt(root, 0, 2); got != 0 {
+		t.Fatalf("IntAt non-number = %d, want 0", got)
+	}
+}
+
+func TestBoolAt(t *testing.T) {
+	root := []any{[]any{true, "nope"}}
+	if got := BoolAt(root, 0, 0); !got {
+		t.Fatalf("BoolAt = false, want true")
+	}
+	if got := BoolAt(root, 0, 1); got {
+		t.Fatalf("BoolAt non-bool = true, want false")
+	}
+}
+
 func TestFirstString(t *testing.T) {
 	if got := FirstString("", "fallback", "later"); got != "fallback" {
 		t.Fatalf("FirstString = %q, want fallback", got)

@@ -130,6 +130,89 @@ func TestCallRPC_SourcePathOverridesSourceCid(t *testing.T) {
 	}
 }
 
+func TestCallRPCBatch_HappyPath(t *testing.T) {
+	var gotRPCIDs string
+	var gotCallCount int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotRPCIDs = r.URL.Query().Get("rpcids")
+		if err := r.ParseForm(); err != nil {
+			t.Errorf("ParseForm: %v", err)
+			return
+		}
+		var outer [][][]any
+		if err := json.Unmarshal([]byte(r.PostForm.Get("f.req")), &outer); err != nil {
+			t.Errorf("Unmarshal f.req: %v", err)
+			return
+		}
+		gotCallCount = len(outer)
+		_, _ = w.Write(makeTestMultiBatchResponse(map[string]string{"one": `[1]`, "two": `[2]`}, nil))
+	}))
+	defer srv.Close()
+
+	origBase := baseURL
+	baseURL = srv.URL
+	defer func() { baseURL = origBase }()
+
+	c := newTestClient()
+	c.accessToken = "token"
+	c.language = "en"
+	c.reqID = 1
+	c.httpClient = srv.Client()
+
+	bodies, rejectCodes, err := c.CallRPCBatch(t.Context(), []RPCCall{{ID: "one", Payload: "[1]"}, {ID: "two", Payload: "[2]"}})
+	if err != nil {
+		t.Fatalf("CallRPCBatch: %v", err)
+	}
+	if gotRPCIDs != "one,two" {
+		t.Fatalf("rpcids = %q, want one,two", gotRPCIDs)
+	}
+	if gotCallCount != 2 {
+		t.Fatalf("gotCallCount = %d, want 2", gotCallCount)
+	}
+	if string(bodies["one"]) != `[1]` || string(bodies["two"]) != `[2]` {
+		t.Fatalf("bodies = %#v", bodies)
+	}
+	if len(rejectCodes) != 0 {
+		t.Fatalf("rejectCodes = %#v, want empty", rejectCodes)
+	}
+}
+
+func TestCallRPCBatch_DuplicateID(t *testing.T) {
+	c := newTestClient()
+	_, _, err := c.CallRPCBatch(t.Context(), []RPCCall{{ID: "dup", Payload: "[1]"}, {ID: "dup", Payload: "[2]"}})
+	if err == nil {
+		t.Fatalf("CallRPCBatch duplicate ID error = nil")
+	}
+}
+
+func TestCallRPCBatch_PartialResponse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(makeTestMultiBatchResponse(map[string]string{"one": `[1]`, "two": `[2]`}, nil))
+	}))
+	defer srv.Close()
+
+	origBase := baseURL
+	baseURL = srv.URL
+	defer func() { baseURL = origBase }()
+
+	c := newTestClient()
+	c.accessToken = "token"
+	c.language = "en"
+	c.reqID = 1
+	c.httpClient = srv.Client()
+
+	bodies, rejectCodes, err := c.CallRPCBatch(t.Context(), []RPCCall{{ID: "one", Payload: "[1]"}, {ID: "two", Payload: "[2]"}, {ID: "missing", Payload: "[]"}})
+	if err != nil {
+		t.Fatalf("CallRPCBatch: %v", err)
+	}
+	if _, ok := bodies["missing"]; ok {
+		t.Fatalf("missing RPC present in bodies")
+	}
+	if _, ok := rejectCodes["missing"]; ok {
+		t.Fatalf("missing RPC present in rejectCodes")
+	}
+}
+
 func makeTestBatchResponse(rpcID, body string, rejectCode int) []byte {
 	frame := `[["wrb.fr",` + strconv.Quote(rpcID) + `,` + strconv.Quote(body) + `,null,null,[` + strconv.Itoa(rejectCode) + `]]]`
 	content := "\n" + frame + "\n"
@@ -146,6 +229,25 @@ func testUTF16Len(s string) int {
 		}
 	}
 	return units
+}
+
+func makeTestMultiBatchResponse(bodies map[string]string, rejectCodes map[string]int) []byte {
+	frames := make([]string, 0, len(bodies))
+	for rpcID, body := range bodies {
+		rejectCode := 0
+		if rejectCodes != nil {
+			rejectCode = rejectCodes[rpcID]
+		}
+		frames = append(frames, `[["wrb.fr",`+strconv.Quote(rpcID)+`,`+strconv.Quote(body)+`,null,null,[`+strconv.Itoa(rejectCode)+`]]]`)
+	}
+	var b strings.Builder
+	b.WriteString(")]}'\n")
+	for _, frame := range frames {
+		content := "\n" + frame + "\n"
+		b.WriteString(strconv.Itoa(testUTF16Len(content)))
+		b.WriteString(content)
+	}
+	return []byte(b.String())
 }
 
 func TestMakeTestBatchResponse(t *testing.T) {
