@@ -287,13 +287,13 @@ func extractResearchResultFromRaw(rawTurns []json.RawMessage) (string, map[int]t
 		}
 
 		// Navigate to candidate: turn[3][0][0]
-		cand := getNestedArrayFromAny(turn, 3, 0, 0)
+		cand, _ := protocol.ArrayAt(turn, 3, 0, 0)
 		if cand == nil {
 			continue
 		}
 
 		// Deep research data at cand[30][0]
-		drData := getNestedArrayFromAny(cand, 30, 0)
+		drData, _ := protocol.ArrayAt(cand, 30, 0)
 		if drData == nil || len(drData) < 5 {
 			continue
 		}
@@ -317,7 +317,7 @@ func extractResearchSources(drData []any) map[int]types.GroundingSource {
 		return sources
 	}
 
-	citationsContainer := getNestedArrayFromAny(drData, 5, 0)
+	citationsContainer, _ := protocol.ArrayAt(drData, 5, 0)
 	if citationsContainer == nil {
 		return sources
 	}
@@ -326,7 +326,7 @@ func extractResearchSources(drData []any) map[int]types.GroundingSource {
 	// The structure is: drData[5][0] is a dict-like structure
 	// In JSON it's a map; navigate to "44" key
 	if len(drData) > 5 {
-		containerArr := getNestedArrayFromAny(drData, 5, 0)
+		containerArr, _ := protocol.ArrayAt(drData, 5, 0)
 		if containerArr == nil {
 			return sources
 		}
@@ -373,7 +373,7 @@ func extractResearchSources(drData []any) map[int]types.GroundingSource {
 					if !ok || len(itemArr) < 4 {
 						continue
 					}
-					inner := getNestedArrayFromAny(itemArr, 3)
+					inner, _ := protocol.ArrayAt(itemArr, 3)
 					if inner == nil || len(inner) < 2 {
 						continue
 					}
@@ -398,21 +398,6 @@ func extractResearchSources(drData []any) map[int]types.GroundingSource {
 		}
 	}
 	return sources
-}
-
-func getNestedArrayFromAny(data any, indices ...int) []any {
-	current := data
-	for _, idx := range indices {
-		arr, ok := current.([]any)
-		if !ok || idx >= len(arr) {
-			return nil
-		}
-		current = arr[idx]
-	}
-	if arr, ok := current.([]any); ok {
-		return arr
-	}
-	return nil
 }
 
 func extractPlanTitle(text string) string {
