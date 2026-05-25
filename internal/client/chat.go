@@ -1,13 +1,9 @@
 package client
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"html"
-	"io"
-	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
@@ -16,83 +12,6 @@ import (
 )
 
 const rpcReadChat = "hNvQHb"
-
-// ReadChat reads conversation turns from a chat.
-func (c *Client) ReadChat(ctx context.Context, cid string, maxTurns int) ([]types.ChatTurn, error) {
-	payload := []any{cid, maxTurns, nil, 1, []any{1}, []any{4}, nil, 1}
-	payloadJSON, _ := json.Marshal(payload)
-
-	rpcReq := []any{
-		[]any{
-			[]any{rpcReadChat, string(payloadJSON), nil, "generic"},
-		},
-	}
-	reqJSON, _ := json.Marshal(rpcReq)
-
-	form := url.Values{}
-	form.Set("at", c.accessToken)
-	form.Set("f.req", string(reqJSON))
-
-	sourcePath := c.appPath() + "/" + cid
-	reqURL := c.batchURL([]string{rpcReadChat}, sourcePath)
-
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", reqURL, strings.NewReader(form.Encode()))
-	if err != nil {
-		return nil, err
-	}
-	headers := c.commonHeaders()
-	for k, v := range headers {
-		httpReq.Header[k] = v
-	}
-
-	resp, err := c.httpClient.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("read_chat request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	responseBody := stripResponsePrefix(string(body))
-	rpcBody, _, err := extractRPCBody(responseBody, rpcReadChat)
-	if err != nil {
-		return nil, err
-	}
-
-	return parseReadChat(rpcBody)
-}
-
-// LatestResponse holds the result of FetchLatestChatResponse.
-type LatestResponse struct {
-	Text string
-	RCid string
-	Rid  string
-}
-
-// FetchLatestChatResponse returns the latest assistant response for a chat.
-func (c *Client) FetchLatestChatResponse(ctx context.Context, cid string) (*LatestResponse, error) {
-	turns, err := c.ReadChat(ctx, cid, 10)
-	if err != nil {
-		return nil, err
-	}
-	if len(turns) == 0 {
-		return nil, nil
-	}
-	// Turns are already in chronological order; pick the last one with an assistant response
-	for i := len(turns) - 1; i >= 0; i-- {
-		if turns[i].AssistantResponse != "" {
-			return &LatestResponse{
-				Text: turns[i].AssistantResponse,
-				RCid: turns[i].RCid,
-				Rid:  turns[i].Rid,
-			}, nil
-		}
-	}
-	return nil, nil
-}
 
 func stripResponsePrefix(s string) string {
 	if strings.HasPrefix(s, ")]}'\n") {
