@@ -5,6 +5,10 @@ import (
 	"testing"
 )
 
+const expectedPrefsSyncFeatureStatePayload = `[[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[["music_generation_soft","image_generation_soft","music_generation_soft","image_generation_soft","music_generation_soft"]]],[["tool_menu_soft_badge_disabled_ids"]]]`
+
+const expectedPrefsSyncPopupStatePayload = `[[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1],[["popup_zs_visits_cooldown"]]]`
+
 func TestEncodePrefsSyncFeatureState_PayloadShape(t *testing.T) {
 	flags := []string{"music_generation_soft", "image_generation_soft"}
 	rpcID, payload := EncodePrefsSyncFeatureState(PrefsSyncFeatureState{FeatureFlags: flags})
@@ -43,21 +47,15 @@ func TestEncodePrefsSyncPopupState_PayloadShape(t *testing.T) {
 func TestEncodePrefsSyncFeatureState_WireParity(t *testing.T) {
 	flags := []string{"music_generation_soft", "image_generation_soft", "music_generation_soft", "image_generation_soft", "music_generation_soft"}
 	_, got := EncodePrefsSyncFeatureState(PrefsSyncFeatureState{FeatureFlags: flags})
-	featureState := make([]any, 193)
-	featureState[192] = []any{[]any{"music_generation_soft", "image_generation_soft", "music_generation_soft", "image_generation_soft", "music_generation_soft"}}
-	wantBytes, _ := json.Marshal([]any{featureState, []any{[]any{"tool_menu_soft_badge_disabled_ids"}}})
-	if got != string(wantBytes) {
+	if got != expectedPrefsSyncFeatureStatePayload {
 		t.Fatalf("payload mismatch")
 	}
 }
 
 func TestEncodePrefsSyncPopupState_WireParity(t *testing.T) {
 	_, got := EncodePrefsSyncPopupState(PrefsSyncPopupState{Visits: 1})
-	popupState := make([]any, 87)
-	popupState[86] = 1
-	wantBytes, _ := json.Marshal([]any{popupState, []any{[]any{"popup_zs_visits_cooldown"}}})
-	if got != string(wantBytes) {
-		t.Fatalf("payload = %s, want %s", got, string(wantBytes))
+	if got != expectedPrefsSyncPopupStatePayload {
+		t.Fatalf("payload = %s, want %s", got, expectedPrefsSyncPopupStatePayload)
 	}
 }
 

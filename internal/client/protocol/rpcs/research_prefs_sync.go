@@ -16,6 +16,7 @@
 // Notes:
 //   - Feature state uses a 193-slot array with feature flags in slot 192.
 //   - Popup state uses an 87-slot array with the visit count in slot 86.
+//   - Empty bodies are accepted because preflight responses are best-effort acknowledgements.
 package rpcs
 
 import (

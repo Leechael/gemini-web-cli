@@ -58,6 +58,33 @@ func TestDecodeReadChat_MalformedJSON(t *testing.T) {
 	}
 }
 
+func TestDecodeReadChatRaw_EmptyBody(t *testing.T) {
+	turns, err := DecodeReadChatRaw(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(turns) != 0 {
+		t.Fatalf("turns = %d", len(turns))
+	}
+}
+
+func TestDecodeReadChatRaw_FallbackToOuterArray(t *testing.T) {
+	body := []byte(`[{"not":"turn list"}]`)
+	turns, err := DecodeReadChatRaw(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(turns) != 1 || string(turns[0]) != `{"not":"turn list"}` {
+		t.Fatalf("turns = %v", turns)
+	}
+}
+
+func TestDecodeReadChatRaw_MalformedJSON(t *testing.T) {
+	if _, err := DecodeReadChatRaw([]byte("[")); err == nil {
+		t.Fatal("expected error")
+	}
+}
+
 func TestDecodeReadChat_PureMediaTurn(t *testing.T) {
 	item := []any{nil, nil, nil, []any{nil, 1, "file.png", "https://lh3.googleusercontent.com/sample"}}
 	mediaData := make([]any, 8)

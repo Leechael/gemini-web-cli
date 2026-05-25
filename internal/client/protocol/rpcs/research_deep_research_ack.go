@@ -15,6 +15,7 @@
 // Notes:
 //   - Confirms a plan-ready deep research state.
 //   - Errors are non-fatal to the research flow.
+//   - Empty bodies are accepted because preflight responses are best-effort acknowledgements.
 package rpcs
 
 import (

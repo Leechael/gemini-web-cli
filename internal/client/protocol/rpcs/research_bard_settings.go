@@ -16,6 +16,7 @@
 // Notes:
 //   - Deep research preflight queries "bard_activity_enabled".
 //   - The same RPC is also used for general account settings reads.
+//   - Empty bodies are accepted because preflight responses are best-effort acknowledgements.
 package rpcs
 
 import (

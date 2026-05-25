@@ -15,6 +15,7 @@
 //
 // Notes:
 //   - Current callers ignore the metadata response; decode only validates JSON.
+//   - Empty bodies are accepted because preflight responses are best-effort acknowledgements.
 package rpcs
 
 import (
