@@ -14,6 +14,7 @@
 //	  [0]: metadata; request id is [0][1]
 //	  [2][0][0]: user prompt
 //	  [3][0][0]: candidate array
+//	  [4][0]: created timestamp seconds
 //	  candidate[0]: response id
 //	  candidate[1][0]: assistant text
 //	  candidate[12]: generated media metadata
@@ -84,6 +85,11 @@ func decodeChatTurnArray(turnArr []any) types.ChatTurn {
 	}
 	if rid := protocol.StringAt(turnArr, 0, 1); rid != "" {
 		ct.Rid = rid
+	}
+	if v, ok := protocol.ValueAt(turnArr, 4, 0); ok {
+		if epoch, ok := v.(float64); ok {
+			ct.CreatedAtUnix = int64(epoch)
+		}
 	}
 
 	cand, ok := protocol.ArrayAt(turnArr, 3, 0, 0)

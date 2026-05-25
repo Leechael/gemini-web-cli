@@ -4,11 +4,11 @@
 //
 // Payload shape:
 //
-//	[null, [["unread_metadata"]], ["<chat_id>", null, null, [["<chat_id>", ""], 0]]]
+//	[null, [["unread_metadata"]], ["<chat_id>", null, null, null, null, null, [["<chat_id>", ""], 0]]]
 //
 // Response shape (after StripResponsePrefix + ExtractRPCBody):
 //
-//	[["<chat_id>", "<title>", <updated_unix_seconds>, <unread_bool>]]
+//	[null, ["<chat_id>", "<title>", null, null, null, [<updated_unix_seconds>, <nanos>], [["<chat_id>", "<request_id>"], <unread_count>], ...]]
 //
 // Test fixture: testdata/get_chat_metadata_basic.txt
 //
@@ -36,7 +36,7 @@ type ChatMetadata struct {
 
 // EncodeGetChatMetadata returns the GetChatMetadata payload.
 func EncodeGetChatMetadata(cid string) (rpcID, payload string) {
-	payloadBytes, _ := json.Marshal([]any{nil, []any{[]any{"unread_metadata"}}, []any{cid, nil, nil, []any{[]any{cid, ""}, 0}}})
+	payloadBytes, _ := json.Marshal([]any{nil, []any{[]any{"unread_metadata"}}, []any{cid, nil, nil, nil, nil, nil, []any{[]any{cid, ""}, 0}}})
 	return getChatMetadataRPCID, string(payloadBytes)
 }
 
@@ -49,13 +49,13 @@ func DecodeGetChatMetadata(body []byte) (*ChatMetadata, error) {
 	if err := json.Unmarshal(body, &data); err != nil {
 		return nil, fmt.Errorf("decode GetChatMetadata JSON: %w", err)
 	}
-	row, ok := protocol.ArrayAt(data, 0)
+	row, ok := protocol.ArrayAt(data, 1)
 	if !ok {
 		return nil, fmt.Errorf("GetChatMetadata response missing metadata row")
 	}
 
 	updatedAt := int64(0)
-	if v, ok := protocol.ValueAt(row, 2); ok {
+	if v, ok := protocol.ValueAt(row, 5, 0); ok {
 		epoch, ok := v.(float64)
 		if !ok {
 			return nil, fmt.Errorf("GetChatMetadata updated timestamp is not numeric")
@@ -66,7 +66,7 @@ func DecodeGetChatMetadata(body []byte) (*ChatMetadata, error) {
 		Cid:       protocol.StringAt(row, 0),
 		Title:     protocol.StringAt(row, 1),
 		UpdatedAt: updatedAt,
-		Unread:    protocol.BoolAt(row, 3),
+		Unread:    protocol.IntAt(row, 6, 1) != 0,
 	}
 	if !strings.HasPrefix(meta.Cid, "c_") || meta.Title == "" || meta.UpdatedAt == 0 {
 		return nil, fmt.Errorf("GetChatMetadata response did not match expected metadata shape")

@@ -5,10 +5,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 )
+
+var latexTextPattern = regexp.MustCompile(`\\text\{([^}]*)\}`)
 
 var (
 	getMaxTurns int
@@ -43,12 +47,11 @@ var getCmd = &cobra.Command{
 		vidSeq := 0
 		mediaSeq := 0
 		for i, turn := range turns {
-			lines = append(lines, fmt.Sprintf("--- message %d ---", i+1))
 			if turn.UserPrompt != "" {
-				lines = append(lines, fmt.Sprintf("[User] %s", turn.UserPrompt))
+				lines = append(lines, formatMessageBlock("user", i+1, turn.Rid, turn.CreatedAtUnix, formatChatText(turn.UserPrompt)), "")
 			}
 			if turn.AssistantResponse != "" {
-				lines = append(lines, fmt.Sprintf("[Gemini] %s", turn.AssistantResponse))
+				lines = append(lines, formatMessageBlock("agent", i+1, turn.RCid, turn.CreatedAtUnix, formatChatText(turn.AssistantResponse)), "")
 			}
 			for _, img := range turn.Images {
 				imgSeq++
@@ -111,6 +114,31 @@ var getCmd = &cobra.Command{
 		}
 		return nil
 	},
+}
+
+func formatMessageBlock(role string, index int, id string, createdAt int64, body string) string {
+	label := fmt.Sprintf("--- %s #%d", role, index)
+	if id != "" {
+		label += " " + id
+	}
+	if createdAt != 0 {
+		label += " (" + time.Unix(createdAt, 0).Local().Format("2006-01-02 15:04 MST") + ")"
+	}
+	label += " ---"
+	return label + "\n" + body
+}
+
+func formatChatText(text string) string {
+	text = latexTextPattern.ReplaceAllString(text, "$1")
+	replacements := map[string]string{
+		"$$":              "",
+		`\longrightarrow`: "→",
+		`\rightarrow`:     "→",
+	}
+	for old, newText := range replacements {
+		text = strings.ReplaceAll(text, old, newText)
+	}
+	return strings.TrimSpace(text)
 }
 
 func init() {

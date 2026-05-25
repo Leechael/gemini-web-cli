@@ -37,6 +37,9 @@ func TestDecodeReadChat_FromSampleFixture(t *testing.T) {
 	if turns[0].Rid != "r_000000000000001" || turns[0].RCid != "rcid_000000000000001" {
 		t.Fatalf("metadata = %+v", turns[0])
 	}
+	if turns[0].CreatedAtUnix != 1700000000 {
+		t.Fatalf("CreatedAtUnix = %d", turns[0].CreatedAtUnix)
+	}
 }
 
 func TestDecodeReadChat_EmptyBody(t *testing.T) {

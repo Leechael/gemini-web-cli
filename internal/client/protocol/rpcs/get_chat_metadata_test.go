@@ -17,6 +17,10 @@ func TestEncodeGetChatMetadata_PayloadShape(t *testing.T) {
 	if got[0] != nil {
 		t.Fatalf("payload = %#v", got)
 	}
+	query, ok := got[2].([]any)
+	if !ok || len(query) != 7 {
+		t.Fatalf("query = %#v", got[2])
+	}
 }
 
 func TestDecodeGetChatMetadata_FromSampleFixture(t *testing.T) {
@@ -31,7 +35,7 @@ func TestDecodeGetChatMetadata_FromSampleFixture(t *testing.T) {
 }
 
 func TestDecodeGetChatMetadata_PositionalShape(t *testing.T) {
-	body, _ := json.Marshal([]any{[]any{"c_000000000000001", "c_prefixed sample title", float64(1700000000), false, true}})
+	body, _ := json.Marshal([]any{nil, []any{"c_000000000000001", "c_prefixed sample title", nil, nil, nil, []any{float64(1700000000), float64(0)}, []any{[]any{"c_000000000000001", ""}, float64(0)}}})
 	meta, err := DecodeGetChatMetadata(body)
 	if err != nil {
 		t.Fatal(err)

@@ -74,6 +74,7 @@ type ChatTurn struct {
 	AssistantResponse string
 	RCid              string
 	Rid               string
+	CreatedAtUnix     int64
 	Images            []Image
 	Videos            []Video
 	Media             []GeneratedMedia
