@@ -23,7 +23,7 @@ const (
 )
 
 // CreateAndStartDeepResearch creates a research plan and starts execution.
-// Mirrors the Python flow: preflight → send prompt → confirm with "开始研究".
+// Mirrors the Python flow: preflight, send prompt, then confirm execution.
 func (c *Client) CreateAndStartDeepResearch(ctx context.Context, prompt string, model *types.Model) (*types.DeepResearchPlan, error) {
 	if model == nil {
 		model = &types.Models[0]

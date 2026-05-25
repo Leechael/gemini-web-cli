@@ -225,7 +225,7 @@ func (c *Client) buildInnerRequest(prompt string, metadata []string, uploads []*
 	mode := c.resolveGenerationMode(prompt, uploads)
 
 	// [0] = message content
-	// With file attachments (from HAR capture):
+	// With file attachments:
 	//   [prompt, 0, null, [[[uploadId, 1, null, "mime/type"], "filename"]], null, null, 0]
 	var message []any
 	if len(uploads) > 0 {
@@ -296,7 +296,7 @@ func (c *Client) buildInnerRequest(prompt string, metadata []string, uploads []*
 	req[79] = modelSelector(model)
 	req[80] = 1
 
-	// Mode-specific fields observed in browser HAR captures.
+	// Mode-specific fields observed in browser requests.
 	if !deepResearch {
 		switch mode {
 		case "video":

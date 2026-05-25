@@ -6,7 +6,7 @@ import (
 )
 
 func TestEncodeGetConversationTurn_PayloadShape(t *testing.T) {
-	rpcID, payload := EncodeGetConversationTurn("c_0000000000000001", "r_0000000000000001")
+	rpcID, payload := EncodeGetConversationTurn("c_000000000000001", "r_000000000000001")
 	if rpcID != "EqPOKe" {
 		t.Fatalf("rpcID = %q", rpcID)
 	}
@@ -14,7 +14,7 @@ func TestEncodeGetConversationTurn_PayloadShape(t *testing.T) {
 	if err := json.Unmarshal([]byte(payload), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got[0] != "c_0000000000000001" || got[1] != "r_0000000000000001" {
+	if got[0] != "c_000000000000001" || got[1] != "r_000000000000001" {
 		t.Fatalf("payload = %#v", got)
 	}
 }

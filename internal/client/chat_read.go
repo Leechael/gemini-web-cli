@@ -8,6 +8,8 @@ import (
 	"github.com/Leechael/gemini-web-cli/internal/types"
 )
 
+const rpcReadChat = "hNvQHb"
+
 // ReadChat reads conversation turns from a chat.
 func (c *Client) ReadChat(ctx context.Context, cid string, maxTurns int) ([]types.ChatTurn, error) {
 	rpcID, payload := rpcs.EncodeReadChat(cid, maxTurns)

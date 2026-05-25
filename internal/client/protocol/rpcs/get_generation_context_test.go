@@ -25,7 +25,7 @@ func TestDecodeGetGenerationContext_FromSampleFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ctx.ChatID != "c_0000000000000001" || ctx.Prompt != "Sample user prompt" || ctx.RequestID != "r_0000000000000001" {
+	if ctx.ChatID != "c_000000000000001" || ctx.Prompt != "Sample user prompt" || ctx.RequestID != "r_000000000000001" {
 		t.Fatalf("ctx = %+v", ctx)
 	}
 }

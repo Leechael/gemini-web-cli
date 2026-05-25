@@ -6,7 +6,7 @@ import (
 )
 
 func TestEncodeReadChat_PayloadShape(t *testing.T) {
-	rpcID, payload := EncodeReadChat("c_0000000000000001", 30)
+	rpcID, payload := EncodeReadChat("c_000000000000001", 30)
 	if rpcID != "hNvQHb" {
 		t.Fatalf("rpcID = %q", rpcID)
 	}
@@ -14,7 +14,7 @@ func TestEncodeReadChat_PayloadShape(t *testing.T) {
 	if err := json.Unmarshal([]byte(payload), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got[0] != "c_0000000000000001" || got[1] != float64(30) {
+	if got[0] != "c_000000000000001" || got[1] != float64(30) {
 		t.Fatalf("payload = %#v", got)
 	}
 	if len(got) != 8 {
@@ -34,7 +34,7 @@ func TestDecodeReadChat_FromSampleFixture(t *testing.T) {
 	if turns[0].UserPrompt != "Sample user prompt" || turns[0].AssistantResponse != "Sample assistant response." {
 		t.Fatalf("turn[0] = %+v", turns[0])
 	}
-	if turns[0].Rid != "r_0000000000000001" || turns[0].RCid != "rcid_0000000000000001" {
+	if turns[0].Rid != "r_000000000000001" || turns[0].RCid != "rcid_000000000000001" {
 		t.Fatalf("metadata = %+v", turns[0])
 	}
 }
@@ -56,8 +56,8 @@ func TestDecodeReadChat_MalformedJSON(t *testing.T) {
 }
 
 func TestDecodeReadChat_CardURLLines(t *testing.T) {
-	candidate := []any{"rcid_0000000000000001", []any{"Sample assistant response.\nhttp://googleusercontent.com/card_content/0"}}
-	turn := []any{[]any{"c_0000000000000001", "r_0000000000000001"}, nil, []any{[]any{"Sample user prompt"}}, []any{[]any{candidate}}}
+	candidate := []any{"rcid_000000000000001", []any{"Sample assistant response.\nhttp://googleusercontent.com/card_content/0"}}
+	turn := []any{[]any{"c_000000000000001", "r_000000000000001"}, nil, []any{[]any{"Sample user prompt"}}, []any{[]any{candidate}}}
 	body, _ := json.Marshal([]any{[]any{turn}})
 	turns, err := DecodeReadChat(body)
 	if err != nil {

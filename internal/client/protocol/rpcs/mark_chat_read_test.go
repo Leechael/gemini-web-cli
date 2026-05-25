@@ -6,7 +6,7 @@ import (
 )
 
 func TestEncodeMarkChatRead_PayloadShape(t *testing.T) {
-	rpcID, payload := EncodeMarkChatRead("c_0000000000000001")
+	rpcID, payload := EncodeMarkChatRead("c_000000000000001")
 	if rpcID != "k81mDb" {
 		t.Fatalf("rpcID = %q", rpcID)
 	}
@@ -14,7 +14,7 @@ func TestEncodeMarkChatRead_PayloadShape(t *testing.T) {
 	if err := json.Unmarshal([]byte(payload), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got[0] != "c_0000000000000001" {
+	if got[0] != "c_000000000000001" {
 		t.Fatalf("payload = %#v", got)
 	}
 }

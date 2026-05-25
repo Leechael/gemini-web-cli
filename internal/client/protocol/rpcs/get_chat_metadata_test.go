@@ -6,7 +6,7 @@ import (
 )
 
 func TestEncodeGetChatMetadata_PayloadShape(t *testing.T) {
-	rpcID, payload := EncodeGetChatMetadata("c_0000000000000001")
+	rpcID, payload := EncodeGetChatMetadata("c_000000000000001")
 	if rpcID != "MUAZcd" {
 		t.Fatalf("rpcID = %q", rpcID)
 	}
@@ -25,7 +25,7 @@ func TestDecodeGetChatMetadata_FromSampleFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if meta.Cid != "c_0000000000000001" || meta.Title != "Sample chat title" || meta.UpdatedAt != 1700000000 || !meta.Unread {
+	if meta.Cid != "c_000000000000001" || meta.Title != "Sample chat title" || meta.UpdatedAt != 1700000000 || !meta.Unread {
 		t.Fatalf("meta = %+v", meta)
 	}
 }
