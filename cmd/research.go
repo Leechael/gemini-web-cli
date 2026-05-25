@@ -18,12 +18,6 @@ var researchCmd = &cobra.Command{
 	Use:   "research",
 	Short: "Deep research utilities",
 	Long:  "Submit deep research tasks and list completed reports.",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		if len(args) > 0 {
-			return fmt.Errorf("unknown command %q for %q", args[0], cmd.CommandPath())
-		}
-		return cmd.Help()
-	},
 }
 
 var researchRunCmd = &cobra.Command{
@@ -85,6 +79,14 @@ func runResearchList(cmd *cobra.Command, args []string) error {
 	reports, err := c.ListResearchReports(ctx, researchListCount)
 	if err != nil {
 		return err
+	}
+	if len(reports) == 0 {
+		if researchListJSON {
+			fmt.Println("[]")
+		} else {
+			fmt.Println("no reports")
+		}
+		return nil
 	}
 	if researchListJSON {
 		out, err := json.Marshal(reports)
