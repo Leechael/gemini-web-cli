@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/Leechael/gemini-web-cli/internal/client/protocol"
 )
 
 // RPC IDs used for account quota tracking. These are the same RPCs called by
@@ -119,15 +121,15 @@ func (c *Client) batchExecuteSingle(ctx context.Context, rpcID, payload string) 
 		return "", err
 	}
 
-	stripped := stripResponsePrefix(string(raw))
-	body, rejectCode, err := extractRPCBody(stripped, rpcID)
+	stripped := protocol.StripResponsePrefix(raw)
+	body, rejectCode, err := protocol.ExtractRPCBody(stripped, rpcID)
 	if err != nil {
 		return "", err
 	}
 	if rejectCode != 0 {
 		return "", fmt.Errorf("rpc rejected with code=%d", rejectCode)
 	}
-	return body, nil
+	return string(body), nil
 }
 
 func parseQuotaItems(body, category string, out map[string]*Quota) {

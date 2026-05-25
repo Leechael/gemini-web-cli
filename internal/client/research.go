@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/Leechael/gemini-web-cli/internal/client/protocol"
 	"github.com/Leechael/gemini-web-cli/internal/types"
 )
 
@@ -22,7 +23,7 @@ const (
 )
 
 // CreateAndStartDeepResearch creates a research plan and starts execution.
-// Mirrors the Python flow: preflight → send prompt → confirm with "开始研究".
+// Mirrors the Python flow: preflight, send prompt, then confirm execution.
 func (c *Client) CreateAndStartDeepResearch(ctx context.Context, prompt string, model *types.Model) (*types.DeepResearchPlan, error) {
 	if model == nil {
 		model = &types.Models[0]
@@ -476,14 +477,14 @@ func (c *Client) ReadChatRaw(ctx context.Context, cid string, maxTurns int) ([]j
 		return nil, err
 	}
 
-	responseBody := stripResponsePrefix(string(body))
-	rpcBody, _, err := extractRPCBody(responseBody, rpcReadChat)
+	responseBody := protocol.StripResponsePrefix(body)
+	rpcBody, _, err := protocol.ExtractRPCBody(responseBody, rpcReadChat)
 	if err != nil {
 		return nil, err
 	}
 
 	var data []json.RawMessage
-	if err := json.Unmarshal([]byte(rpcBody), &data); err != nil {
+	if err := json.Unmarshal(rpcBody, &data); err != nil {
 		return nil, err
 	}
 

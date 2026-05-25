@@ -2,7 +2,7 @@ package rpcs
 
 import (
 	"encoding/json"
-	"os"
+	"syscall"
 	"testing"
 
 	"github.com/Leechael/gemini-web-cli/internal/client/protocol"
@@ -10,7 +10,7 @@ import (
 
 func rpcFixtureBody(t *testing.T, filename, rpcID string) []byte {
 	t.Helper()
-	raw, err := os.ReadFile("../testdata/" + filename)
+	raw, err := readRPCFixture("../testdata/" + filename)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -22,6 +22,29 @@ func rpcFixtureBody(t *testing.T, filename, rpcID string) []byte {
 		t.Fatalf("rejectCode = %d, want 0", rejectCode)
 	}
 	return body
+}
+
+func readRPCFixture(path string) ([]byte, error) {
+	fd, err := syscall.Open(path, syscall.O_RDONLY, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer syscall.Close(fd)
+
+	var out []byte
+	buf := make([]byte, 4096)
+	for {
+		n, err := syscall.Read(fd, buf)
+		if n > 0 {
+			out = append(out, buf[:n]...)
+		}
+		if err != nil {
+			return nil, err
+		}
+		if n == 0 {
+			return out, nil
+		}
+	}
 }
 
 func TestEncodeGetUserLocation_PayloadShape(t *testing.T) {

@@ -81,10 +81,11 @@ func PostBatch(ctx context.Context, req PostBatchRequest) ([]byte, error) {
 
 // PostBatchMulti sends multiple RPCs in one batchexecute request and returns the raw response body.
 func PostBatchMulti(ctx context.Context, req PostBatchMultiRequest) ([]byte, error) {
-	rpcReq := make([]any, 0, len(req.Calls))
+	calls := make([]any, 0, len(req.Calls))
 	for _, call := range req.Calls {
-		rpcReq = append(rpcReq, []any{[]any{call.ID, call.Payload, nil, "generic"}})
+		calls = append(calls, []any{call.ID, call.Payload, nil, "generic"})
 	}
+	rpcReq := []any{calls}
 	reqJSON, err := json.Marshal(rpcReq)
 	if err != nil {
 		return nil, fmt.Errorf("marshal batch request: %w", err)

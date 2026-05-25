@@ -14,6 +14,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/Leechael/gemini-web-cli/internal/client/protocol"
 	"github.com/Leechael/gemini-web-cli/internal/types"
 )
 
@@ -224,7 +225,7 @@ func (c *Client) buildInnerRequest(prompt string, metadata []string, uploads []*
 	mode := c.resolveGenerationMode(prompt, uploads)
 
 	// [0] = message content
-	// With file attachments (from HAR capture):
+	// With file attachments:
 	//   [prompt, 0, null, [[[uploadId, 1, null, "mime/type"], "filename"]], null, null, 0]
 	var message []any
 	if len(uploads) > 0 {
@@ -295,7 +296,7 @@ func (c *Client) buildInnerRequest(prompt string, metadata []string, uploads []*
 	req[79] = modelSelector(model)
 	req[80] = 1
 
-	// Mode-specific fields observed in browser HAR captures.
+	// Mode-specific fields observed in browser requests.
 	if !deepResearch {
 		switch mode {
 		case "video":
@@ -338,17 +339,12 @@ func (c *Client) parseStreamResponse(body io.Reader, cb StreamCallback) error {
 			allData = append(allData, buf[:n]...)
 
 			// Parse all complete frames from accumulated data
-			content := string(allData)
-			if strings.HasPrefix(content, ")]}'\n") {
-				content = content[5:]
-			}
-
-			frames := parseLengthPrefixedFrames(content)
+			frames := protocol.ParseLengthPrefixedFrames(protocol.StripResponsePrefix(allData))
 			// Only process NEW frames (skip already-processed ones)
 			done := false
 			for i := framesProcessed; i < len(frames); i++ {
 				var envelope []any
-				if err := json.Unmarshal([]byte(frames[i]), &envelope); err != nil {
+				if err := json.Unmarshal(frames[i], &envelope); err != nil {
 					continue
 				}
 				// Check for error codes in the response
@@ -404,82 +400,6 @@ func (c *Client) parseStreamResponse(body io.Reader, cb StreamCallback) error {
 		return fmt.Errorf("no valid response frames parsed (empty response body)")
 	}
 	return nil
-}
-
-// parseLengthPrefixedFrames parses Google's length-prefixed framing protocol.
-// Format: <digits>\n<content_of_N_utf16_units> repeated.
-// The length counts UTF-16 code units starting immediately after the digits
-// (includes the \n after digits and the trailing \n of the JSON payload).
-// Incomplete frames are omitted — the caller should retain the raw buffer
-// and re-parse after more data arrives.
-func parseLengthPrefixedFrames(content string) []string {
-	var frames []string
-	runes := []rune(content)
-	pos := 0
-	totalLen := len(runes)
-
-	for pos < totalLen {
-		// Skip whitespace before length marker
-		for pos < totalLen && (runes[pos] == ' ' || runes[pos] == '\t' || runes[pos] == '\n' || runes[pos] == '\r') {
-			pos++
-		}
-		if pos >= totalLen {
-			break
-		}
-
-		// Read the length number (digits)
-		numStart := pos
-		for pos < totalLen && runes[pos] >= '0' && runes[pos] <= '9' {
-			pos++
-		}
-		if pos == numStart {
-			// Not a digit — skip
-			pos++
-			continue
-		}
-
-		// Length marker must be followed by \n (matching Python's regex r"(\d+)\n")
-		if pos >= totalLen || runes[pos] != '\n' {
-			break
-		}
-
-		lengthStr := string(runes[numStart:pos])
-
-		// Parse the UTF-16 unit count
-		utf16Units := 0
-		for _, ch := range lengthStr {
-			utf16Units = utf16Units*10 + int(ch-'0')
-		}
-
-		// Content starts immediately after the digits (the \n is counted in the length).
-		contentStart := pos
-		unitsConsumed := 0
-		for pos < totalLen && unitsConsumed < utf16Units {
-			r := runes[pos]
-			// Don't overshoot: a surrogate pair counts as 2 units
-			units := 1
-			if r > 0xFFFF {
-				units = 2
-			}
-			if unitsConsumed+units > utf16Units {
-				break
-			}
-			unitsConsumed += units
-			pos++
-		}
-
-		// Incomplete frame — not enough data yet, stop parsing
-		if unitsConsumed < utf16Units {
-			break
-		}
-
-		chunk := strings.TrimSpace(string(runes[contentStart:pos]))
-		if chunk != "" {
-			frames = append(frames, chunk)
-		}
-	}
-
-	return frames
 }
 
 func parseEnvelope(envelope []any) *types.ModelOutput {
@@ -575,7 +495,7 @@ func parseEnvelope(envelope []any) *types.ModelOutput {
 					out.Text = ""
 				}
 				// Strip inline card URL lines (video_gen_chip, card_content, etc.)
-				out.Text = stripCardURLLines(out.Text)
+				out.Text = protocol.StripCardURLLines(out.Text)
 			}
 		}
 	}
@@ -618,275 +538,15 @@ func parseEnvelope(envelope []any) *types.ModelOutput {
 }
 
 func extractImages(imageData any) []types.Image {
-	arr, ok := imageData.([]any)
-	if !ok || len(arr) == 0 {
-		return nil
-	}
-
-	var images []types.Image
-
-	// Web images at [1]
-	if len(arr) > 1 {
-		if webImgs, ok := arr[1].([]any); ok {
-			for _, wi := range webImgs {
-				wiArr, ok := wi.([]any)
-				if !ok {
-					continue
-				}
-				img := types.Image{}
-				// URL at [0][0][0]
-				if src := getNestedString(wiArr, 0, 0, 0); src != "" {
-					img.URL = src
-				}
-				// Title at [7][0]
-				if title := getNestedString(wiArr, 7, 0); title != "" {
-					img.Title = title
-				}
-				if img.URL != "" {
-					images = append(images, img)
-				}
-			}
-		}
-	}
-
-	// Generated images at [7][0][0]
-	// Structure: arr[7] = [[[ [item1], [item2], ... ]]]
-	// Each item: [null, null, null, [null, 1, "filename", "url", ...], ...]
-	// URL at item[3][3]
-	if len(arr) > 7 && arr[7] != nil {
-		var genItems []any
-		// Navigate arr[7] to find the items list.
-		// Structure: arr[7] = [[[ [item1], [item2], ... ]]]
-		// Items are arrays with len > 3 where [3] is an array containing URL at [3].
-		// We drill through single-element wrappers to find the list of items.
-		if l1, ok := arr[7].([]any); ok && len(l1) > 0 {
-			if l2, ok := l1[0].([]any); ok && len(l2) > 0 {
-				// Scan all elements of l2 for image items
-				for _, l2elem := range l2 {
-					l2arr, ok := l2elem.([]any)
-					if !ok || len(l2arr) == 0 {
-						continue
-					}
-					// Check if this is an item (has [3] as array with URL)
-					if len(l2arr) > 3 {
-						if innerArr, ok := l2arr[3].([]any); ok && len(innerArr) > 3 {
-							if _, ok := innerArr[3].(string); ok {
-								// This is a single image item
-								genItems = append(genItems, l2arr)
-								continue
-							}
-						}
-					}
-					// Otherwise drill one more level
-					for _, inner := range l2arr {
-						innerArr, ok := inner.([]any)
-						if !ok || len(innerArr) < 4 {
-							continue
-						}
-						if sub, ok := innerArr[3].([]any); ok && len(sub) > 3 {
-							if _, ok := sub[3].(string); ok {
-								genItems = append(genItems, innerArr)
-							}
-						}
-					}
-				}
-			}
-		}
-		for _, gi := range genItems {
-			giArr, ok := gi.([]any)
-			if !ok || len(giArr) < 4 {
-				continue
-			}
-			img := types.Image{Generated: true}
-			if u := getNestedString(giArr, 3, 3); u != "" {
-				img.URL = u
-			}
-			if img.URL != "" {
-				images = append(images, img)
-			}
-		}
-	}
-
-	return images
+	return types.ExtractImages(imageData)
 }
 
-// extractVideos extracts generated videos from candidate data.
-// StreamGenerate path: [59][0][0][0][0][7] — URLs: [0]=thumbnail, [1]=video.
-// ReadChat path: dict key "60" → [0][0][0][0][7].
 func extractVideos(imageData any) []types.Video {
-	arr, ok := imageData.([]any)
-	if !ok || len(arr) == 0 {
-		return nil
-	}
-
-	// Try StreamGenerate path: arr[59]
-	var videoRoot any
-	if len(arr) > 59 && arr[59] != nil {
-		videoRoot = arr[59]
-	}
-
-	// Try ReadChat path: scan for dict with key "60"
-	if videoRoot == nil {
-		for _, elem := range arr {
-			if m, ok := elem.(map[string]any); ok {
-				if v, exists := m["60"]; exists {
-					videoRoot = v
-					break
-				}
-			}
-		}
-	}
-
-	if videoRoot == nil {
-		return nil
-	}
-
-	return extractVideoURLs(videoRoot)
+	return types.ExtractVideos(imageData)
 }
 
-// extractVideoURLs navigates [0][0][0][0][7] to find video URLs.
-func extractVideoURLs(data any) []types.Video {
-	// Drill down [0][0][0][0] to reach the video element
-	current, ok := data.([]any)
-	if !ok || len(current) == 0 {
-		return nil
-	}
-	for i := 0; i < 4; i++ {
-		next := getNestedArray(current, 0)
-		if next == nil {
-			return nil
-		}
-		current = next
-	}
-
-	// URLs at [7]
-	urls := getNestedArray(current, 7)
-	if urls == nil || len(urls) < 2 {
-		return nil
-	}
-
-	thumbnail, _ := urls[0].(string)
-	videoURL, _ := urls[1].(string)
-	if videoURL == "" {
-		return nil
-	}
-
-	return []types.Video{{
-		URL:       videoURL,
-		Thumbnail: thumbnail,
-	}}
-}
-
-// extractMedia extracts generated music/audio media from candidate data.
-// StreamGenerate path: [86] → MP3 at [0][1][7], MP4 at [1][1][7].
-// ReadChat path: dict key "86" (if present).
 func extractMedia(imageData any) []types.GeneratedMedia {
-	arr, ok := imageData.([]any)
-	if !ok || len(arr) == 0 {
-		return nil
-	}
-
-	// Try StreamGenerate path: arr[86]
-	var mediaData []any
-	if len(arr) > 86 && arr[86] != nil {
-		mediaData, _ = arr[86].([]any)
-	}
-
-	// Try ReadChat path: scan for dict with key "86" or "87"
-	if mediaData == nil {
-		for _, elem := range arr {
-			if m, ok := elem.(map[string]any); ok {
-				for _, key := range []string{"86", "87"} {
-					if v, exists := m[key]; exists {
-						mediaData, _ = v.([]any)
-						if mediaData != nil {
-							break
-						}
-					}
-				}
-				if mediaData != nil {
-					break
-				}
-			}
-		}
-	}
-
-	if mediaData == nil {
-		return nil
-	}
-
-	var mp3URL, mp3Thumb string
-	mp3Part := getNestedArray(mediaData, 0)
-	if mp3Part != nil {
-		mp3Inner := getNestedArray(mp3Part, 1)
-		if mp3Inner != nil {
-			mp3URLs := getNestedArray(mp3Inner, 7)
-			if mp3URLs != nil && len(mp3URLs) >= 2 {
-				mp3Thumb, _ = mp3URLs[0].(string)
-				mp3URL, _ = mp3URLs[1].(string)
-			}
-		}
-	}
-
-	var mp4URL, mp4Thumb, vttURL string
-	mp4Part := getNestedArray(mediaData, 1)
-	if mp4Part != nil {
-		mp4Inner := getNestedArray(mp4Part, 1)
-		if mp4Inner != nil {
-			mp4URLs := getNestedArray(mp4Inner, 7)
-			if mp4URLs != nil && len(mp4URLs) >= 2 {
-				mp4Thumb, _ = mp4URLs[0].(string)
-				mp4URL, _ = mp4URLs[1].(string)
-			}
-		}
-		vttInner := getNestedArray(mp4Part, 3)
-		if vttInner != nil {
-			vttURLs := getNestedArray(vttInner, 7)
-			if vttURLs != nil && len(vttURLs) >= 2 {
-				vttURL, _ = vttURLs[1].(string)
-			}
-		}
-	}
-
-	if mp3URL == "" && mp4URL == "" {
-		return nil
-	}
-
-	meta := getNestedArray(mediaData, 2)
-	var title, artist, genre string
-	var moods []string
-	if meta != nil {
-		if len(meta) > 0 {
-			title, _ = meta[0].(string)
-		}
-		if len(meta) > 2 {
-			artist, _ = meta[2].(string)
-		}
-		if len(meta) > 4 {
-			genre, _ = meta[4].(string)
-		}
-		if len(meta) > 5 {
-			if arr, ok := meta[5].([]any); ok {
-				for _, item := range arr {
-					if s, ok := item.(string); ok && s != "" {
-						moods = append(moods, s)
-					}
-				}
-			}
-		}
-	}
-
-	return []types.GeneratedMedia{{
-		MP3URL:       mp3URL,
-		MP3Thumbnail: mp3Thumb,
-		MP4URL:       mp4URL,
-		MP4Thumbnail: mp4Thumb,
-		VTTURL:       vttURL,
-		Title:        title,
-		Artist:       artist,
-		Genre:        genre,
-		Moods:        moods,
-	}}
+	return types.ExtractMedia(imageData)
 }
 
 // extractDeepResearchPlan searches candidate data for a dict with key "56" or "57"
@@ -992,21 +652,6 @@ func findDictKey(data any, pred func(map[string]any) bool) bool {
 		}
 	}
 	return false
-}
-
-func getNestedString(arr []any, indices ...int) string {
-	var current any = arr
-	for _, idx := range indices {
-		a, ok := current.([]any)
-		if !ok || idx >= len(a) {
-			return ""
-		}
-		current = a[idx]
-	}
-	if s, ok := current.(string); ok {
-		return s
-	}
-	return ""
 }
 
 func calculateDelta(prev, current string) string {

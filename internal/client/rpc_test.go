@@ -132,6 +132,7 @@ func TestCallRPC_SourcePathOverridesSourceCid(t *testing.T) {
 
 func TestCallRPCBatch_HappyPath(t *testing.T) {
 	var gotRPCIDs string
+	var gotBatchCount int
 	var gotCallCount int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotRPCIDs = r.URL.Query().Get("rpcids")
@@ -144,7 +145,10 @@ func TestCallRPCBatch_HappyPath(t *testing.T) {
 			t.Errorf("Unmarshal f.req: %v", err)
 			return
 		}
-		gotCallCount = len(outer)
+		gotBatchCount = len(outer)
+		if len(outer) > 0 {
+			gotCallCount = len(outer[0])
+		}
 		_, _ = w.Write(makeTestMultiBatchResponse(map[string]string{"one": `[1]`, "two": `[2]`}, nil))
 	}))
 	defer srv.Close()
@@ -165,6 +169,9 @@ func TestCallRPCBatch_HappyPath(t *testing.T) {
 	}
 	if gotRPCIDs != "one,two" {
 		t.Fatalf("rpcids = %q, want one,two", gotRPCIDs)
+	}
+	if gotBatchCount != 1 {
+		t.Fatalf("gotBatchCount = %d, want 1", gotBatchCount)
 	}
 	if gotCallCount != 2 {
 		t.Fatalf("gotCallCount = %d, want 2", gotCallCount)

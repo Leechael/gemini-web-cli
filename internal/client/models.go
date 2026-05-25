@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/Leechael/gemini-web-cli/internal/client/protocol"
 	"github.com/Leechael/gemini-web-cli/internal/types"
 )
 
@@ -51,8 +52,8 @@ func (c *Client) FetchUserStatus(ctx context.Context) (types.AccountStatus, []ty
 		return types.StatusAvailable, nil, err
 	}
 
-	responseBody := stripResponsePrefix(string(body))
-	rpcBody, rejectCode, err := extractRPCBody(responseBody, rpcGetUserStatus)
+	responseBody := protocol.StripResponsePrefix(body)
+	rpcBody, rejectCode, err := protocol.ExtractRPCBody(responseBody, rpcGetUserStatus)
 	if err != nil {
 		return types.StatusAvailable, nil, fmt.Errorf("extracting user status RPC body: %w", err)
 	}
@@ -60,7 +61,7 @@ func (c *Client) FetchUserStatus(ctx context.Context) (types.AccountStatus, []ty
 		return types.StatusAvailable, nil, fmt.Errorf("user status RPC rejected with code=%d", rejectCode)
 	}
 
-	return parseUserStatus(rpcBody)
+	return parseUserStatus(string(rpcBody))
 }
 
 // FetchAndCacheModels calls FetchUserStatus and caches the results.
