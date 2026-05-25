@@ -29,7 +29,7 @@ var reportCmd = &cobra.Command{
 			return err
 		}
 
-		result := text
+		result := formatChatText(text)
 		if len(sources) > 0 {
 			result += "\n\n---\n\n## References\n"
 			for num := range sources {
