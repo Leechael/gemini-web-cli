@@ -85,20 +85,23 @@ func runResearchList(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	if len(reports) == 0 {
-		if researchListJSON {
-			fmt.Println("[]")
-		} else {
-			fmt.Println("no reports")
-		}
-		return nil
-	}
 	if researchListJSON {
-		out, err := json.Marshal(reports)
+		jsonReports := any(reports)
+		if len(reports) == 0 {
+			jsonReports = []any{}
+		}
+		out, err := json.Marshal(map[string]any{
+			"reports":    jsonReports,
+			"nextCursor": nextCursor,
+		})
 		if err != nil {
 			return err
 		}
 		fmt.Println(string(out))
+		return nil
+	}
+	if len(reports) == 0 {
+		fmt.Println("no reports")
 		return nil
 	}
 	for _, report := range reports {
