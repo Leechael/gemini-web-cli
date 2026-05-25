@@ -78,6 +78,25 @@ func DecodeReadChat(body []byte) ([]types.ChatTurn, error) {
 	return turns, nil
 }
 
+// DecodeReadChatRaw returns raw JSON turns without decoding them into ChatTurn values.
+func DecodeReadChatRaw(body []byte) ([]json.RawMessage, error) {
+	if strings.TrimSpace(string(body)) == "" {
+		return nil, nil
+	}
+	var data []json.RawMessage
+	if err := json.Unmarshal(body, &data); err != nil {
+		return nil, fmt.Errorf("decode raw ReadChat JSON: %w", err)
+	}
+	if len(data) == 0 {
+		return nil, nil
+	}
+	var turns []json.RawMessage
+	if err := json.Unmarshal(data[0], &turns); err != nil {
+		return data, nil
+	}
+	return turns, nil
+}
+
 func decodeChatTurnArray(turnArr []any) types.ChatTurn {
 	ct := types.ChatTurn{}
 	if userPrompt := protocol.StringAt(turnArr, 2, 0, 0); userPrompt != "" {

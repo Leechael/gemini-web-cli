@@ -2,13 +2,12 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/Leechael/gemini-web-cli/internal/client/protocol/rpcs"
 	"github.com/Leechael/gemini-web-cli/internal/types"
 )
-
-const rpcReadChat = "hNvQHb"
 
 // ReadChat reads conversation turns from a chat.
 func (c *Client) ReadChat(ctx context.Context, cid string, maxTurns int) ([]types.ChatTurn, error) {
@@ -21,6 +20,19 @@ func (c *Client) ReadChat(ctx context.Context, cid string, maxTurns int) ([]type
 		return nil, fmt.Errorf("read_chat rejected with code=%d", rejectCode)
 	}
 	return rpcs.DecodeReadChat(body)
+}
+
+// ReadChatRaw returns the raw JSON turns of a chat.
+func (c *Client) ReadChatRaw(ctx context.Context, cid string, maxTurns int) ([]json.RawMessage, error) {
+	rpcID, payload := rpcs.EncodeReadChat(cid, maxTurns)
+	body, rejectCode, err := c.CallRPC(ctx, rpcID, payload, WithSourceCid(cid))
+	if err != nil {
+		return nil, err
+	}
+	if rejectCode != 0 {
+		return nil, fmt.Errorf("read_chat rejected with code=%d", rejectCode)
+	}
+	return rpcs.DecodeReadChatRaw(body)
 }
 
 // LatestResponse holds the result of FetchLatestChatResponse.
