@@ -28,10 +28,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/Leechael/gemini-web-cli/internal/client/protocol"
-	"github.com/Leechael/gemini-web-cli/internal/types"
 )
 
 const listChatsRPCID = "MaZiqc"
@@ -42,6 +40,13 @@ type ListChatsPayload struct {
 	Cursor   string
 	Flag1    int
 	Flag2    int
+}
+
+// ChatListItem is the protocol-level representation of one listed chat.
+type ChatListItem struct {
+	Cid           string
+	Title         string
+	UpdatedAtUnix int64
 }
 
 // EncodeListChats returns the default ListChats payload shape.
@@ -64,7 +69,7 @@ func EncodeListChatsRaw(p ListChatsPayload) (rpcID, payload string) {
 }
 
 // DecodeListChats parses the wrb.fr body JSON returned by ExtractRPCBody.
-func DecodeListChats(body []byte) ([]types.ChatItem, string, error) {
+func DecodeListChats(body []byte) ([]ChatListItem, string, error) {
 	if strings.TrimSpace(string(body)) == "" || strings.TrimSpace(string(body)) == "[]" {
 		return nil, "", nil
 	}
@@ -84,19 +89,19 @@ func DecodeListChats(body []byte) ([]types.ChatItem, string, error) {
 		return nil, nextCursor, nil
 	}
 
-	items := make([]types.ChatItem, 0, len(chatList))
+	items := make([]ChatListItem, 0, len(chatList))
 	for _, chat := range chatList {
 		chatArr, ok := chat.([]any)
 		if !ok {
 			continue
 		}
-		item := types.ChatItem{
+		item := ChatListItem{
 			Cid:   protocol.StringAt(chatArr, 0),
 			Title: protocol.StringAt(chatArr, 1),
 		}
 		if ts, ok := protocol.ValueAt(chatArr, 5, 0); ok {
 			if epoch, ok := ts.(float64); ok {
-				item.UpdatedAt = time.Unix(int64(epoch), 0).UTC().Format("2006-01-02T15:04")
+				item.UpdatedAtUnix = int64(epoch)
 			}
 		}
 		if item.Cid != "" {

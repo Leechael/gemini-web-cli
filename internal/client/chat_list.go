@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/Leechael/gemini-web-cli/internal/client/protocol/rpcs"
 	"github.com/Leechael/gemini-web-cli/internal/types"
@@ -38,11 +39,12 @@ func (c *Client) ListChats(ctx context.Context, cursor string) ([]types.ChatItem
 				fmt.Fprintf(logWriter, "list_chats attempt rejected (path=%s code=%d)\n", sourcePath, rejectCode)
 				continue
 			}
-			items, nextCursor, err := rpcs.DecodeListChats(body)
+			listItems, nextCursor, err := rpcs.DecodeListChats(body)
 			if err != nil {
 				fmt.Fprintf(logWriter, "list_chats decode failed (path=%s): %v\n", sourcePath, err)
 				continue
 			}
+			items := chatItemsFromRPC(listItems)
 			if len(items) > 0 {
 				return items, nextCursor, nil
 			}
@@ -50,4 +52,19 @@ func (c *Client) ListChats(ctx context.Context, cursor string) ([]types.ChatItem
 	}
 
 	return nil, "", nil
+}
+
+func chatItemsFromRPC(items []rpcs.ChatListItem) []types.ChatItem {
+	out := make([]types.ChatItem, 0, len(items))
+	for _, item := range items {
+		chatItem := types.ChatItem{
+			Cid:   item.Cid,
+			Title: item.Title,
+		}
+		if item.UpdatedAtUnix != 0 {
+			chatItem.UpdatedAt = time.Unix(item.UpdatedAtUnix, 0).UTC().Format("2006-01-02T15:04")
+		}
+		out = append(out, chatItem)
+	}
+	return out
 }

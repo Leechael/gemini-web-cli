@@ -49,8 +49,8 @@ func TestDecodeListChats_FromSampleFixture(t *testing.T) {
 	if items[0].Cid != "c_000000000000001" || items[0].Title != "Sample chat title" {
 		t.Fatalf("item[0] = %+v", items[0])
 	}
-	if items[0].UpdatedAt != "2023-11-14T22:13" {
-		t.Fatalf("UpdatedAt = %q", items[0].UpdatedAt)
+	if items[0].UpdatedAtUnix != 1700000000 {
+		t.Fatalf("UpdatedAtUnix = %d", items[0].UpdatedAtUnix)
 	}
 }
 

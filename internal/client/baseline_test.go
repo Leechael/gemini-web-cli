@@ -188,8 +188,8 @@ func TestBaseline_BatchListChats(t *testing.T) {
 	if first.Title == "" {
 		t.Error("first item has empty title")
 	}
-	if first.UpdatedAt == "" {
-		t.Error("first item has empty UpdatedAt")
+	if first.UpdatedAtUnix == 0 {
+		t.Error("first item has empty UpdatedAtUnix")
 	}
 
 	_ = cursor
