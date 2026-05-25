@@ -14,8 +14,8 @@ import (
 )
 
 const (
-	rpcBardActivity          = "ESY5D"
-	rpcDeepResearchPrefs     = "L5adhe"
+	rpcBardSettings          = "ESY5D"
+	rpcPrefsSync             = "L5adhe"
 	rpcDeepResearchBootstrap = "ku4Jyf"
 	rpcDeepResearchModelSt   = "qpEbW"
 	rpcDeepResearchCaps      = "aPya6c"
@@ -80,10 +80,10 @@ func (c *Client) deepResearchGenerate(ctx context.Context, prompt string, metada
 // deepResearchPreflight sends the preflight RPCs needed to enable deep research.
 // All calls are best-effort (errors are logged but not fatal).
 func (c *Client) deepResearchPreflight(ctx context.Context, cid string, rid string) {
-	// 1. BARD_ACTIVITY
-	c.bestEffortRPC(ctx, rpcBardActivity, `[[["bard_activity_enabled"]]]`, "")
+	// 1. BARD_SETTINGS
+	c.bestEffortRPC(ctx, rpcBardSettings, `[[["bard_activity_enabled"]]]`, "")
 
-	// 2. DEEP_RESEARCH_PREFS — feature_state (193 elements, [192] = music/image features)
+	// 2. PREFS_SYNC — feature_state (193 elements, [192] = music/image features)
 	featureState := make([]any, 193)
 	featureState[192] = []any{[]any{
 		"music_generation_soft",
@@ -93,13 +93,13 @@ func (c *Client) deepResearchPreflight(ctx context.Context, cid string, rid stri
 		"music_generation_soft",
 	}}
 	prefsPayload1, _ := json.Marshal([]any{featureState, []any{[]any{"tool_menu_soft_badge_disabled_ids"}}})
-	c.bestEffortRPC(ctx, rpcDeepResearchPrefs, string(prefsPayload1), "")
+	c.bestEffortRPC(ctx, rpcPrefsSync, string(prefsPayload1), "")
 
-	// 3. DEEP_RESEARCH_PREFS — popup_state (87 elements, [86] = 1)
+	// 3. PREFS_SYNC — popup_state (87 elements, [86] = 1)
 	popupState := make([]any, 87)
 	popupState[86] = 1
 	prefsPayload2, _ := json.Marshal([]any{popupState, []any{[]any{"popup_zs_visits_cooldown"}}})
-	c.bestEffortRPC(ctx, rpcDeepResearchPrefs, string(prefsPayload2), "")
+	c.bestEffortRPC(ctx, rpcPrefsSync, string(prefsPayload2), "")
 
 	// 4. DEEP_RESEARCH_BOOTSTRAP
 	c.bestEffortRPC(ctx, rpcDeepResearchBootstrap,
