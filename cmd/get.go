@@ -12,7 +12,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var latexTextPattern = regexp.MustCompile(`\\text\{([^}]*)\}`)
+var (
+	latexInlineMathPattern = regexp.MustCompile(`\$([^$\n]+)\$`)
+	latexTextPattern       = regexp.MustCompile(`\\text\{([^}]*)\}`)
+)
 
 var (
 	getMaxTurns int
@@ -138,6 +141,7 @@ func formatChatText(text string) string {
 	for old, newText := range replacements {
 		text = strings.ReplaceAll(text, old, newText)
 	}
+	text = latexInlineMathPattern.ReplaceAllString(text, "$1")
 	return strings.TrimSpace(text)
 }
 
