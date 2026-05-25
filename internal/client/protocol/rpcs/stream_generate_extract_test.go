@@ -43,6 +43,22 @@ func TestExtractMedia_PR309_NewPath(t *testing.T) {
 	}
 }
 
+func TestExtractMedia_PR309_OldPath(t *testing.T) {
+	mp3 := make([]any, 8)
+	mp3[7] = []any{"https://lh3.googleusercontent.com/mp3-thumb", "https://contribution.usercontent.google.com/download?mp3"}
+	mediaData := []any{[]any{nil, mp3}}
+	cand12 := make([]any, 87)
+	cand12[86] = mediaData
+
+	media := ExtractMedia(cand12)
+	if len(media) != 1 {
+		t.Fatalf("media = %d, want 1", len(media))
+	}
+	if media[0].MP3URL == "" {
+		t.Fatal("empty mp3 URL")
+	}
+}
+
 func TestExtractDeepResearchPlan_Key56(t *testing.T) {
 	plan := []any{"Research Plan Title", []any{[]any{nil, "Search", "Find sources"}}, "Soon", []any{"Start"}}
 	got := ExtractDeepResearchPlan([]any{map[string]any{"56": plan}})

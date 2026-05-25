@@ -1,3 +1,21 @@
+// RPC: dI8W6e — LogClientEvent
+// Source-path: /app
+// Reject codes: may reject when called with the main page token
+//
+// Payload shape: contains caller-supplied device id, model id, and event id (stubbed)
+// Response shape: typically empty
+//
+// RPC: TFNzk — LogModelSelection
+// Source-path: /app
+// Reject codes: may reject when called with the main page token
+//
+// Payload shape: [[<selector1>, null, <selector2>], null, [[<model_id>], [<exp_id>, ...]]]
+// Response shape: typically empty
+//
+// Notes:
+//   - Browser sends dI8W6e and TFNzk from the MyActivity iframe with an iframe-specific at= token.
+//   - CLI uses the main page token, so server rejection is expected and is not a protocol bug.
+//   - Library code does not call these automatically; debug commands expose them for protocol verification.
 package rpcs
 
 import (

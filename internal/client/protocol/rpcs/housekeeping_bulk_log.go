@@ -1,3 +1,17 @@
+// RPC: ozz5Z — BulkLogCounter
+// Source-path: /app
+// Reject codes: none observed; server may drop unknown counters
+//
+// Payload shape: [[[[null, "<counter_id>", <value>], ...]]]
+//
+//	<counter_id>: browser metric counter ID as string
+//	<value>: integer counter value
+//
+// Response shape: typically empty
+//
+// Notes:
+//   - Browser uses this for bulk metric reporting.
+//   - Library code does not call it automatically; debug commands expose it for protocol verification.
 package rpcs
 
 import "encoding/json"

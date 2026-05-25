@@ -15,10 +15,9 @@ func (c *Client) streamGenerate(ctx context.Context, prompt string, metadata []s
 	}
 
 	uuid := generateUUID()
-	hasCid := len(metadata) > 0 && metadata[0] != ""
 	mode := c.resolveGenerationMode(prompt, uploads)
 
-	innerReq := c.buildInnerRequest(prompt, metadata, uploads, model, deepResearch, hasCid, uuid, mode)
+	innerReq := c.buildInnerRequest(prompt, metadata, uploads, model, deepResearch, uuid, mode)
 	innerJSON, err := json.Marshal(innerReq)
 	if err != nil {
 		return fmt.Errorf("marshaling inner request: %w", err)

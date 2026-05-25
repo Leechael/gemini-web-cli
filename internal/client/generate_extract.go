@@ -6,7 +6,10 @@ import (
 )
 
 func parseEnvelope(envelope []any) *types.ModelOutput {
-	out, _ := rpcs.DecodeStreamGenerateFrame(envelope)
+	out, err := rpcs.DecodeStreamGenerateFrame(envelope)
+	if err != nil {
+		panic(err)
+	}
 	return out
 }
 

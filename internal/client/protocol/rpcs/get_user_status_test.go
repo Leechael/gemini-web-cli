@@ -43,6 +43,9 @@ func TestDecodeGetUserStatus(t *testing.T) {
 	if result.Models[0].ModelID != "fbb127bbb056c959" || result.Models[0].Selector != 1 {
 		t.Fatalf("model = %#v", result.Models[0])
 	}
+	if len(result.TierFlags) != 0 {
+		t.Fatalf("tier flags = %#v", result.TierFlags)
+	}
 	if len(result.CapFlags) != 1 || result.CapFlags[0] != 19 {
 		t.Fatalf("cap flags = %#v", result.CapFlags)
 	}

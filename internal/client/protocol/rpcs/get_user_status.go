@@ -10,6 +10,9 @@
 //	 <15>: models_list [[modelID, displayName, description, ..., selector_at_17], ...],
 //	 <16>: tier_flags [int...], <17>: cap_flags [int...]]
 //
+// Account status code semantics: 1000 = available, 1016 = unauthenticated;
+// see types.AccountStatusFromCode for the full local mapping.
+//
 // Test fixture: testdata/get_user_status_basic.txt
 package rpcs
 
@@ -46,7 +49,8 @@ func EncodeGetUserStatus() (rpcID, payload string) {
 }
 
 func DecodeGetUserStatus(body []byte) (*UserStatusResult, error) {
-	if strings.TrimSpace(string(body)) == "" || strings.TrimSpace(string(body)) == "[]" {
+	trimmed := strings.TrimSpace(string(body))
+	if trimmed == "" || trimmed == "[]" {
 		return &UserStatusResult{AccountStatus: types.StatusAvailable}, nil
 	}
 	var data []any

@@ -1,5 +1,6 @@
 // RPC: StreamGenerate (BardFrontendService) — non-batchexecute endpoint
 // URL-path: /BardChatUi/data/assistant.lamda.BardFrontendService/StreamGenerate
+// Notes: this endpoint does not use batchexecute, so it has no source-path query parameter.
 // Reject codes: HTTP-level 429 (RateLimit) / envelope code 1052 (ModelUnavailable)
 //
 // Inner request shape (81-element array):
@@ -23,7 +24,6 @@
 //	[27]: 1
 //	[30]: [4]
 //	[41]: [1]
-//	[45]: 1 if TemporaryChat else unset
 //	[49]: mode flag — 11 (video) / 14 (image-to-video) / 21 (music) / 1 (deep research)
 //	[53]: 0
 //	[54]: [] (video) / [[[[[1]]]]] (deep research)
@@ -64,7 +64,6 @@ type EncodeStreamGenerateOpts struct {
 	UUID          string
 	EntropyToken  string
 	HexUUID       string
-	TemporaryChat bool
 }
 
 // FileRef is the protocol-layer upload reference.
@@ -143,9 +142,6 @@ func EncodeStreamGenerate(opts EncodeStreamGenerateOpts) []any {
 	req[27] = 1
 	req[30] = []any{4}
 	req[41] = []any{1}
-	if opts.TemporaryChat {
-		req[45] = 1
-	}
 	req[53] = 0
 	req[59] = opts.UUID
 	req[61] = []any{}

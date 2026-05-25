@@ -1,3 +1,24 @@
+// RPC: Te6DCf — SetLanguagePreference
+// Source-path: /
+// Reject codes: none observed
+//
+// Payload shape: [[<lang>], [<flag>]]
+//
+//	<lang>: ISO language code, for example "en" or "zh-CN"
+//	<flag>: 1 to set, 0 to unset
+//
+// Response shape: typically empty
+//
+// RPC: maGuAc — user preference toggle (exact semantic unknown)
+// Source-path: /
+// Reject codes: none observed
+//
+// Payload shape: [<flag>]
+// Response shape: typically empty
+//
+// Notes:
+//   - Browser sends these during bootstrap/preference sync.
+//   - Library code does not call them automatically; debug commands expose them for protocol verification.
 package rpcs
 
 import "encoding/json"

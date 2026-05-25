@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"strings"
 	"unicode/utf8"
 
 	"github.com/Leechael/gemini-web-cli/internal/client/protocol/rpcs"
@@ -206,10 +205,7 @@ func utf16PrefixBytes(content []byte, wantUnits int) (int, bool) {
 }
 
 func isQueueingFrame(envelope []any) bool {
-	b, err := json.Marshal(envelope)
-	if err != nil {
-		return false
-	}
-	s := string(b)
-	return strings.Contains(s, "queueing=True") || strings.Contains(s, "Stream suspended")
+	// Stub until a real Veo/Lyria queueing HAR confirms the exact envelope path.
+	// Do not substring-match assistant text; normal prompts can mention these words.
+	return false
 }

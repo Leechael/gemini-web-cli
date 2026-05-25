@@ -5,7 +5,7 @@ import (
 	"github.com/Leechael/gemini-web-cli/internal/types"
 )
 
-func (c *Client) buildInnerRequest(prompt string, metadata []string, uploads []*UploadResult, model *types.Model, deepResearch bool, hasCid bool, uuid string, modeOverride ...string) []any {
+func (c *Client) buildInnerRequest(prompt string, metadata []string, uploads []*UploadResult, model *types.Model, deepResearch bool, uuid string, modeOverride ...string) []any {
 	fileRefs := make([]rpcs.FileRef, 0, len(uploads))
 	for _, u := range uploads {
 		fileRefs = append(fileRefs, rpcs.FileRef{

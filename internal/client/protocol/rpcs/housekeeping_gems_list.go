@@ -1,3 +1,18 @@
+// RPC: CNgdBe — ListGems (stub)
+// Source-path: /app
+// Reject codes: none observed in no-gems samples
+//
+// Payload shape: [<flag>, [<lang>], <count>]
+//
+//	<flag>: 1
+//	<lang>: ISO language code, for example "en"
+//	<count>: 0 in observed bootstrap call
+//
+// Response shape: [] when the account has no gems
+//
+// Notes:
+//   - This is not a full gems-domain implementation.
+//   - Library code does not call it automatically; debug commands expose it for protocol verification.
 package rpcs
 
 import "encoding/json"

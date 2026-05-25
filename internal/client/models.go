@@ -90,14 +90,6 @@ func (c *Client) ResolveModel(name string) *types.Model {
 	return nil
 }
 
-func parseUserStatus(body string) (types.AccountStatus, []types.Model, error) {
-	raw, err := rpcs.DecodeGetUserStatus([]byte(body))
-	if err != nil {
-		return types.StatusAvailable, nil, err
-	}
-	return raw.AccountStatus, userStatusModelsToTypes(raw), nil
-}
-
 func userStatusModelsToTypes(raw *rpcs.UserStatusResult) []types.Model {
 	if raw == nil || raw.AccountStatus.IsHardBlock() {
 		return nil
