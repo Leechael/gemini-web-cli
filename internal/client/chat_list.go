@@ -27,22 +27,32 @@ func (c *Client) ListChats(ctx context.Context, cursor string) ([]types.ChatItem
 		sourcePaths = append(sourcePaths, "/app")
 	}
 
+	var lastErr error
+	validResponse := false
+	lastCursor := ""
 	for _, sourcePath := range sourcePaths {
 		for _, p := range payloads {
 			rpcID, payload := rpcs.EncodeListChatsRaw(p)
 			body, rejectCode, err := c.CallRPC(ctx, rpcID, payload, WithSourcePath(sourcePath))
 			if err != nil {
+				lastErr = err
 				fmt.Fprintf(logWriter, "list_chats attempt failed (path=%s): %v\n", sourcePath, err)
 				continue
 			}
 			if rejectCode != 0 {
+				lastErr = fmt.Errorf("list_chats rejected with code=%d", rejectCode)
 				fmt.Fprintf(logWriter, "list_chats attempt rejected (path=%s code=%d)\n", sourcePath, rejectCode)
 				continue
 			}
 			listItems, nextCursor, err := rpcs.DecodeListChats(body)
 			if err != nil {
+				lastErr = err
 				fmt.Fprintf(logWriter, "list_chats decode failed (path=%s): %v\n", sourcePath, err)
 				continue
+			}
+			validResponse = true
+			if nextCursor != "" {
+				lastCursor = nextCursor
 			}
 			items := chatItemsFromRPC(listItems)
 			if len(items) > 0 {
@@ -51,7 +61,10 @@ func (c *Client) ListChats(ctx context.Context, cursor string) ([]types.ChatItem
 		}
 	}
 
-	return nil, "", nil
+	if !validResponse && lastErr != nil {
+		return nil, "", lastErr
+	}
+	return nil, lastCursor, nil
 }
 
 func chatItemsFromRPC(items []rpcs.ChatListItem) []types.ChatItem {

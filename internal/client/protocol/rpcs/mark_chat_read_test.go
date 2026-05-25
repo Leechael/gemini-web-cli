@@ -27,8 +27,17 @@ func TestDecodeMarkChatRead_FromSampleFixture(t *testing.T) {
 }
 
 func TestDecodeMarkChatRead_EmptyBody(t *testing.T) {
-	if err := DecodeMarkChatRead(nil); err != nil {
+	if err := DecodeMarkChatRead([]byte("  \n")); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestDecodeMarkChatRead_UnexpectedShape(t *testing.T) {
+	if err := DecodeMarkChatRead([]byte(`{"ok":true}`)); err == nil {
+		t.Fatal("expected error")
+	}
+	if err := DecodeMarkChatRead([]byte(`[1]`)); err == nil {
+		t.Fatal("expected error")
 	}
 }
 

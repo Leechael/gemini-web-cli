@@ -19,6 +19,7 @@ package rpcs
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 const markChatReadRPCID = "k81mDb"
@@ -31,12 +32,15 @@ func EncodeMarkChatRead(cid string) (rpcID, payload string) {
 
 // DecodeMarkChatRead validates the MarkChatRead response body.
 func DecodeMarkChatRead(body []byte) error {
-	var data any
-	if len(body) == 0 {
+	if strings.TrimSpace(string(body)) == "" {
 		return nil
 	}
+	var data []any
 	if err := json.Unmarshal(body, &data); err != nil {
 		return fmt.Errorf("decode MarkChatRead JSON: %w", err)
+	}
+	if len(data) != 0 {
+		return fmt.Errorf("MarkChatRead response did not match expected empty array shape")
 	}
 	return nil
 }
