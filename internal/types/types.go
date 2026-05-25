@@ -124,24 +124,21 @@ func ExtractVideos(imageData any) []Video {
 		return nil
 	}
 
-	var videoRoot any
 	if len(arr) > 59 && arr[59] != nil {
-		videoRoot = arr[59]
+		if videos := extractVideoURLs(arr[59]); len(videos) > 0 {
+			return videos
+		}
 	}
-	if videoRoot == nil {
-		for _, elem := range arr {
-			if m, ok := elem.(map[string]any); ok {
-				if v, exists := m["60"]; exists {
-					videoRoot = v
-					break
+	for _, elem := range arr {
+		if m, ok := elem.(map[string]any); ok {
+			if v, exists := m["60"]; exists {
+				if videos := extractVideoURLs(v); len(videos) > 0 {
+					return videos
 				}
 			}
 		}
 	}
-	if videoRoot == nil {
-		return nil
-	}
-	return extractVideoURLs(videoRoot)
+	return nil
 }
 
 func extractVideoURLs(data any) []Video {
