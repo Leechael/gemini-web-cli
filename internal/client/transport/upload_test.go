@@ -2,58 +2,72 @@ package transport
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 )
 
 func TestPostUpload(t *testing.T) {
+	var mu sync.Mutex
 	var sawStart bool
 	var sawFinalize bool
+	var handlerFailures []string
+	recordFailure := func(format string, args ...any) {
+		mu.Lock()
+		defer mu.Unlock()
+		handlerFailures = append(handlerFailures, fmt.Sprintf(format, args...))
+	}
 
 	var server *httptest.Server
 	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/upload":
+			mu.Lock()
 			sawStart = true
+			mu.Unlock()
 			if r.Header.Get("X-Goog-Upload-Command") != "start" {
-				t.Fatalf("start command = %q", r.Header.Get("X-Goog-Upload-Command"))
+				recordFailure("start command = %q", r.Header.Get("X-Goog-Upload-Command"))
 			}
 			if r.Header.Get("X-Goog-Upload-Protocol") != "resumable" {
-				t.Fatalf("upload protocol = %q", r.Header.Get("X-Goog-Upload-Protocol"))
+				recordFailure("upload protocol = %q", r.Header.Get("X-Goog-Upload-Protocol"))
 			}
 			if r.Header.Get("X-Goog-Upload-Header-Content-Length") != "11" {
-				t.Fatalf("content length header = %q", r.Header.Get("X-Goog-Upload-Header-Content-Length"))
+				recordFailure("content length header = %q", r.Header.Get("X-Goog-Upload-Header-Content-Length"))
 			}
 			if r.Header.Get("Push-Id") != "push-id" {
-				t.Fatalf("Push-Id = %q", r.Header.Get("Push-Id"))
+				recordFailure("Push-Id = %q", r.Header.Get("Push-Id"))
 			}
 			if r.Header.Get("Cookie") != "a=b" {
-				t.Fatalf("Cookie = %q", r.Header.Get("Cookie"))
+				recordFailure("Cookie = %q", r.Header.Get("Cookie"))
 			}
 			body, _ := io.ReadAll(r.Body)
 			if string(body) != "File name: sample.txt" {
-				t.Fatalf("start body = %q", body)
+				recordFailure("start body = %q", body)
 			}
 			w.Header().Set("X-Goog-Upload-Url", server.URL+"/session")
 			w.WriteHeader(http.StatusOK)
 		case "/session":
+			mu.Lock()
 			sawFinalize = true
+			mu.Unlock()
 			if r.Header.Get("X-Goog-Upload-Command") != "upload, finalize" {
-				t.Fatalf("finalize command = %q", r.Header.Get("X-Goog-Upload-Command"))
+				recordFailure("finalize command = %q", r.Header.Get("X-Goog-Upload-Command"))
 			}
 			if r.Header.Get("X-Goog-Upload-Offset") != "0" {
-				t.Fatalf("offset = %q", r.Header.Get("X-Goog-Upload-Offset"))
+				recordFailure("offset = %q", r.Header.Get("X-Goog-Upload-Offset"))
 			}
 			body, _ := io.ReadAll(r.Body)
 			if string(body) != "hello world" {
-				t.Fatalf("finalize body = %q", body)
+				recordFailure("finalize body = %q", body)
 			}
 			_, _ = w.Write([]byte("upload_000000000000001\n"))
 		default:
-			t.Fatalf("unexpected path %s", r.URL.Path)
+			recordFailure("unexpected path %s", r.URL.Path)
+			http.NotFound(w, r)
 		}
 	}))
 	defer server.Close()
@@ -76,6 +90,11 @@ func TestPostUpload(t *testing.T) {
 	}
 	if uploadID != "upload_000000000000001" {
 		t.Fatalf("uploadID = %q", uploadID)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(handlerFailures) > 0 {
+		t.Fatalf("handler failures: %s", strings.Join(handlerFailures, "; "))
 	}
 	if !sawStart || !sawFinalize {
 		t.Fatalf("sawStart=%v sawFinalize=%v", sawStart, sawFinalize)
