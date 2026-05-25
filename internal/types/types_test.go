@@ -22,8 +22,9 @@ func TestExtractImages_ImageToImagePath(t *testing.T) {
 
 func TestExtractImages_PathPreservation(t *testing.T) {
 	generated := []any{nil, nil, nil, []any{nil, nil, nil, "https://lh3.googleusercontent.com/sample-old"}}
+	marker := []any{nil, nil, nil, []any{nil, nil, nil, "nfr_more_trigger_si"}}
 	arr := make([]any, 8)
-	arr[7] = []any{generated}
+	arr[7] = []any{generated, marker}
 
 	images := ExtractImages(arr)
 	if len(images) != 1 {
