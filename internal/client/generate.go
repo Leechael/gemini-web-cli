@@ -339,17 +339,12 @@ func (c *Client) parseStreamResponse(body io.Reader, cb StreamCallback) error {
 			allData = append(allData, buf[:n]...)
 
 			// Parse all complete frames from accumulated data
-			content := string(allData)
-			if strings.HasPrefix(content, ")]}'\n") {
-				content = content[5:]
-			}
-
-			frames := parseLengthPrefixedFrames(content)
+			frames := protocol.ParseLengthPrefixedFrames(protocol.StripResponsePrefix(allData))
 			// Only process NEW frames (skip already-processed ones)
 			done := false
 			for i := framesProcessed; i < len(frames); i++ {
 				var envelope []any
-				if err := json.Unmarshal([]byte(frames[i]), &envelope); err != nil {
+				if err := json.Unmarshal(frames[i], &envelope); err != nil {
 					continue
 				}
 				// Check for error codes in the response
@@ -405,82 +400,6 @@ func (c *Client) parseStreamResponse(body io.Reader, cb StreamCallback) error {
 		return fmt.Errorf("no valid response frames parsed (empty response body)")
 	}
 	return nil
-}
-
-// parseLengthPrefixedFrames parses Google's length-prefixed framing protocol.
-// Format: <digits>\n<content_of_N_utf16_units> repeated.
-// The length counts UTF-16 code units starting immediately after the digits
-// (includes the \n after digits and the trailing \n of the JSON payload).
-// Incomplete frames are omitted — the caller should retain the raw buffer
-// and re-parse after more data arrives.
-func parseLengthPrefixedFrames(content string) []string {
-	var frames []string
-	runes := []rune(content)
-	pos := 0
-	totalLen := len(runes)
-
-	for pos < totalLen {
-		// Skip whitespace before length marker
-		for pos < totalLen && (runes[pos] == ' ' || runes[pos] == '\t' || runes[pos] == '\n' || runes[pos] == '\r') {
-			pos++
-		}
-		if pos >= totalLen {
-			break
-		}
-
-		// Read the length number (digits)
-		numStart := pos
-		for pos < totalLen && runes[pos] >= '0' && runes[pos] <= '9' {
-			pos++
-		}
-		if pos == numStart {
-			// Not a digit — skip
-			pos++
-			continue
-		}
-
-		// Length marker must be followed by \n (matching Python's regex r"(\d+)\n")
-		if pos >= totalLen || runes[pos] != '\n' {
-			break
-		}
-
-		lengthStr := string(runes[numStart:pos])
-
-		// Parse the UTF-16 unit count
-		utf16Units := 0
-		for _, ch := range lengthStr {
-			utf16Units = utf16Units*10 + int(ch-'0')
-		}
-
-		// Content starts immediately after the digits (the \n is counted in the length).
-		contentStart := pos
-		unitsConsumed := 0
-		for pos < totalLen && unitsConsumed < utf16Units {
-			r := runes[pos]
-			// Don't overshoot: a surrogate pair counts as 2 units
-			units := 1
-			if r > 0xFFFF {
-				units = 2
-			}
-			if unitsConsumed+units > utf16Units {
-				break
-			}
-			unitsConsumed += units
-			pos++
-		}
-
-		// Incomplete frame — not enough data yet, stop parsing
-		if unitsConsumed < utf16Units {
-			break
-		}
-
-		chunk := strings.TrimSpace(string(runes[contentStart:pos]))
-		if chunk != "" {
-			frames = append(frames, chunk)
-		}
-	}
-
-	return frames
 }
 
 func parseEnvelope(envelope []any) *types.ModelOutput {
@@ -576,7 +495,7 @@ func parseEnvelope(envelope []any) *types.ModelOutput {
 					out.Text = ""
 				}
 				// Strip inline card URL lines (video_gen_chip, card_content, etc.)
-				out.Text = stripCardURLLines(out.Text)
+				out.Text = protocol.StripCardURLLines(out.Text)
 			}
 		}
 	}

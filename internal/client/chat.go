@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Leechael/gemini-web-cli/internal/client/protocol"
 	"github.com/Leechael/gemini-web-cli/internal/types"
 )
 
@@ -187,6 +188,15 @@ func stripResponsePrefix(s string) string {
 		return s[5:]
 	}
 	return s
+}
+
+func parseLengthPrefixedFrames(content string) []string {
+	frames := protocol.ParseLengthPrefixedFrames([]byte(content))
+	out := make([]string, 0, len(frames))
+	for _, frame := range frames {
+		out = append(out, string(frame))
+	}
+	return out
 }
 
 func extractRPCBody(response, rpcID string) (string, int, error) {
