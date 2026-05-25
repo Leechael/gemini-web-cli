@@ -14,6 +14,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/Leechael/gemini-web-cli/internal/client/protocol"
 	"github.com/Leechael/gemini-web-cli/internal/types"
 )
 
@@ -635,11 +636,11 @@ func extractImages(imageData any) []types.Image {
 				}
 				img := types.Image{}
 				// URL at [0][0][0]
-				if src := getNestedString(wiArr, 0, 0, 0); src != "" {
+				if src := protocol.StringAt(wiArr, 0, 0, 0); src != "" {
 					img.URL = src
 				}
 				// Title at [7][0]
-				if title := getNestedString(wiArr, 7, 0); title != "" {
+				if title := protocol.StringAt(wiArr, 7, 0); title != "" {
 					img.Title = title
 				}
 				if img.URL != "" {
@@ -698,7 +699,7 @@ func extractImages(imageData any) []types.Image {
 				continue
 			}
 			img := types.Image{Generated: true}
-			if u := getNestedString(giArr, 3, 3); u != "" {
+			if u := protocol.StringAt(giArr, 3, 3); u != "" {
 				img.URL = u
 			}
 			if img.URL != "" {
@@ -992,21 +993,6 @@ func findDictKey(data any, pred func(map[string]any) bool) bool {
 		}
 	}
 	return false
-}
-
-func getNestedString(arr []any, indices ...int) string {
-	var current any = arr
-	for _, idx := range indices {
-		a, ok := current.([]any)
-		if !ok || idx >= len(a) {
-			return ""
-		}
-		current = a[idx]
-	}
-	if s, ok := current.(string); ok {
-		return s
-	}
-	return ""
 }
 
 func calculateDelta(prev, current string) string {
