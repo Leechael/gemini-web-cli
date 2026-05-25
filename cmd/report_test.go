@@ -15,3 +15,10 @@ func TestFormatChatText_InlineLatexUnits(t *testing.T) {
 		t.Fatalf("got = %q", got)
 	}
 }
+
+func TestFormatChatText_BlockMath(t *testing.T) {
+	got := formatChatText("$$x$$")
+	if got != "x" {
+		t.Fatalf("got = %q", got)
+	}
+}

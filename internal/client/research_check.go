@@ -63,7 +63,7 @@ func (c *Client) CheckDeepResearch(ctx context.Context, cid string) (*ResearchSt
 		return &ResearchStatus{State: "done", TextLen: len(text)}, nil
 	}
 
-	if strings.Contains(text, "Deep Research") || strings.Contains(text, "深度研究") || strings.Contains(text, "deep_research") {
+	if strings.Contains(lower, "deep research") || strings.Contains(text, "深度研究") || strings.Contains(lower, "deep_research") {
 		return &ResearchStatus{State: "running", TextLen: len(text)}, nil
 	}
 

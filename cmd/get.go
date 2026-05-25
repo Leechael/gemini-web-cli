@@ -133,7 +133,6 @@ func formatMessageBlock(role string, index int, id string, createdAt int64, body
 
 func formatChatText(text string) string {
 	text = latexTextPattern.ReplaceAllString(text, "$1")
-	text = latexInlineMathPattern.ReplaceAllString(text, "$1")
 	replacements := map[string]string{
 		"$$":              "",
 		`\longrightarrow`: "→",
@@ -142,6 +141,7 @@ func formatChatText(text string) string {
 	for old, newText := range replacements {
 		text = strings.ReplaceAll(text, old, newText)
 	}
+	text = latexInlineMathPattern.ReplaceAllString(text, "$1")
 	return strings.TrimSpace(text)
 }
 

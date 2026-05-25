@@ -44,17 +44,26 @@ func (c *Client) deepResearchPreflight(ctx context.Context, cid string, rid stri
 }
 
 func (c *Client) bestEffortRPC(ctx context.Context, rpcID, payload string, opts ...RPCOpt) {
-	if _, _, err := c.CallRPC(ctx, rpcID, payload, opts...); err != nil {
+	if _, rejectCode, err := c.CallRPC(ctx, rpcID, payload, opts...); err != nil {
 		fmt.Fprintf(logWriter, "preflight RPC %s failed: %v\n", rpcID, err)
+	} else if rejectCode != 0 {
+		fmt.Fprintf(logWriter, "preflight RPC %s rejected with code=%d\n", rpcID, rejectCode)
 	}
 }
 
 func (c *Client) bestEffortRPCBatch(ctx context.Context, calls []RPCCall, opts ...RPCOpt) {
-	if _, _, err := c.CallRPCBatch(ctx, calls, opts...); err != nil {
+	_, rejectCodes, err := c.CallRPCBatch(ctx, calls, opts...)
+	if err != nil {
 		ids := make([]string, len(calls))
 		for i, call := range calls {
 			ids[i] = call.ID
 		}
 		fmt.Fprintf(logWriter, "preflight batch %v failed: %v\n", ids, err)
+		return
+	}
+	for _, call := range calls {
+		if rejectCode := rejectCodes[call.ID]; rejectCode != 0 {
+			fmt.Fprintf(logWriter, "preflight RPC %s rejected with code=%d\n", call.ID, rejectCode)
+		}
 	}
 }

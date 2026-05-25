@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/Leechael/gemini-web-cli/internal/types"
@@ -50,6 +51,9 @@ func (c *Client) CreateAndStartDeepResearch(ctx context.Context, prompt string, 
 	c.deepResearchPreflight(ctx, plan.Cid, rid)
 	_, err = c.deepResearchGenerate(ctx, confirmPrompt, step1.Metadata, model)
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, fmt.Errorf("deep research confirm step failed: %w", err)
+		}
 		// Non-fatal: research may still proceed.
 		fmt.Fprintf(logWriter, "Warning: confirm step failed: %v\n", err)
 	}
