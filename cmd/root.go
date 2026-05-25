@@ -82,12 +82,13 @@ func init() {
 	modelsCmd.GroupID = "util"
 	statusCmd.GroupID = "util"
 	importCmd.GroupID = "util"
+	expandPromptCmd.GroupID = "util"
 
 	debugCmd.GroupID = "debug"
 
 	rootCmd.AddCommand(askCmd, replyCmd, googCmd, listCmd, getCmd, downloadCmd, chatCmd)
 	rootCmd.AddCommand(researchCmd, progressCmd, reportCmd)
-	rootCmd.AddCommand(modelsCmd, statusCmd, importCmd)
+	rootCmd.AddCommand(modelsCmd, statusCmd, importCmd, expandPromptCmd)
 	rootCmd.AddCommand(debugCmd)
 }
 
