@@ -171,16 +171,27 @@ func TestInit_ExtractsLanguageAndPushID(t *testing.T) {
 }
 
 // ============================================================================
-// Push ID propagation: uploadStart sends c.pushID as the Push-Id header.
-// Uses httptest to capture the actual HTTP request.
+// Push ID propagation: resumableUpload forwards c.pushID through transport.
+// Uses httptest to capture the actual HTTP requests.
 // ============================================================================
 
-func TestUploadStart_SendsPushIDHeader(t *testing.T) {
-	var gotPushID string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotPushID = r.Header.Get("Push-Id")
-		w.Header().Set("X-Goog-Upload-Url", "https://example.com/upload/target")
-		w.WriteHeader(200)
+func TestResumableUpload_SendsPushIDHeader(t *testing.T) {
+	var startPushID string
+	var finalizePushID string
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/":
+			startPushID = r.Header.Get("Push-Id")
+			w.Header().Set("X-Goog-Upload-Url", srv.URL+"/target")
+			w.WriteHeader(200)
+		case "/target":
+			finalizePushID = r.Header.Get("Push-Id")
+			w.WriteHeader(200)
+			_, _ = w.Write([]byte("upload-id-123"))
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
 	}))
 	defer srv.Close()
 
@@ -191,33 +202,15 @@ func TestUploadStart_SendsPushIDHeader(t *testing.T) {
 	c := newTestClient()
 	c.pushID = "feeds/my-custom-push-id"
 
-	_, err := c.uploadStart(t.Context(), "test.txt", 100)
+	_, err := c.resumableUpload(t.Context(), strings.NewReader("data"), "test.txt", "text/plain", 4)
 	if err != nil {
-		t.Fatalf("uploadStart() = %v", err)
+		t.Fatalf("resumableUpload() = %v", err)
 	}
-	if gotPushID != "feeds/my-custom-push-id" {
-		t.Errorf("Push-Id header = %q, want feeds/my-custom-push-id", gotPushID)
+	if startPushID != "feeds/my-custom-push-id" {
+		t.Errorf("start Push-Id header = %q, want feeds/my-custom-push-id", startPushID)
 	}
-}
-
-func TestUploadFinalize_SendsPushIDHeader(t *testing.T) {
-	var gotPushID string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotPushID = r.Header.Get("Push-Id")
-		w.WriteHeader(200)
-		w.Write([]byte("upload-id-123"))
-	}))
-	defer srv.Close()
-
-	c := newTestClient()
-	c.pushID = "feeds/another-push-id"
-
-	_, err := c.uploadFinalize(t.Context(), srv.URL, strings.NewReader("data"), 4)
-	if err != nil {
-		t.Fatalf("uploadFinalize() = %v", err)
-	}
-	if gotPushID != "feeds/another-push-id" {
-		t.Errorf("Push-Id header = %q, want feeds/another-push-id", gotPushID)
+	if finalizePushID != "feeds/my-custom-push-id" {
+		t.Errorf("finalize Push-Id header = %q, want feeds/my-custom-push-id", finalizePushID)
 	}
 }
 

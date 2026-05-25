@@ -3,6 +3,7 @@ package types
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // ModelOutput holds the parsed response from Gemini.
@@ -88,13 +89,31 @@ func ExtractImages(imageData any) []Image {
 			if u := stringAt(giArr, 3, 3); u != "" {
 				img.URL = u
 			}
-			if img.URL != "" {
+			if isImageURL(img.URL) {
 				images = append(images, img)
 			}
 		}
 	}
 
+	if arr0, ok := arr[0].(map[string]any); ok {
+		if editResults := arr0["8"]; editResults != nil {
+			for _, giArr := range findGeneratedImageItems(editResults) {
+				img := Image{Generated: true}
+				if u := stringAt(giArr, 3, 3); u != "" {
+					img.URL = u
+				}
+				if isImageURL(img.URL) {
+					images = append(images, img)
+				}
+			}
+		}
+	}
+
 	return images
+}
+
+func isImageURL(url string) bool {
+	return strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://")
 }
 
 func findGeneratedImageItems(root any) [][]any {
