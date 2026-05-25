@@ -73,6 +73,7 @@ func init() {
 	listCmd.GroupID = "chat"
 	getCmd.GroupID = "chat"
 	downloadCmd.GroupID = "chat"
+	chatCmd.GroupID = "chat"
 
 	researchCmd.GroupID = "research"
 	progressCmd.GroupID = "chat"
@@ -84,7 +85,7 @@ func init() {
 
 	debugCmd.GroupID = "debug"
 
-	rootCmd.AddCommand(askCmd, replyCmd, googCmd, listCmd, getCmd, downloadCmd)
+	rootCmd.AddCommand(askCmd, replyCmd, googCmd, listCmd, getCmd, downloadCmd, chatCmd)
 	rootCmd.AddCommand(researchCmd, progressCmd, reportCmd)
 	rootCmd.AddCommand(modelsCmd, statusCmd, importCmd)
 	rootCmd.AddCommand(debugCmd)
