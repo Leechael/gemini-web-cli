@@ -9,15 +9,15 @@
 //
 // Response shape (after StripResponsePrefix + ExtractRPCBody):
 //
-//	[[[report_arr, ...]]]
+//	[[report_arr, ...], <cursor or metadata>]
 //
 //	report_arr structure:
-//	  [0]: "<chat_id>"
-//	  [1]: "<request_id>"
-//	  [2]: "<report_id>"
+//	  [0]: ["<chat_id>", "<request_id>"]
+//	  [1]: [<unix_seconds_created>, <nanos>]
+//	  [2]: status or type flag
 //	  [3]: "<title>"
-//	  [4]: "<content_snippet>"
-//	  [5]: <unix_seconds_created>
+//	  [4]: ["<content_snippet>"]
+//	  [5]: "<report_id>"
 //
 // Test fixture: testdata/research_list_reports_basic.txt
 //
@@ -97,6 +97,57 @@ func decodeResearchReportArray(arr []any) (ResearchReport, bool) {
 	if len(arr) < 6 {
 		return ResearchReport{}, false
 	}
+
+	ids, ok := arr[0].([]any)
+	if !ok || len(ids) < 2 {
+		return decodeLegacyResearchReportArray(arr)
+	}
+	cid, ok := ids[0].(string)
+	if !ok || !strings.HasPrefix(cid, "c_") {
+		return ResearchReport{}, false
+	}
+	requestID, ok := ids[1].(string)
+	if !ok || !strings.HasPrefix(requestID, "r_") {
+		return ResearchReport{}, false
+	}
+
+	createdParts, ok := arr[1].([]any)
+	if !ok || len(createdParts) == 0 {
+		return ResearchReport{}, false
+	}
+	created, ok := createdParts[0].(float64)
+	if !ok {
+		return ResearchReport{}, false
+	}
+
+	title, _ := arr[3].(string)
+	if title == "" {
+		return ResearchReport{}, false
+	}
+	snippetParts, ok := arr[4].([]any)
+	if !ok || len(snippetParts) == 0 {
+		return ResearchReport{}, false
+	}
+	snippet, _ := snippetParts[0].(string)
+	if snippet == "" {
+		return ResearchReport{}, false
+	}
+	reportID, ok := arr[5].(string)
+	if !ok || !strings.HasPrefix(reportID, "rc_") {
+		return ResearchReport{}, false
+	}
+
+	return ResearchReport{
+		Cid:       cid,
+		RequestID: requestID,
+		ReportID:  reportID,
+		Title:     title,
+		Snippet:   snippet,
+		CreatedAt: int64(created),
+	}, true
+}
+
+func decodeLegacyResearchReportArray(arr []any) (ResearchReport, bool) {
 	cid, ok := arr[0].(string)
 	if !ok || !strings.HasPrefix(cid, "c_") {
 		return ResearchReport{}, false
