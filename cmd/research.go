@@ -18,6 +18,10 @@ var researchCmd = &cobra.Command{
 	Use:   "research",
 	Short: "Deep research utilities",
 	Long:  "Submit deep research tasks and list completed reports.",
+	Args:  cobra.NoArgs,
+	Run: func(cmd *cobra.Command, args []string) {
+		_ = cmd.Help()
+	},
 }
 
 var researchRunCmd = &cobra.Command{
