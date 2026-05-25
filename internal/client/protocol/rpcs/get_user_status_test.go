@@ -1,6 +1,12 @@
 package rpcs
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/Leechael/gemini-web-cli/internal/client/protocol"
+)
 
 func TestEncodeGetUserStatus(t *testing.T) {
 	rpcID, payload := EncodeGetUserStatus()
@@ -13,7 +19,17 @@ func TestEncodeGetUserStatus(t *testing.T) {
 }
 
 func TestDecodeGetUserStatus(t *testing.T) {
-	body := loadProtocolTestdata(t, "get_user_status_basic.txt")
+	raw, err := os.ReadFile(filepath.Join("..", "testdata", "get_user_status_basic.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, rejectCode, err := protocol.ExtractRPCBody(protocol.StripResponsePrefix(raw), "otAQ7b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rejectCode != 0 {
+		t.Fatalf("rejectCode = %d", rejectCode)
+	}
 	result, err := DecodeGetUserStatus(body)
 	if err != nil {
 		t.Fatal(err)
