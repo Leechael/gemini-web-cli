@@ -12,12 +12,10 @@ import (
 	"github.com/Leechael/gemini-web-cli/internal/client/protocol"
 )
 
-// RPC IDs used for account quota tracking. These are the same RPCs called by
-// the deep research preflight (rpcDeepResearchModelSt / rpcDeepResearchCaps);
-// the upstream Python rename in PR #310 reflects what they actually do.
+// RPC IDs used for account quota tracking.
 const (
-	rpcCheckGeminiQuota = rpcDeepResearchModelSt // "qpEbW" — per-tier model quotas
-	rpcCheckQuota       = rpcDeepResearchCaps    // "aPya6c" — overall extra-feature quota
+	rpcCheckGeminiQuota = "qpEbW"  // per-tier model quotas
+	rpcCheckQuota       = "aPya6c" // overall extra-feature quota
 )
 
 // Payloads for CheckGeminiQuota that target specific tiers. Mirror the
