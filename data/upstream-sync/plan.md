@@ -266,7 +266,7 @@ func (c *Client) GetChatMetadata(ctx context.Context, chatID string) (*ChatMeta,
 | `day` | daily_brief/ |
 | `chat meta/turn/delete` | chat/ |
 | `research list` | research/reports.go |
-| `images templates/discover` | images/ |
+| `expand-prompt` | images/media prompt helper |
 | `notebook list` | notebook/ |
 | `gems list/create/edit/delete` | gems/（待 HAR） |
 
@@ -286,10 +286,12 @@ CLI **不暴露**: housekeeping/ 全部、bootstrap 中部分细粒度 RPC（如
 | **P5** | `daily_brief/` + `day` 命令（独立 builder，不触 generate.go） | P2 | 低 |
 | **P6** | `chat/` 子包: 新增 MUAZcd/EqPOKe/kwDCne/k81mDb + **迁移旧 MaZiqc/hNvQHb**。迁移完删除旧 chat.go | P2 | 中（迁移旧代码，但 parse_test.go 兜底） |
 | **P7** | `research/` 子包: 迁移整个 deep research 流程 + 新增 jGArJ | P2 | 中（preflight 编排较复杂） |
-| **P8** | `quota/` `models/` `abuse/` 迁移 — **Stage 5 completed models/quota; abuse remains upstream PR #310 follow-up** | P2 | 低 |
-| **P9** | `images/` 子包 | P2 | 中（需要确认 generate.go 是否要接 template id） |
+| **P8** | `quota/` `models/` `abuse/` 迁移 — **Stage 5 completed models/quota; Stage 6 marks PR #310 abuse follow-up complete** | P2 | 低 |
+| **P9** | `images/` partial — **Stage 6 completed query RPCs (templates/discover/expand prompt), library methods, and `expand-prompt` CLI; template id wiring remains P9 Stage 2** | P2 | 中 |
+| **P9 Stage 2** | `images/` complete — template id wiring + Banana Pro | 阻塞：缺完整 image generation HAR | 高（StreamGenerate slot 变更） |
 | **P10** | `notebook/` 子包（不含 HcT8bb protobuf） | P2 | 低 |
-| **P11** | `upload/` 迁移 + `generate/` 迁移 (StreamGenerate) — **Stage 5 completed generate; upload remains future stage** | P2 | 高（generate.go 是协议热点）|
+| **P11 generate** | `generate/` 迁移 (StreamGenerate) — **Stage 5 completed** | P2 | 高（generate.go 是协议热点）|
+| **P11 upload** | `upload/` transport facade 抽象 — **Stage 6 completed** | P2 | 中 |
 | **P12** | `gems/` + 上游 RPC 验证 | 阻塞：缺 HAR | — |
 | **(独立)** | 命名修正: L5adhe (→PrefsSync) / ESY5D (→BardSettings) / qpEbW+aPya6c 双名整理 | 在 P6/P7/P8 顺手完成 | 低 |
 | **(独立)** | `housekeeping/` 子包（B 类大部分） — **Stage 5 completed debug-triggerable encoders** | P2 | 低 |
