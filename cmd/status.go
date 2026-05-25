@@ -115,7 +115,7 @@ var statusCmd = &cobra.Command{
 					fmt.Fprintf(os.Stderr, "bootstrap RPC %s failed: %v\n", key, bs.Errors[key])
 				}
 			} else {
-				fmt.Fprintf(os.Stderr, "Bootstrap: %d of 6 RPCs failed (run with -v for details)\n", len(bs.Errors))
+				fmt.Fprintf(os.Stderr, "Bootstrap: %d of 6 RPCs failed (run with --verbose for details)\n", len(bs.Errors))
 			}
 		}
 

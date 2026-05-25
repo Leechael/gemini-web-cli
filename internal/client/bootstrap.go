@@ -84,9 +84,9 @@ func (c *Client) GetUploadLimits(ctx context.Context) (*rpcs.UploadLimits, error
 	return rpcs.DecodeGetUploadLimits(body)
 }
 
-// PrefetchBootstrap fetches all bootstrap RPCs in one batch request with best-effort errors.
+// PrefetchBootstrap fetches all bootstrap RPCs concurrently with best-effort errors.
 func (c *Client) PrefetchBootstrap(ctx context.Context) *Bootstrap {
-	return c.prefetchViaBatch(ctx)
+	return c.prefetchViaGoroutine(ctx)
 }
 
 func (c *Client) prefetchViaGoroutine(ctx context.Context) *Bootstrap {
