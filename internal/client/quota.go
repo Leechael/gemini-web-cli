@@ -4,12 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"net/url"
 	"strings"
-
-	"github.com/Leechael/gemini-web-cli/internal/client/protocol"
 )
 
 // RPC IDs used for account quota tracking.
@@ -87,40 +82,7 @@ func (c *Client) FetchExtraQuota(ctx context.Context) (*ExtraQuota, error) {
 // batchExecuteSingle posts a single RPC call to /batchexecute and returns the
 // parsed body string for the matching RPC ID.
 func (c *Client) batchExecuteSingle(ctx context.Context, rpcID, payload string) (string, error) {
-	rpcReq := []any{
-		[]any{
-			[]any{rpcID, payload, nil, "generic"},
-		},
-	}
-	reqJSON, _ := json.Marshal(rpcReq)
-
-	form := url.Values{}
-	form.Set("at", c.accessToken)
-	form.Set("f.req", string(reqJSON))
-
-	reqURL := c.batchURL([]string{rpcID}, c.appPath())
-
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", reqURL, strings.NewReader(form.Encode()))
-	if err != nil {
-		return "", err
-	}
-	for k, v := range c.commonHeaders() {
-		httpReq.Header[k] = v
-	}
-
-	resp, err := c.httpClient.Do(httpReq)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	raw, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-
-	stripped := protocol.StripResponsePrefix(raw)
-	body, rejectCode, err := protocol.ExtractRPCBody(stripped, rpcID)
+	body, rejectCode, err := c.CallRPC(ctx, rpcID, payload, WithSourcePath(c.appPath()))
 	if err != nil {
 		return "", err
 	}

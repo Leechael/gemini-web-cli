@@ -89,7 +89,7 @@ func TestBatchURL_UsesLanguage(t *testing.T) {
 
 func TestBuildInnerRequest_UsesLanguage(t *testing.T) {
 	c := &Client{language: "ko"}
-	req := c.buildInnerRequest("hello", nil, nil, nil, false, false, "UUID")
+	req := c.buildInnerRequest("hello", nil, nil, nil, false, "UUID")
 
 	lang, ok := req[1].([]any)
 	if !ok || len(lang) != 1 {
@@ -102,7 +102,7 @@ func TestBuildInnerRequest_UsesLanguage(t *testing.T) {
 
 func TestBuildInnerRequest_DefaultLanguage(t *testing.T) {
 	c := &Client{language: "en"}
-	req := c.buildInnerRequest("hello", nil, nil, nil, false, false, "UUID")
+	req := c.buildInnerRequest("hello", nil, nil, nil, false, "UUID")
 
 	lang := req[1].([]any)
 	if lang[0] != "en" {

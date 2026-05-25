@@ -238,7 +238,7 @@ func TestExtractDeepResearchPlan_NoPlan(t *testing.T) {
 
 func TestBuildInnerRequest_NewChat(t *testing.T) {
 	c := &Client{}
-	req := c.buildInnerRequest("hello", nil, nil, nil, false, false, "TEST-UUID")
+	req := c.buildInnerRequest("hello", nil, nil, nil, false, "TEST-UUID")
 
 	if len(req) != 81 {
 		t.Fatalf("len = %d, want 81", len(req))
@@ -286,14 +286,14 @@ func TestBuildInnerRequest_GenerationModes(t *testing.T) {
 	}
 	for _, tc := range cases {
 		c := &Client{generationMode: tc.mode}
-		req := c.buildInnerRequest("make something", nil, nil, nil, false, false, "UUID")
+		req := c.buildInnerRequest("make something", nil, nil, nil, false, "UUID")
 		if req[49] != tc.want {
 			t.Errorf("mode %s: [49] = %v, want %v", tc.mode, req[49], tc.want)
 		}
 	}
 
 	c := &Client{generationMode: "video"}
-	req := c.buildInnerRequest("make a video", nil, nil, nil, false, false, "UUID")
+	req := c.buildInnerRequest("make a video", nil, nil, nil, false, "UUID")
 	msg := req[0].([]any)
 	if len(msg) < 10 || msg[9] == nil {
 		t.Fatalf("video mode message marker missing: %v", msg)
@@ -305,7 +305,7 @@ func TestBuildInnerRequest_GenerationModes(t *testing.T) {
 
 func TestBuildInnerRequest_DeepResearch(t *testing.T) {
 	c := &Client{}
-	req := c.buildInnerRequest("research topic", nil, nil, nil, true, false, "UUID")
+	req := c.buildInnerRequest("research topic", nil, nil, nil, true, "UUID")
 
 	if req[49] != 1 {
 		t.Errorf("[49] = %v, want 1", req[49])
@@ -327,7 +327,7 @@ func TestBuildInnerRequest_DeepResearch(t *testing.T) {
 func TestBuildInnerRequest_ContinuationMetadata(t *testing.T) {
 	c := &Client{}
 	meta := []string{"c_abc", "r_def", "rc_ghi", "", "", "", "", "", "", "ctx"}
-	req := c.buildInnerRequest("follow-up", meta, nil, nil, false, true, "UUID")
+	req := c.buildInnerRequest("follow-up", meta, nil, nil, false, "UUID")
 
 	outer, ok := req[17].([]any)
 	if !ok || len(outer) != 1 {

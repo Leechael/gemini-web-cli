@@ -2,66 +2,30 @@ package client
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"net/url"
 	"strings"
 
-	"github.com/Leechael/gemini-web-cli/internal/client/protocol"
+	"github.com/Leechael/gemini-web-cli/internal/client/protocol/rpcs"
 	"github.com/Leechael/gemini-web-cli/internal/types"
 )
-
-const rpcGetUserStatus = "otAQ7b"
 
 // FetchUserStatus calls the GetUserStatus RPC to discover account status
 // and dynamically available models.
 func (c *Client) FetchUserStatus(ctx context.Context) (types.AccountStatus, []types.Model, error) {
-	payload := "[]"
-	rpcReq := []any{
-		[]any{
-			[]any{rpcGetUserStatus, payload, nil, "generic"},
-		},
-	}
-	reqJSON, _ := json.Marshal(rpcReq)
-
-	form := url.Values{}
-	form.Set("at", c.accessToken)
-	form.Set("f.req", string(reqJSON))
-
-	reqURL := c.batchURL([]string{rpcGetUserStatus}, c.appPath())
-
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", reqURL, strings.NewReader(form.Encode()))
-	if err != nil {
-		return types.StatusAvailable, nil, err
-	}
-	headers := c.commonHeaders()
-	for k, v := range headers {
-		httpReq.Header[k] = v
-	}
-
-	resp, err := c.httpClient.Do(httpReq)
+	rpcID, payload := rpcs.EncodeGetUserStatus()
+	body, rejectCode, err := c.CallRPC(ctx, rpcID, payload, WithSourcePath(c.appPath()))
 	if err != nil {
 		return types.StatusAvailable, nil, fmt.Errorf("user status request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return types.StatusAvailable, nil, err
-	}
-
-	responseBody := protocol.StripResponsePrefix(body)
-	rpcBody, rejectCode, err := protocol.ExtractRPCBody(responseBody, rpcGetUserStatus)
-	if err != nil {
-		return types.StatusAvailable, nil, fmt.Errorf("extracting user status RPC body: %w", err)
 	}
 	if rejectCode != 0 {
 		return types.StatusAvailable, nil, fmt.Errorf("user status RPC rejected with code=%d", rejectCode)
 	}
 
-	return parseUserStatus(string(rpcBody))
+	raw, err := rpcs.DecodeGetUserStatus(body)
+	if err != nil {
+		return types.StatusAvailable, nil, err
+	}
+	return raw.AccountStatus, userStatusModelsToTypes(raw), nil
 }
 
 // FetchAndCacheModels calls FetchUserStatus and caches the results.
@@ -126,130 +90,49 @@ func (c *Client) ResolveModel(name string) *types.Model {
 	return nil
 }
 
-func parseUserStatus(body string) (types.AccountStatus, []types.Model, error) {
-	if body == "" || body == "[]" {
-		return types.StatusAvailable, nil, nil
+func userStatusModelsToTypes(raw *rpcs.UserStatusResult) []types.Model {
+	if raw == nil || raw.AccountStatus.IsHardBlock() {
+		return nil
 	}
+	capacity, capacityField := computeCapacity(raw.TierFlags, raw.CapFlags)
+	idNameMapping := buildModelIDNameMapping(capacity, capacityField)
 
-	var data []any
-	if err := json.Unmarshal([]byte(body), &data); err != nil {
-		return types.StatusAvailable, nil, fmt.Errorf("parsing user status response: %w", err)
-	}
-
-	// Status code at [14]
-	statusCode := 1000
-	if len(data) > 14 {
-		if f, ok := data[14].(float64); ok {
-			statusCode = int(f)
-		}
-	}
-	accountStatus := types.AccountStatusFromCode(statusCode)
-
-	if accountStatus.IsHardBlock() {
-		return accountStatus, nil, nil
-	}
-
-	// Models list at [15]
-	var models []types.Model
-	if len(data) > 15 {
-		modelsList, ok := data[15].([]any)
-		if !ok {
-			return accountStatus, nil, nil
-		}
-
-		// Tier flags at [16], capability flags at [17]
-		var tierFlags, capFlags []float64
-		if len(data) > 16 {
-			if arr, ok := data[16].([]any); ok {
-				for _, v := range arr {
-					if f, ok := v.(float64); ok {
-						tierFlags = append(tierFlags, f)
-					}
-				}
-			}
-		}
-		if len(data) > 17 {
-			if arr, ok := data[17].([]any); ok {
-				for _, v := range arr {
-					if f, ok := v.(float64); ok {
-						capFlags = append(capFlags, f)
-					}
-				}
-			}
-		}
-
-		capacity, capacityField := computeCapacity(tierFlags, capFlags)
-		idNameMapping := buildModelIDNameMapping(capacity, capacityField)
-
-		for _, modelData := range modelsList {
-			md, ok := modelData.([]any)
-			if !ok {
+	models := make([]types.Model, 0, len(raw.Models))
+	for _, md := range raw.Models {
+		if raw.AccountStatus.Code == 1016 {
+			flashModel := types.FindModel("gemini-3-flash")
+			if flashModel != nil && md.ModelID != flashModel.ModelID() {
 				continue
 			}
-			modelID := ""
-			displayName := ""
-			description := ""
-			if len(md) > 0 {
-				if s, ok := md[0].(string); ok {
-					modelID = s
-				}
-			}
-			if len(md) > 1 {
-				if s, ok := md[1].(string); ok {
-					displayName = s
-				}
-			}
-			if len(md) > 2 {
-				if s, ok := md[2].(string); ok {
-					description = s
-				}
-			}
-
-			if modelID == "" || displayName == "" {
-				continue
-			}
-
-			// Check availability for unauthenticated accounts
-			if accountStatus.Code == 1016 {
-				flashModel := types.FindModel("gemini-3-flash")
-				if flashModel != nil && modelID != flashModel.ModelID() {
-					continue
-				}
-			}
-
-			selector := capacity
-			if len(md) > 17 {
-				if f, ok := md[17].(float64); ok && f != 0 {
-					selector = int(f)
-				}
-			}
-
-			name := dynamicModelName(md, modelID, displayName)
-			if name == "" {
-				name = idNameMapping[modelID]
-			}
-			if name == "" {
-				name = modelID
-			}
-
-			// Determine advancedOnly from the dynamic selector when available, with
-			// hardcoded definitions as a fallback.
-			advancedOnly := selector == 3 || strings.Contains(name, "pro")
-			if known := types.FindModel(name); known != nil {
-				advancedOnly = known.AdvancedOnly
-			}
-
-			models = append(models, types.Model{
-				Name:         name,
-				DisplayName:  displayName,
-				AdvancedOnly: advancedOnly,
-				Headers:      types.BuildModelHeader(modelID, selector),
-				Description:  description,
-			})
 		}
-	}
 
-	return accountStatus, models, nil
+		selector := capacity
+		if md.Selector != 0 {
+			selector = md.Selector
+		}
+
+		name := dynamicModelName(md.Raw, md.ModelID, md.DisplayName)
+		if name == "" {
+			name = idNameMapping[md.ModelID]
+		}
+		if name == "" {
+			name = md.ModelID
+		}
+
+		advancedOnly := selector == 3 || strings.Contains(name, "pro")
+		if known := types.FindModel(name); known != nil {
+			advancedOnly = known.AdvancedOnly
+		}
+
+		models = append(models, types.Model{
+			Name:         name,
+			DisplayName:  md.DisplayName,
+			AdvancedOnly: advancedOnly,
+			Headers:      types.BuildModelHeader(md.ModelID, selector),
+			Description:  md.Description,
+		})
+	}
+	return models
 }
 
 func dynamicModelName(modelData []any, modelID string, displayName string) string {

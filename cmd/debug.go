@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Leechael/gemini-web-cli/internal/client"
+	"github.com/Leechael/gemini-web-cli/internal/client/protocol/rpcs"
 	"github.com/spf13/cobra"
 )
 
@@ -44,6 +45,13 @@ Examples:
   gemini-web-cli debug rpc cYRIkd --payload '["en"]' --pretty`,
 	Args: cobra.ExactArgs(1),
 	RunE: runDebugRPC,
+}
+
+var debugHousekeepingCmd = &cobra.Command{
+	Use:   "housekeeping <name>",
+	Short: "Trigger a housekeeping RPC",
+	Args:  cobra.ExactArgs(1),
+	RunE:  runDebugHousekeeping,
 }
 
 func runDebugRPC(cmd *cobra.Command, args []string) error {
@@ -92,11 +100,76 @@ func runDebugRPC(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+func runDebugHousekeeping(cmd *cobra.Command, args []string) error {
+	name := args[0]
+	var rpcID, payload string
+	sourcePath := ""
+	switch name {
+	case "heartbeat":
+		rpcID, payload = rpcs.EncodeHeartbeat()
+	case "ui-heartbeat":
+		rpcID, payload = rpcs.EncodeUIHeartbeat()
+	case "set-lang":
+		rpcID, payload = rpcs.EncodeSetLanguagePreference("en", true)
+	case "ma-gu-ac":
+		rpcID, payload = rpcs.EncodeMaGuAcToggle(1)
+	case "list-gems":
+		rpcID, payload = rpcs.EncodeListGems("en")
+		sourcePath = "/app"
+	case "bulk-log":
+		rpcID, payload = rpcs.EncodeBulkLogCounter([]rpcs.LogCounter{{ID: "1", Value: 1}})
+		sourcePath = "/app"
+	case "log-event":
+		_, _, err := rpcs.EncodeLogClientEvent(rpcs.LogClientEventOpts{})
+		return err
+	case "log-model-select":
+		rpcID, payload = rpcs.EncodeLogModelSelection(rpcs.LogModelSelectionOpts{Selector1: 2, Selector2: 1, ModelID: 48, ExpIDs: []int{76091940, 24}})
+		sourcePath = "/app"
+	default:
+		return fmt.Errorf("unknown housekeeping name: %s", name)
+	}
+
+	ctx := context.Background()
+	c, jsonCookies, err := initClient(ctx)
+	if err != nil {
+		return err
+	}
+	defer cleanup(c, jsonCookies)
+
+	var opts []client.RPCOpt
+	if sourcePath != "" {
+		opts = append(opts, client.WithSourcePath(sourcePath))
+	}
+	start := time.Now()
+	body, rejectCode, err := c.CallRPC(ctx, rpcID, payload, opts...)
+	elapsed := time.Since(start)
+	if err != nil {
+		return fmt.Errorf("CallRPC failed: %w", err)
+	}
+	fmt.Fprintf(os.Stderr, "rpcID=%s rejectCode=%d bodyLen=%d elapsed=%s\n", rpcID, rejectCode, len(body), elapsed.Round(time.Millisecond))
+	if debugPretty {
+		var v any
+		if jerr := json.Unmarshal(body, &v); jerr == nil {
+			pretty, _ := json.MarshalIndent(v, "", "  ")
+			fmt.Println(string(pretty))
+			return nil
+		}
+	}
+	_, _ = os.Stdout.Write(body)
+	if len(body) > 0 && body[len(body)-1] != '\n' {
+		fmt.Println()
+	}
+	return nil
+}
+
 func init() {
 	debugRPCCmd.Flags().StringVar(&debugPayload, "payload", "[]", "RPC payload as a JSON string")
 	debugRPCCmd.Flags().StringVar(&debugSourcePath, "source-path", "", "Override source-path query param")
 	debugRPCCmd.Flags().StringVar(&debugSourceCid, "source-cid", "", "Convenience: sets source-path to <appPath>/<cid>")
 	debugRPCCmd.Flags().BoolVar(&debugPretty, "pretty", false, "Pretty-print the response if it's valid JSON")
 
+	debugHousekeepingCmd.Flags().BoolVar(&debugPretty, "pretty", false, "Pretty-print the response if it's valid JSON")
+
 	debugCmd.AddCommand(debugRPCCmd)
+	debugCmd.AddCommand(debugHousekeepingCmd)
 }
