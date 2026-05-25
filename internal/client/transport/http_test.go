@@ -95,10 +95,13 @@ func TestPostBatchMulti(t *testing.T) {
 	if err := json.Unmarshal([]byte(gotForm.Get("f.req")), &outer); err != nil {
 		t.Fatalf("f.req is not expected JSON: %v", err)
 	}
-	if len(outer) != 2 {
-		t.Fatalf("len(outer) = %d, want 2", len(outer))
+	if len(outer) != 1 {
+		t.Fatalf("len(outer) = %d, want 1", len(outer))
 	}
-	if outer[0][0][0] != "one" || outer[0][0][1] != "[1]" || outer[1][0][0] != "two" || outer[1][0][1] != "[2]" {
+	if len(outer[0]) != 2 {
+		t.Fatalf("len(outer[0]) = %d, want 2", len(outer[0]))
+	}
+	if outer[0][0][0] != "one" || outer[0][0][1] != "[1]" || outer[0][1][0] != "two" || outer[0][1][1] != "[2]" {
 		t.Fatalf("unexpected f.req = %s", gotForm.Get("f.req"))
 	}
 }
