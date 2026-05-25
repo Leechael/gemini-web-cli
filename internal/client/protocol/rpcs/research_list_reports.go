@@ -23,7 +23,8 @@
 //
 // Notes:
 //   - Filter flag meanings are not fully decoded; callers pass through the browser mask.
-//   - The decoder searches nested arrays for report entries and ignores unknown slots.
+//   - The decoder searches nested arrays for report entries by ID/title/snippet/timestamp signature.
+//   - This keeps decoding tolerant of future wrapper nesting changes while rejecting incomplete entries.
 package rpcs
 
 import (
@@ -109,7 +110,13 @@ func decodeResearchReportArray(arr []any) (ResearchReport, bool) {
 		return ResearchReport{}, false
 	}
 	title, _ := arr[3].(string)
+	if title == "" {
+		return ResearchReport{}, false
+	}
 	snippet, _ := arr[4].(string)
+	if snippet == "" {
+		return ResearchReport{}, false
+	}
 	created, ok := arr[5].(float64)
 	if !ok {
 		return ResearchReport{}, false

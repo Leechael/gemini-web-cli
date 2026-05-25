@@ -13,6 +13,9 @@ func TestExtractResearchResultFromRaw(t *testing.T) {
 
 	drData := make([]any, 6)
 	drData[4] = report
+	drData[5] = []any{map[string]any{
+		"44": []any{[]any{nil, []any{[]any{nil, nil, nil, []any{[]any{nil, "https://example.com/source", "Sample source"}, float64(1)}}}}},
+	}}
 
 	cand := make([]any, 31)
 	cand[30] = []any{drData}
@@ -23,8 +26,11 @@ func TestExtractResearchResultFromRaw(t *testing.T) {
 	turnJSON, _ := json.Marshal(turn)
 	rawTurns := []json.RawMessage{turnJSON}
 
-	text, _ := extractResearchResultFromRaw(rawTurns)
+	text, sources := extractResearchResultFromRaw(rawTurns)
 	if text != report {
 		t.Errorf("text len = %d, want %d", len(text), len(report))
+	}
+	if sources[1].URL != "https://example.com/source" || sources[1].Title != "Sample source" {
+		t.Fatalf("sources = %+v", sources)
 	}
 }

@@ -43,16 +43,7 @@ func extractResearchSources(drData []any) map[int]types.GroundingSource {
 		return sources
 	}
 
-	citationsContainer, _ := protocol.ArrayAt(drData, 5, 0)
-	if citationsContainer == nil {
-		return sources
-	}
-
 	if len(drData) > 5 {
-		containerArr, _ := protocol.ArrayAt(drData, 5, 0)
-		if containerArr == nil {
-			return sources
-		}
 		var rawContainer json.RawMessage
 		b, err := json.Marshal(drData[5])
 		if err != nil {
