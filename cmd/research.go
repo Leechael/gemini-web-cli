@@ -117,7 +117,7 @@ func runResearchList(cmd *cobra.Command, args []string) error {
 }
 
 func init() {
-	researchListCmd.Flags().IntVar(&researchListCount, "count", 4, "max reports to return")
+	researchListCmd.Flags().IntVar(&researchListCount, "count", 13, "max reports to return")
 	researchListCmd.Flags().StringVar(&researchListCursor, "cursor", "", "Pagination cursor")
 	researchListCmd.Flags().BoolVar(&researchListJSON, "json", false, "Output JSON")
 	researchCmd.AddCommand(researchRunCmd, researchListCmd)

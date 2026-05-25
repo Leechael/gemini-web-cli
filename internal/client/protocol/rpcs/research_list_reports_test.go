@@ -10,7 +10,7 @@ func TestEncodeListResearchReports_PayloadShape(t *testing.T) {
 	if rpcID != "jGArJ" {
 		t.Fatalf("rpcID = %q", rpcID)
 	}
-	if payload != `[[0,0,0,1,1,0,0,1,0],4]` {
+	if payload != `[[0,0,0,1,1,0,0,1,0],13]` {
 		t.Fatalf("payload = %s", payload)
 	}
 	var got []any

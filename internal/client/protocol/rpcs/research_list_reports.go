@@ -60,7 +60,7 @@ func EncodeListResearchReports(f ListReportsFilter) (rpcID, payload string) {
 	}
 	count := f.Count
 	if count <= 0 {
-		count = 4
+		count = 13
 	}
 	payloadArr := []any{flags, count}
 	if f.Cursor != "" {
