@@ -9,3 +9,5 @@ gemini-web-cli
 data/
 .pi
 .claude
+.doc-review
+postmortems/
