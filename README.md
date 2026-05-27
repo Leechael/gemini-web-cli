@@ -60,25 +60,19 @@ gemini-web-cli ask "Explain quantum computing"
 gemini-web-cli ask --no-stream "What is 2+2?"
 gemini-web-cli --model gemini-3-flash ask "Draw a sunset"
 
-# Generate video/music
-gemini-web-cli ask "Generate a 5 second video of a cat walking"
-gemini-web-cli ask "Generate a short jazz melody"
+# Generate video/music (explicit mode)
+gemini-web-cli ask --mode video "A cat walking in slow motion"
+gemini-web-cli ask --mode music "A short jazz melody"
+gemini-web-cli ask --mode image-to-video -f photo.jpg "Animate this photo"
 
 # Attach files
 gemini-web-cli ask -f image.png "What's in this image?"
 gemini-web-cli ask -f a.pdf -f b.pdf "Compare these documents"
 ```
 
+The `--mode` flag controls generation type: `auto` (default), `text`, `video`, `image-to-video`, `music`.
+
 Output includes the response text, any generated images/videos/media, and the chat ID for follow-up.
-
-### goog
-
-Google search via Gemini (shortcut for `ask "@Google ..."`).
-
-```bash
-gemini-web-cli goog "latest Go release notes"
-gemini-web-cli goog --no-stream "weather in Tokyo"
-```
 
 ### reply
 
@@ -87,7 +81,10 @@ Continue an existing conversation. The chat ID comes from `ask` or `list` output
 ```bash
 gemini-web-cli reply c_abc123 "Tell me more"
 gemini-web-cli reply --no-stream c_abc123 "Summarize"
+gemini-web-cli reply --mode video c_abc123 "Now generate a video of that scene"
 ```
+
+Supports the same `--mode` flag as `ask`.
 
 ### list
 
@@ -111,23 +108,35 @@ gemini-web-cli get c_abc123 --output chat.txt
 Example output:
 
 ```
---- message 1 ---
-[User] Draw a cat
+--- user #1 r_abc123 (2026-05-26 12:34 CST) ---
+Draw a cat
+
+--- agent #1 r_def456 (2026-05-26 12:34 CST) ---
+Here's a generated cat image!
+
 [Generated Image 1] https://lh3.googleusercontent.com/...
 
---- message 2 ---
-[User] Generate a video of a cat walking
-[Gemini] Your video is ready!
+--- user #2 r_ghi789 (2026-05-26 12:35 CST) ---
+Generate a video of a cat walking
+
+--- agent #2 r_jkl012 (2026-05-26 12:35 CST) ---
+Your video is ready!
+
 [Generated Video 1] https://contribution.usercontent.google.com/download?...
   Thumbnail: https://lh3.googleusercontent.com/...
 
---- message 3 ---
-[User] Generate a jazz melody
-[Gemini] Here's a jazz melody for you.
+--- user #3 r_mno345 (2026-05-26 12:36 CST) ---
+Generate a jazz melody
+
+--- agent #3 r_pqr678 (2026-05-26 12:36 CST) ---
+Here's a jazz melody for you.
+
 [Generated Media 1] MP3: https://contribution.usercontent.google.com/download?...
+[Generated Media 1] MP4: https://contribution.usercontent.google.com/download?...
+[Generated Media 1] VTT: https://contribution.usercontent.google.com/download?...
 ```
 
-The item numbers correspond to the `download` command's index selector.
+Each turn shows `user` and `agent` blocks with request IDs and local timestamps. Generated media item numbers correspond to the `download` command's index selector.
 
 ### download
 
@@ -166,6 +175,14 @@ Output examples:
 ```
 
 ```
+  Type: deep research
+  Status: done
+  Report length: 42318 chars
+
+  Use 'report c_abc123' to retrieve the full result.
+```
+
+```
   Type: video generation
   Status: ready
   Video 1: https://contribution.usercontent.google.com/download?...
@@ -177,16 +194,24 @@ Output examples:
   Type: music generation
   Status: ready
   Media 1 MP3: https://contribution.usercontent.google.com/download?...
+  Media 1 MP4: https://contribution.usercontent.google.com/download?...
+  Media 1 VTT: https://contribution.usercontent.google.com/download?...
 
   Use 'download c_abc123' to save.
 ```
 
 ### research
 
-Submit a deep research task.
+Submit and manage deep research tasks.
 
 ```bash
-gemini-web-cli research "Compare Rust and Go for systems programming"
+# Submit a task
+gemini-web-cli research run "Compare Rust and Go for systems programming"
+
+# List completed reports from your library
+gemini-web-cli research list
+gemini-web-cli research list --count 20 --cursor <cursor>
+gemini-web-cli research list --json
 ```
 
 ### report
@@ -196,6 +221,29 @@ Get the deep research result.
 ```bash
 gemini-web-cli report c_abc123
 gemini-web-cli report c_abc123 --output report.md
+```
+
+### chat
+
+Chat metadata and inspection utilities.
+
+```bash
+# Show metadata for a chat
+gemini-web-cli chat meta c_abc123
+gemini-web-cli chat meta c_abc123 --json
+
+# Fetch a single conversation turn by request ID
+gemini-web-cli chat turn c_abc123 <requestId>
+gemini-web-cli chat turn c_abc123 <requestId> --json
+```
+
+### expand-prompt
+
+Expand a media prompt into alternative descriptions (useful for image, video, or music generation).
+
+```bash
+gemini-web-cli expand-prompt "A sunset over the ocean"
+gemini-web-cli expand-prompt "A sunset over the ocean" --json
 ```
 
 ### models
@@ -209,15 +257,21 @@ gemini-web-cli models
 ```
 Available models for --model:
   unspecified (default)
-  gemini-3-pro
-  gemini-3-flash
-  gemini-3-flash-thinking
-  gemini-3-pro-plus [advanced]
-  gemini-3-flash-plus [advanced]
-  gemini-3-flash-thinking-plus [advanced]
-  gemini-3-pro-advanced [advanced]
-  gemini-3-flash-advanced [advanced]
-  gemini-3-flash-thinking-advanced [advanced]
+  gemini-3.1-flash-lite (Gemini 3.1 Flash-Lite)
+  gemini-3.5-flash (Gemini 3.5 Flash)
+  gemini-3.1-pro [advanced] (Gemini 3.1 Pro)
+  gemini-3-pro (Gemini 3 Pro)
+  gemini-3-flash (Gemini 3 Flash)
+  gemini-3-flash-thinking (Gemini 3 Flash Thinking)
+  gemini-3-pro-plus [advanced] (Gemini 3 Pro Plus)
+  gemini-3-flash-plus [advanced] (Gemini 3 Flash Plus)
+  gemini-3-flash-thinking-plus [advanced] (Gemini 3 Flash Thinking Plus)
+  gemini-3-pro-advanced [advanced] (Gemini 3 Pro Advanced)
+  gemini-3-flash-advanced [advanced] (Gemini 3 Flash Advanced)
+  gemini-3-flash-thinking-advanced [advanced] (Gemini 3 Flash Thinking Advanced)
+
+Note: dynamic models come from the current Gemini account when cookies are available.
+Use 'unspecified' to let Gemini auto-select.
 ```
 
 ### status
@@ -225,12 +279,30 @@ Available models for --model:
 Check login status and account diagnostics.
 
 ```bash
-# Cookie-only check (no network)
-gemini-web-cli status --cookies-only
-
-# Full account probe
+# Full account probe (network)
 gemini-web-cli status
+
+# Cookie-only check (no network) — requires --cookies-json
+gemini-web-cli status --cookies-only --cookies-json cookies.json
 ```
+
+### debug
+
+Low-level utilities for exercising RPCs directly. Useful for verifying protocol changes.
+
+```bash
+# Call any batchexecute RPC and print raw response
+gemini-web-cli debug rpc otAQ7b
+gemini-web-cli debug rpc MaZiqc --payload '[13,null,[1,null,1]]'
+gemini-web-cli debug rpc hNvQHb --payload '["c_abc",10]' --source-cid c_abc
+gemini-web-cli debug rpc cYRIkd --payload '["en"]' --pretty
+
+# Trigger a housekeeping RPC by name
+gemini-web-cli debug housekeeping heartbeat
+gemini-web-cli debug housekeeping list-gems --pretty
+```
+
+Supported housekeeping names: `heartbeat`, `ui-heartbeat`, `set-lang`, `ma-gu-ac`, `list-gems`, `bulk-log`, `log-event`, `log-model-select`.
 
 ## Global Flags
 
@@ -269,7 +341,7 @@ The required cookie is `__Secure-1PSID`. `__Secure-1PSIDTS` is recommended but o
 ./scripts/e2e-test.sh cookies.json
 ```
 
-Runs 35 tests covering all commands with a live Gemini account.
+Covers all commands with a live Gemini account.
 
 ## Acknowledgments
 
