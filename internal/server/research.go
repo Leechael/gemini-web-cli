@@ -2,9 +2,9 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
-
-	"github.com/Leechael/gemini-web-cli/internal/types"
+	"sort"
 )
 
 type researchRequest struct {
@@ -51,7 +51,8 @@ func (s *Server) handleResearchCreate(w http.ResponseWriter, r *http.Request) {
 
 	model := s.resolveModel(req.Model)
 	if model == nil {
-		model = types.FindModel("unspecified")
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("model %q not found", req.Model))
+		return
 	}
 
 	plan, err := s.client.CreateAndStartDeepResearch(r.Context(), req.Prompt, model)
@@ -104,12 +105,15 @@ func (s *Server) handleResearchResult(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var respSources []researchSource
-	for i := 0; i < len(sources); i++ {
-		s, ok := sources[i]
-		if !ok {
-			continue
-		}
+	keys := make([]int, 0, len(sources))
+	for key := range sources {
+		keys = append(keys, key)
+	}
+	sort.Ints(keys)
+
+	respSources := make([]researchSource, 0, len(sources))
+	for _, key := range keys {
+		s := sources[key]
 		respSources = append(respSources, researchSource{
 			URL:   s.URL,
 			Title: s.Title,
