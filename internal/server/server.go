@@ -13,6 +13,8 @@ import (
 	"github.com/Leechael/gemini-web-cli/internal/types"
 )
 
+const maxRequestBodyBytes = 1 << 20
+
 type Server struct {
 	client *client.Client
 	mux    *http.ServeMux
@@ -61,8 +63,11 @@ func (s *Server) Close() {
 
 func (s *Server) ListenAndServe(addr string) error {
 	srv := &http.Server{
-		Addr:    addr,
-		Handler: s,
+		Addr:              addr,
+		Handler:           s,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 	printBanner(addr)
 	return srv.ListenAndServe()
