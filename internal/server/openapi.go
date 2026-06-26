@@ -165,7 +165,24 @@ const openapiSpec = `{
         "required": ["role", "content"],
         "properties": {
           "role": { "type": "string", "enum": ["system", "user", "assistant"] },
-          "content": { "type": "string" }
+          "content": {
+            "oneOf": [
+              { "type": "string" },
+              {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/ChatContentPart" }
+              }
+            ]
+          },
+          "reasoning_content": { "type": "string" }
+        }
+      },
+      "ChatContentPart": {
+        "type": "object",
+        "required": ["type", "text"],
+        "properties": {
+          "type": { "type": "string", "enum": ["text"] },
+          "text": { "type": "string" }
         }
       },
       "ChatCompletionResponse": {
@@ -178,7 +195,8 @@ const openapiSpec = `{
           "choices": {
             "type": "array",
             "items": { "$ref": "#/components/schemas/ChatChoice" }
-          }
+          },
+          "usage": { "$ref": "#/components/schemas/ChatUsage" }
         }
       },
       "ChatChoice": {
@@ -188,6 +206,14 @@ const openapiSpec = `{
           "message": { "$ref": "#/components/schemas/ChatMessage" },
           "delta": { "$ref": "#/components/schemas/ChatMessage" },
           "finish_reason": { "type": "string", "nullable": true }
+        }
+      },
+      "ChatUsage": {
+        "type": "object",
+        "properties": {
+          "prompt_tokens": { "type": "integer" },
+          "completion_tokens": { "type": "integer" },
+          "total_tokens": { "type": "integer" }
         }
       },
       "ResearchRequest": {
