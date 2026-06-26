@@ -9,7 +9,10 @@ import (
 
 // CallStreamGenerate sends a StreamGenerate request and returns the response body.
 func (c *Client) CallStreamGenerate(ctx context.Context, req transport.StreamGenerateRequest) (io.ReadCloser, error) {
-	s := c.session()
+	return c.callStreamGenerate(ctx, req, c.session())
+}
+
+func (c *Client) callStreamGenerate(ctx context.Context, req transport.StreamGenerateRequest, s sessionSnapshot) (io.ReadCloser, error) {
 	req.Client = c.httpClient
 	req.URL = transport.BuildStreamGenerateURL(transport.StreamURLConfig{
 		BaseURL:     baseURL,
