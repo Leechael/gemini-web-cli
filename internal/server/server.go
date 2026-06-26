@@ -45,6 +45,9 @@ func (s *Server) Init(ctx context.Context) error {
 	if err := s.client.Init(ctx); err != nil {
 		return err
 	}
+	if err := s.client.FetchAndCacheModels(ctx); err != nil {
+		return err
+	}
 
 	refreshCtx, cancel := context.WithCancel(context.Background())
 	s.stopRefresh = cancel
@@ -166,6 +169,11 @@ func (s *Server) refreshLoop(ctx context.Context) {
 func (s *Server) resolveModel(name string) *types.Model {
 	if name == "" || name == "auto" {
 		return types.FindModel("unspecified")
+	}
+	if s.client != nil {
+		if m := s.client.ResolveModel(name); m != nil {
+			return m
+		}
 	}
 	if m := types.FindModel(name); m != nil {
 		return m
