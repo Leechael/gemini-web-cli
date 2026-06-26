@@ -49,9 +49,10 @@ func (c *Client) UploadFile(ctx context.Context, filePath string) (*UploadResult
 }
 
 func (c *Client) resumableUpload(ctx context.Context, r io.Reader, fileName, mimeType string, size int64) (string, error) {
+	s := c.session()
 	uploadID, err := c.callUpload(ctx, transport.UploadRequest{
 		PushURL:      uploadURL,
-		PushID:       c.pushID,
+		PushID:       s.pushID,
 		TenantID:     tenantID,
 		Origin:       baseURL,
 		Referer:      baseURL + "/",

@@ -53,6 +53,7 @@ type Client struct {
 	pushID      string // extracted from init page, default "feeds/mcudyrk2a4khkz"
 
 	// generationMode is per-request in server mode; CLI sets it before each call.
+	generationMu   sync.RWMutex
 	generationMode string
 
 	// Cookies for persistence tracking
@@ -213,7 +214,15 @@ func (c *Client) Init(ctx context.Context) error {
 
 // SetGenerationMode selects a browser generation mode for the next request.
 func (c *Client) SetGenerationMode(mode string) {
+	c.generationMu.Lock()
+	defer c.generationMu.Unlock()
 	c.generationMode = mode
+}
+
+func (c *Client) generationModeSnapshot() string {
+	c.generationMu.RLock()
+	defer c.generationMu.RUnlock()
+	return c.generationMode
 }
 
 // sessionSnapshot holds a consistent copy of session fields for a single request.
@@ -222,6 +231,7 @@ type sessionSnapshot struct {
 	buildLabel  string
 	sessionID   string
 	language    string
+	pushID      string
 }
 
 // session returns a consistent snapshot of the session fields under read lock.
@@ -233,6 +243,7 @@ func (c *Client) session() sessionSnapshot {
 		buildLabel:  c.buildLabel,
 		sessionID:   c.sessionID,
 		language:    c.language,
+		pushID:      c.pushID,
 	}
 }
 
