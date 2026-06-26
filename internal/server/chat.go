@@ -18,8 +18,49 @@ type chatRequest struct {
 }
 
 type chatMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role             string `json:"role"`
+	Content          string `json:"content"`
+	ReasoningContent string `json:"reasoning_content,omitempty"`
+}
+
+func (m *chatMessage) UnmarshalJSON(data []byte) error {
+	type plain struct {
+		Role    string          `json:"role"`
+		Content json.RawMessage `json:"content"`
+	}
+	var p plain
+	if err := json.Unmarshal(data, &p); err != nil {
+		return err
+	}
+	m.Role = p.Role
+
+	if len(p.Content) == 0 || string(p.Content) == "null" {
+		return nil
+	}
+
+	if p.Content[0] == '"' {
+		return json.Unmarshal(p.Content, &m.Content)
+	}
+
+	if p.Content[0] == '[' {
+		var parts []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		}
+		if err := json.Unmarshal(p.Content, &parts); err != nil {
+			return err
+		}
+		var texts []string
+		for _, part := range parts {
+			if part.Type == "text" {
+				texts = append(texts, part.Text)
+			}
+		}
+		m.Content = strings.Join(texts, "\n")
+		return nil
+	}
+
+	return json.Unmarshal(p.Content, &m.Content)
 }
 
 type chatCompletionResponse struct {
@@ -98,11 +139,9 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if req.Stream {
-			s.writeSSE(w, req.ChatID, model.Name, func(emit func(delta string)) error {
+			s.writeSSE(w, req.ChatID, model.Name, func(emit func(delta, reasoning string)) error {
 				_, err := s.client.SendMessageStream(ctx, prompt, metadata, model, func(out *types.ModelOutput) {
-					if out.TextDelta != "" {
-						emit(out.TextDelta)
-					}
+					emit(out.TextDelta, out.ThoughtsDelta)
 				})
 				return err
 			})
@@ -112,21 +151,19 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 				writeError(w, http.StatusInternalServerError, err.Error())
 				return
 			}
-			s.writeCompletion(w, req.ChatID, model.Name, output.Text)
+			s.writeCompletion(w, req.ChatID, model.Name, output.Text, output.Thoughts)
 		}
 		return
 	}
 
 	if req.Stream {
 		chatID := ""
-		s.writeSSE(w, "", model.Name, func(emit func(delta string)) error {
+		s.writeSSE(w, "", model.Name, func(emit func(delta, reasoning string)) error {
 			_, err := s.client.GenerateContentStream(ctx, prompt, model, func(out *types.ModelOutput) {
 				if chatID == "" && len(out.Metadata) > 0 {
 					chatID = out.Metadata[0]
 				}
-				if out.TextDelta != "" {
-					emit(out.TextDelta)
-				}
+				emit(out.TextDelta, out.ThoughtsDelta)
 			})
 			return err
 		})
@@ -140,12 +177,13 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		if len(output.Metadata) > 0 {
 			chatID = output.Metadata[0]
 		}
-		s.writeCompletion(w, chatID, model.Name, output.Text)
+		s.writeCompletion(w, chatID, model.Name, output.Text, output.Thoughts)
 	}
 }
 
-func (s *Server) writeCompletion(w http.ResponseWriter, chatID, modelName, text string) {
+func (s *Server) writeCompletion(w http.ResponseWriter, chatID, modelName, text, thoughts string) {
 	stop := "stop"
+	msg := &chatMessage{Role: "assistant", Content: text, ReasoningContent: thoughts}
 	resp := chatCompletionResponse{
 		ID:      "chatcmpl-" + chatID,
 		Object:  "chat.completion",
@@ -153,7 +191,7 @@ func (s *Server) writeCompletion(w http.ResponseWriter, chatID, modelName, text 
 		Model:   modelName,
 		Choices: []chatChoice{{
 			Index:        0,
-			Message:      &chatMessage{Role: "assistant", Content: text},
+			Message:      msg,
 			FinishReason: &stop,
 		}},
 	}
@@ -161,7 +199,7 @@ func (s *Server) writeCompletion(w http.ResponseWriter, chatID, modelName, text 
 	json.NewEncoder(w).Encode(resp)
 }
 
-func (s *Server) writeSSE(w http.ResponseWriter, chatID, modelName string, generate func(emit func(delta string)) error) {
+func (s *Server) writeSSE(w http.ResponseWriter, chatID, modelName string, generate func(emit func(delta, reasoning string)) error) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		writeError(w, http.StatusInternalServerError, "streaming not supported")
@@ -175,7 +213,10 @@ func (s *Server) writeSSE(w http.ResponseWriter, chatID, modelName string, gener
 
 	id := "chatcmpl-" + chatID
 
-	emit := func(delta string) {
+	emit := func(delta, reasoning string) {
+		if delta == "" && reasoning == "" {
+			return
+		}
 		chunk := chatCompletionResponse{
 			ID:      id,
 			Object:  "chat.completion.chunk",
@@ -183,7 +224,7 @@ func (s *Server) writeSSE(w http.ResponseWriter, chatID, modelName string, gener
 			Model:   modelName,
 			Choices: []chatChoice{{
 				Index: 0,
-				Delta: &chatMessage{Role: "assistant", Content: delta},
+				Delta: &chatMessage{Role: "assistant", Content: delta, ReasoningContent: reasoning},
 			}},
 		}
 		data, _ := json.Marshal(chunk)

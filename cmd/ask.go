@@ -89,6 +89,7 @@ var askCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
+			printThoughts(output)
 			fmt.Println(output.Text)
 			printImages(output)
 			printVideos(output)
@@ -96,18 +97,27 @@ var askCmd = &cobra.Command{
 			printChatID(output)
 		} else {
 			var output *types.ModelOutput
+			thoughtsPrinted := false
+			streamCb := func(out *types.ModelOutput) {
+				if out.ThoughtsDelta != "" {
+					if !thoughtsPrinted {
+						fmt.Fprintf(cmd.ErrOrStderr(), "\n--- Thinking ---\n")
+						thoughtsPrinted = true
+					}
+					fmt.Fprint(cmd.ErrOrStderr(), out.ThoughtsDelta)
+				}
+				if out.TextDelta != "" {
+					if thoughtsPrinted {
+						fmt.Fprintf(cmd.ErrOrStderr(), "\n--- End Thinking ---\n\n")
+						thoughtsPrinted = false
+					}
+					fmt.Print(out.TextDelta)
+				}
+			}
 			if len(uploads) > 0 {
-				output, err = c.GenerateContentStreamWithFiles(ctx, prompt, uploads, model, func(out *types.ModelOutput) {
-					if out.TextDelta != "" {
-						fmt.Print(out.TextDelta)
-					}
-				})
+				output, err = c.GenerateContentStreamWithFiles(ctx, prompt, uploads, model, streamCb)
 			} else {
-				output, err = c.GenerateContentStream(ctx, prompt, model, func(out *types.ModelOutput) {
-					if out.TextDelta != "" {
-						fmt.Print(out.TextDelta)
-					}
-				})
+				output, err = c.GenerateContentStream(ctx, prompt, model, streamCb)
 			}
 			if err != nil {
 				return err
@@ -128,6 +138,13 @@ func init() {
 	askCmd.Flags().BoolVar(&askNoStream, "no-stream", false, "Wait for complete response")
 	askCmd.Flags().StringArrayVarP(&askFiles, "file", "f", nil, "Attach file(s) (can be specified multiple times)")
 	askCmd.Flags().StringVar(&askGenerationMode, "mode", "auto", "Generation mode: auto, text, video, image-to-video, music")
+}
+
+func printThoughts(output *types.ModelOutput) {
+	if output == nil || output.Thoughts == "" {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "\n--- Thinking ---\n%s\n--- End Thinking ---\n\n", output.Thoughts)
 }
 
 func printImages(output *types.ModelOutput) {
