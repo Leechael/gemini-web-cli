@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/Leechael/gemini-web-cli/internal/client"
@@ -14,14 +13,9 @@ import (
 
 type Server struct {
 	client *client.Client
-	cfg    client.Config
 	mux    *http.ServeMux
 
 	stopRefresh context.CancelFunc
-
-	mu             sync.RWMutex
-	modelRegistry  []*types.Model
-	cachedModelsAt time.Time
 }
 
 func New(cfg client.Config) (*Server, error) {
@@ -32,7 +26,6 @@ func New(cfg client.Config) (*Server, error) {
 
 	s := &Server{
 		client: c,
-		cfg:    cfg,
 		mux:    http.NewServeMux(),
 	}
 	s.registerRoutes()
