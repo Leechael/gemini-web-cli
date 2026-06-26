@@ -99,7 +99,7 @@ func initClient(ctx context.Context) (*client.Client, map[string]string, error) 
 		AccountIndex:  acctIdx,
 		Model:         model,
 		Verbose:       verbose,
-		Timeout:       time.Duration(requestTimeout) * time.Second,
+		Timeout:       time.Duration(requestTimeout * float64(time.Second)),
 	}
 
 	c, err := client.New(cfg)

@@ -74,7 +74,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		AccountIndex:  acctIdx,
 		Model:         model,
 		Verbose:       verbose,
-		Timeout:       time.Duration(requestTimeout) * time.Second,
+		Timeout:       time.Duration(requestTimeout * float64(time.Second)),
 	}
 
 	apiKey := firstNonEmpty(serveAPIKey, os.Getenv("GEMINI_WEB_CLI_API_KEY"))
