@@ -155,6 +155,11 @@ func (c *Client) Init(ctx context.Context) error {
 	}
 	defer resp.Body.Close()
 
+	finalURL := resp.Request.URL.String()
+	if strings.Contains(finalURL, "accounts.google.com") {
+		return fmt.Errorf("session expired — redirected to Google login. Re-import cookies with: gemini-web-cli import '<cookie_string>'")
+	}
+
 	if resp.StatusCode != 200 {
 		if resp.StatusCode == 429 {
 			return &RateLimitError{StatusCode: resp.StatusCode}
@@ -171,7 +176,13 @@ func (c *Client) Init(ctx context.Context) error {
 
 	token := extractRegex(htmlBody, `"SNlM0e"\s*:\s*"([^"]*)"`)
 	if token == "" {
-		return fmt.Errorf("failed to extract access token (SNlM0e) — cookies may be invalid")
+		if strings.Contains(htmlBody, "accounts.google.com/ServiceLogin") || strings.Contains(htmlBody, "accounts.google.com/v3/signin") {
+			return fmt.Errorf("session expired — page redirected to Google login. Re-import cookies with: gemini-web-cli import '<cookie_string>'")
+		}
+		if len(htmlBody) < 1000 {
+			return fmt.Errorf("failed to extract access token — unexpected page content (got %d bytes). Cookies may be invalid or expired. Re-import with: gemini-web-cli import '<cookie_string>'", len(htmlBody))
+		}
+		return fmt.Errorf("failed to extract access token (SNlM0e) — cookies may be expired. Re-import with: gemini-web-cli import '<cookie_string>'")
 	}
 
 	bl := extractRegex(htmlBody, `"cfb2h"\s*:\s*"([^"]*)"`)
