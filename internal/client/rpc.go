@@ -46,6 +46,7 @@ func (c *Client) CallRPC(ctx context.Context, rpcID, payload string, opts ...RPC
 		cfg.sourcePath = c.appPath() + "/" + cfg.sourceCid
 	}
 
+	s := c.session()
 	raw, err := transport.PostBatch(ctx, transport.PostBatchRequest{
 		Client: c.httpClient,
 		URL: transport.BuildBatchURL(transport.BatchURLConfig{
@@ -53,12 +54,12 @@ func (c *Client) CallRPC(ctx context.Context, rpcID, payload string, opts ...RPC
 			AccountPath: c.accountPath,
 			RPCIDs:      []string{rpcID},
 			ReqID:       c.nextReqID(),
-			Language:    c.language,
-			BuildLabel:  c.buildLabel,
-			SessionID:   c.sessionID,
+			Language:    s.language,
+			BuildLabel:  s.buildLabel,
+			SessionID:   s.sessionID,
 			SourcePath:  cfg.sourcePath,
 		}),
-		AccessToken: c.accessToken,
+		AccessToken: s.accessToken,
 		RPCID:       rpcID,
 		Payload:     payload,
 		UserAgent:   userAgent,
@@ -90,6 +91,7 @@ func (c *Client) CallRPCBatch(ctx context.Context, calls []RPCCall, opts ...RPCO
 		seen[call.ID] = true
 		rpcIDs = append(rpcIDs, call.ID)
 	}
+	s := c.session()
 	raw, err := transport.PostBatchMulti(ctx, transport.PostBatchMultiRequest{
 		Client: c.httpClient,
 		URL: transport.BuildBatchURL(transport.BatchURLConfig{
@@ -97,12 +99,12 @@ func (c *Client) CallRPCBatch(ctx context.Context, calls []RPCCall, opts ...RPCO
 			AccountPath: c.accountPath,
 			RPCIDs:      rpcIDs,
 			ReqID:       c.nextReqID(),
-			Language:    c.language,
-			BuildLabel:  c.buildLabel,
-			SessionID:   c.sessionID,
+			Language:    s.language,
+			BuildLabel:  s.buildLabel,
+			SessionID:   s.sessionID,
 			SourcePath:  cfg.sourcePath,
 		}),
-		AccessToken: c.accessToken,
+		AccessToken: s.accessToken,
 		Calls:       calls,
 		UserAgent:   userAgent,
 	})

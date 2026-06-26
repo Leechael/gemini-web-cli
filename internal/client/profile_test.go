@@ -20,7 +20,7 @@ func TestGetUserProfile(t *testing.T) {
 	c := newTestClient()
 	c.accessToken = "token"
 	c.language = "en"
-	c.reqID = 1
+	c.reqID.Store(1)
 	c.httpClient = srv.Client()
 
 	profile, err := c.GetUserProfile(t.Context())

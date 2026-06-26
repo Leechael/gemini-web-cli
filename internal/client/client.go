@@ -10,6 +10,8 @@ import (
 	"net/http/cookiejar"
 	"net/url"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Leechael/gemini-web-cli/internal/types"
@@ -33,22 +35,28 @@ func (e *RateLimitError) Error() string {
 
 // Client communicates with the Gemini web API.
 type Client struct {
-	httpClient     *http.Client
-	accessToken    string
-	buildLabel     string
-	sessionID      string
-	language       string // extracted from init page, default "en"
-	pushID         string // extracted from init page, default "feeds/mcudyrk2a4khkz"
-	reqID          int
-	accountIndex   *int
-	accountPath    string // "" or "/u/N"
-	model          *types.Model
+	httpClient   *http.Client
+	reqID        atomic.Int64
+	accountIndex *int
+	accountPath  string // "" or "/u/N"
+	model        *types.Model
+	proxy        string
+	verbose      bool
+	timeout      time.Duration
+
+	// sessionMu protects fields refreshed by Init().
+	sessionMu   sync.RWMutex
+	accessToken string
+	buildLabel  string
+	sessionID   string
+	language    string // extracted from init page, default "en"
+	pushID      string // extracted from init page, default "feeds/mcudyrk2a4khkz"
+
+	// generationMode is per-request in server mode; CLI sets it before each call.
 	generationMode string
-	proxy          string
-	verbose        bool
-	timeout        time.Duration
 
 	// Cookies for persistence tracking
+	cookieMu     sync.RWMutex
 	ExtraCookies map[string]string
 
 	// Dynamic model discovery
@@ -106,7 +114,6 @@ func New(cfg Config) (*Client, error) {
 
 	// Generate random reqID
 	n, _ := rand.Int(rand.Reader, big.NewInt(90000))
-	reqID := int(n.Int64()) + 10000
 
 	// Account path for multi-account support
 	var accountPath string
@@ -114,13 +121,12 @@ func New(cfg Config) (*Client, error) {
 		accountPath = fmt.Sprintf("/u/%d", *cfg.AccountIndex)
 	}
 
-	return &Client{
+	c := &Client{
 		httpClient: &http.Client{
 			Jar:       jar,
 			Transport: transport,
 			Timeout:   timeout,
 		},
-		reqID:        reqID,
 		accountIndex: cfg.AccountIndex,
 		accountPath:  accountPath,
 		model:        cfg.Model,
@@ -128,7 +134,9 @@ func New(cfg Config) (*Client, error) {
 		verbose:      cfg.Verbose,
 		timeout:      timeout,
 		ExtraCookies: cfg.ExtraCookies,
-	}, nil
+	}
+	c.reqID.Store(n.Int64() + 10000)
+	return c, nil
 }
 
 // Init fetches the access token and session data from the Gemini app page.
@@ -165,22 +173,28 @@ func (c *Client) Init(ctx context.Context) error {
 	if token == "" {
 		return fmt.Errorf("failed to extract access token (SNlM0e) — cookies may be invalid")
 	}
+
+	bl := extractRegex(htmlBody, `"cfb2h"\s*:\s*"([^"]*)"`)
+	sid := extractRegex(htmlBody, `"FdrFJe"\s*:\s*"([^"]*)"`)
+	lang := extractRegex(htmlBody, `"TuX5cc"\s*:\s*"([^"]*)"`)
+	if lang == "" {
+		lang = "en"
+	}
+	pid := extractRegex(htmlBody, `"qKIAYe"\s*:\s*"([^"]*)"`)
+	if pid == "" {
+		pid = "feeds/mcudyrk2a4khkz"
+	}
+
+	c.sessionMu.Lock()
 	c.accessToken = token
-
-	c.buildLabel = extractRegex(htmlBody, `"cfb2h"\s*:\s*"([^"]*)"`)
-	c.sessionID = extractRegex(htmlBody, `"FdrFJe"\s*:\s*"([^"]*)"`)
-
-	c.language = extractRegex(htmlBody, `"TuX5cc"\s*:\s*"([^"]*)"`)
-	if c.language == "" {
-		c.language = "en"
-	}
-	c.pushID = extractRegex(htmlBody, `"qKIAYe"\s*:\s*"([^"]*)"`)
-	if c.pushID == "" {
-		c.pushID = "feeds/mcudyrk2a4khkz"
-	}
+	c.buildLabel = bl
+	c.sessionID = sid
+	c.language = lang
+	c.pushID = pid
+	c.sessionMu.Unlock()
 
 	if c.verbose {
-		fmt.Fprintf(logWriter, "Init OK: token=%s... bl=%s sid=%s lang=%s push=%s\n", token[:min(8, len(token))], c.buildLabel, c.sessionID, c.language, c.pushID)
+		fmt.Fprintf(logWriter, "Init OK: token=%s... bl=%s sid=%s lang=%s push=%s\n", token[:min(8, len(token))], bl, sid, lang, pid)
 	}
 
 	return nil
@@ -189,6 +203,26 @@ func (c *Client) Init(ctx context.Context) error {
 // SetGenerationMode selects a browser generation mode for the next request.
 func (c *Client) SetGenerationMode(mode string) {
 	c.generationMode = mode
+}
+
+// sessionSnapshot holds a consistent copy of session fields for a single request.
+type sessionSnapshot struct {
+	accessToken string
+	buildLabel  string
+	sessionID   string
+	language    string
+}
+
+// session returns a consistent snapshot of the session fields under read lock.
+func (c *Client) session() sessionSnapshot {
+	c.sessionMu.RLock()
+	defer c.sessionMu.RUnlock()
+	return sessionSnapshot{
+		accessToken: c.accessToken,
+		buildLabel:  c.buildLabel,
+		sessionID:   c.sessionID,
+		language:    c.language,
+	}
 }
 
 // Close releases resources.
@@ -202,9 +236,7 @@ func (c *Client) appPath() string {
 }
 
 func (c *Client) nextReqID() int {
-	id := c.reqID
-	c.reqID += 100000
-	return id
+	return int(c.reqID.Add(100000) - 100000)
 }
 
 func (c *Client) commonHeaders() http.Header {

@@ -41,7 +41,7 @@ func newBenchClient(b *testing.B, srv *httptest.Server) *Client {
 	c := newTestClient()
 	c.accessToken = "token"
 	c.language = "en"
-	c.reqID = 1
+	c.reqID.Store(1)
 	c.httpClient = srv.Client()
 	return c
 }
