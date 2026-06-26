@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/Leechael/gemini-web-cli/internal/types"
@@ -33,8 +32,7 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(openAIModelList{
+	writeJSON(w, http.StatusOK, openAIModelList{
 		Object: "list",
 		Data:   models,
 	})

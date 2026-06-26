@@ -67,9 +67,7 @@ func (s *Server) handleResearchCreate(w http.ResponseWriter, r *http.Request) {
 		Steps:   plan.Steps,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(resp)
+	writeJSON(w, http.StatusCreated, resp)
 }
 
 func (s *Server) handleResearchStatus(w http.ResponseWriter, r *http.Request) {
@@ -90,8 +88,7 @@ func (s *Server) handleResearchStatus(w http.ResponseWriter, r *http.Request) {
 		State: status.State,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) handleResearchResult(w http.ResponseWriter, r *http.Request) {
@@ -125,6 +122,5 @@ func (s *Server) handleResearchResult(w http.ResponseWriter, r *http.Request) {
 		Sources: respSources,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	writeJSON(w, http.StatusOK, resp)
 }

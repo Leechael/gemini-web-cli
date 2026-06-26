@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -145,10 +146,22 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if req.Stream {
-			s.writeSSE(w, req.ChatID, model.Name, func(emit func(chatID, delta, reasoning string)) error {
-				_, err := s.client.SendMessageStream(ctx, prompt, metadata, model, func(out *types.ModelOutput) {
-					emit("", out.TextDelta, out.ThoughtsDelta)
+			streamCtx, cancel := context.WithCancel(ctx)
+			defer cancel()
+			var emitErr error
+			s.writeSSE(w, req.ChatID, model.Name, func(emit func(chatID, delta, reasoning string) error) error {
+				_, err := s.client.SendMessageStream(streamCtx, prompt, metadata, model, func(out *types.ModelOutput) {
+					if emitErr != nil {
+						return
+					}
+					if err := emit("", out.TextDelta, out.ThoughtsDelta); err != nil {
+						emitErr = err
+						cancel()
+					}
 				})
+				if emitErr != nil {
+					return emitErr
+				}
 				return err
 			})
 		} else {
@@ -164,13 +177,25 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 
 	if req.Stream {
 		chatID := ""
-		s.writeSSE(w, "", model.Name, func(emit func(chatID, delta, reasoning string)) error {
-			_, err := s.client.GenerateContentStream(ctx, prompt, model, func(out *types.ModelOutput) {
+		streamCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		var emitErr error
+		s.writeSSE(w, "", model.Name, func(emit func(chatID, delta, reasoning string) error) error {
+			_, err := s.client.GenerateContentStream(streamCtx, prompt, model, func(out *types.ModelOutput) {
 				if chatID == "" && len(out.Metadata) > 0 {
 					chatID = out.Metadata[0]
 				}
-				emit(chatID, out.TextDelta, out.ThoughtsDelta)
+				if emitErr != nil {
+					return
+				}
+				if err := emit(chatID, out.TextDelta, out.ThoughtsDelta); err != nil {
+					emitErr = err
+					cancel()
+				}
 			})
+			if emitErr != nil {
+				return emitErr
+			}
 			return err
 		})
 	} else {
@@ -201,11 +226,10 @@ func (s *Server) writeCompletion(w http.ResponseWriter, chatID, modelName, text,
 			FinishReason: &stop,
 		}},
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	writeJSON(w, http.StatusOK, resp)
 }
 
-func (s *Server) writeSSE(w http.ResponseWriter, chatID, modelName string, generate func(emit func(chatID, delta, reasoning string)) error) {
+func (s *Server) writeSSE(w http.ResponseWriter, chatID, modelName string, generate func(emit func(chatID, delta, reasoning string) error) error) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		writeError(w, http.StatusInternalServerError, "streaming not supported")
@@ -219,12 +243,12 @@ func (s *Server) writeSSE(w http.ResponseWriter, chatID, modelName string, gener
 
 	currentChatID := chatID
 
-	emit := func(chatID, delta, reasoning string) {
+	emit := func(chatID, delta, reasoning string) error {
 		if chatID != "" {
 			currentChatID = chatID
 		}
 		if delta == "" && reasoning == "" {
-			return
+			return nil
 		}
 		chunk := chatCompletionResponse{
 			ID:      "chatcmpl-" + currentChatID,
@@ -236,14 +260,21 @@ func (s *Server) writeSSE(w http.ResponseWriter, chatID, modelName string, gener
 				Delta: &chatMessage{Role: "assistant", Content: delta, ReasoningContent: reasoning},
 			}},
 		}
-		data, _ := json.Marshal(chunk)
-		fmt.Fprintf(w, "data: %s\n\n", data)
+		data, err := json.Marshal(chunk)
+		if err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
+			return err
+		}
 		flusher.Flush()
+		return nil
 	}
 
 	if err := generate(emit); err != nil {
-		fmt.Fprintf(w, "data: {\"error\":{\"message\":%q}}\n\n", err.Error())
-		flusher.Flush()
+		if _, writeErr := fmt.Fprintf(w, "data: {\"error\":{\"message\":%q}}\n\n", err.Error()); writeErr == nil {
+			flusher.Flush()
+		}
 		return
 	}
 
@@ -259,8 +290,15 @@ func (s *Server) writeSSE(w http.ResponseWriter, chatID, modelName string, gener
 			FinishReason: &stop,
 		}},
 	}
-	data, _ := json.Marshal(finalChunk)
-	fmt.Fprintf(w, "data: %s\n\n", data)
-	fmt.Fprint(w, "data: [DONE]\n\n")
+	data, err := json.Marshal(finalChunk)
+	if err != nil {
+		return
+	}
+	if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
+		return
+	}
+	if _, err := fmt.Fprint(w, "data: [DONE]\n\n"); err != nil {
+		return
+	}
 	flusher.Flush()
 }

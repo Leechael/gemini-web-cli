@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"crypto/subtle"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -170,8 +171,18 @@ func (s *Server) resolveModel(name string) *types.Model {
 	return nil
 }
 
+func writeJSON(w http.ResponseWriter, code int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		log.Printf("write response failed: %v", err)
+	}
+}
+
 func writeError(w http.ResponseWriter, code int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	fmt.Fprintf(w, `{"error":{"message":%q,"type":"invalid_request_error","code":%q}}`, message, http.StatusText(code))
+	if _, err := fmt.Fprintf(w, `{"error":{"message":%q,"type":"invalid_request_error","code":%q}}`, message, http.StatusText(code)); err != nil {
+		log.Printf("write error response failed: %v", err)
+	}
 }
