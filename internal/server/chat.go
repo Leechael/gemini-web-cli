@@ -126,7 +126,11 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	if req.ChatID != "" {
-		latest, _ := s.client.FetchLatestChatResponse(ctx, req.ChatID)
+		latest, err := s.client.FetchLatestChatResponse(ctx, req.ChatID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 		metadata := make([]string, 10)
 		metadata[0] = req.ChatID
 		if latest != nil {
