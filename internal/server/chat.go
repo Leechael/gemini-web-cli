@@ -53,9 +53,10 @@ func (m *chatMessage) UnmarshalJSON(data []byte) error {
 		}
 		var texts []string
 		for _, part := range parts {
-			if part.Type == "text" {
-				texts = append(texts, part.Text)
+			if part.Type != "text" {
+				return fmt.Errorf("unsupported content part type %q", part.Type)
 			}
+			texts = append(texts, part.Text)
 		}
 		m.Content = strings.Join(texts, "\n")
 		return nil
