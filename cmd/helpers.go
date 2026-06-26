@@ -53,8 +53,8 @@ func resolveCookiesJSON() string {
 	return ""
 }
 
-// initClient creates and initializes a GeminiClient from CLI flags.
-func initClient(ctx context.Context) (*client.Client, map[string]string, error) {
+// clientConfigFromFlags builds client configuration from CLI flags and environment.
+func clientConfigFromFlags() (client.Config, map[string]string, error) {
 	var jsonCookies map[string]string
 	var extraCookies map[string]string
 
@@ -62,7 +62,7 @@ func initClient(ctx context.Context) (*client.Client, map[string]string, error) 
 	if effectiveCookies != "" {
 		jar, err := cookies.Load(effectiveCookies)
 		if err != nil {
-			return nil, nil, fmt.Errorf("loading cookies from %s: %w", effectiveCookies, err)
+			return client.Config{}, nil, fmt.Errorf("loading cookies from %s: %w", effectiveCookies, err)
 		}
 		jsonCookies = jar.Cookies
 
@@ -78,7 +78,7 @@ func initClient(ctx context.Context) (*client.Client, map[string]string, error) 
 	psidts := firstNonEmpty(jsonCookies["__Secure-1PSIDTS"], os.Getenv("GEMINI_SECURE_1PSIDTS"))
 
 	if psid == "" {
-		return nil, nil, cookiesNotFoundError()
+		return client.Config{}, nil, cookiesNotFoundError()
 	}
 	if psidts == "" {
 		fmt.Fprintln(os.Stderr, "Warning: __Secure-1PSIDTS not found. Session may still work with long-lived cookies.")
@@ -91,7 +91,7 @@ func initClient(ctx context.Context) (*client.Client, map[string]string, error) 
 
 	model := types.FindModel(modelName)
 
-	cfg := client.Config{
+	return client.Config{
 		Secure1PSID:   psid,
 		Secure1PSIDTS: psidts,
 		ExtraCookies:  extraCookies,
@@ -100,6 +100,14 @@ func initClient(ctx context.Context) (*client.Client, map[string]string, error) 
 		Model:         model,
 		Verbose:       verbose,
 		Timeout:       time.Duration(requestTimeout * float64(time.Second)),
+	}, jsonCookies, nil
+}
+
+// initClient creates and initializes a GeminiClient from CLI flags.
+func initClient(ctx context.Context) (*client.Client, map[string]string, error) {
+	cfg, jsonCookies, err := clientConfigFromFlags()
+	if err != nil {
+		return nil, nil, err
 	}
 
 	c, err := client.New(cfg)
