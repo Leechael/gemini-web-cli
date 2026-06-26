@@ -143,9 +143,9 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if req.Stream {
-			s.writeSSE(w, req.ChatID, model.Name, func(emit func(delta, reasoning string)) error {
+			s.writeSSE(w, req.ChatID, model.Name, func(emit func(chatID, delta, reasoning string)) error {
 				_, err := s.client.SendMessageStream(ctx, prompt, metadata, model, func(out *types.ModelOutput) {
-					emit(out.TextDelta, out.ThoughtsDelta)
+					emit("", out.TextDelta, out.ThoughtsDelta)
 				})
 				return err
 			})
@@ -162,12 +162,12 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 
 	if req.Stream {
 		chatID := ""
-		s.writeSSE(w, "", model.Name, func(emit func(delta, reasoning string)) error {
+		s.writeSSE(w, "", model.Name, func(emit func(chatID, delta, reasoning string)) error {
 			_, err := s.client.GenerateContentStream(ctx, prompt, model, func(out *types.ModelOutput) {
 				if chatID == "" && len(out.Metadata) > 0 {
 					chatID = out.Metadata[0]
 				}
-				emit(out.TextDelta, out.ThoughtsDelta)
+				emit(chatID, out.TextDelta, out.ThoughtsDelta)
 			})
 			return err
 		})
@@ -203,7 +203,7 @@ func (s *Server) writeCompletion(w http.ResponseWriter, chatID, modelName, text,
 	json.NewEncoder(w).Encode(resp)
 }
 
-func (s *Server) writeSSE(w http.ResponseWriter, chatID, modelName string, generate func(emit func(delta, reasoning string)) error) {
+func (s *Server) writeSSE(w http.ResponseWriter, chatID, modelName string, generate func(emit func(chatID, delta, reasoning string)) error) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		writeError(w, http.StatusInternalServerError, "streaming not supported")
@@ -215,14 +215,17 @@ func (s *Server) writeSSE(w http.ResponseWriter, chatID, modelName string, gener
 	w.Header().Set("Connection", "keep-alive")
 	w.WriteHeader(http.StatusOK)
 
-	id := "chatcmpl-" + chatID
+	currentChatID := chatID
 
-	emit := func(delta, reasoning string) {
+	emit := func(chatID, delta, reasoning string) {
+		if chatID != "" {
+			currentChatID = chatID
+		}
 		if delta == "" && reasoning == "" {
 			return
 		}
 		chunk := chatCompletionResponse{
-			ID:      id,
+			ID:      "chatcmpl-" + currentChatID,
 			Object:  "chat.completion.chunk",
 			Created: time.Now().Unix(),
 			Model:   modelName,
@@ -244,7 +247,7 @@ func (s *Server) writeSSE(w http.ResponseWriter, chatID, modelName string, gener
 
 	stop := "stop"
 	finalChunk := chatCompletionResponse{
-		ID:      id,
+		ID:      "chatcmpl-" + currentChatID,
 		Object:  "chat.completion.chunk",
 		Created: time.Now().Unix(),
 		Model:   modelName,
