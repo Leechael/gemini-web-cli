@@ -17,9 +17,10 @@ import (
 )
 
 var (
-	servePort   int
-	serveHost   string
-	serveAPIKey string
+	servePort           int
+	serveHost           string
+	serveAPIKey         string
+	serveExposeThoughts bool
 )
 
 var serveCmd = &cobra.Command{
@@ -81,7 +82,9 @@ func runServe(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("--api-key or GEMINI_WEB_CLI_API_KEY is required when binding to non-loopback host %q", serveHost)
 	}
 
-	srv, err := server.New(cfg, apiKey)
+	exposeThoughts := serveExposeThoughts || os.Getenv("GEMINI_WEB_CLI_EXPOSE_THOUGHTS") == "1"
+
+	srv, err := server.New(cfg, apiKey, exposeThoughts)
 	if err != nil {
 		return fmt.Errorf("creating server: %w", err)
 	}
@@ -99,6 +102,7 @@ func init() {
 	serveCmd.Flags().IntVar(&servePort, "port", 8080, "Port to listen on")
 	serveCmd.Flags().StringVar(&serveHost, "host", "127.0.0.1", "Host to bind to")
 	serveCmd.Flags().StringVar(&serveAPIKey, "api-key", "", "API key required for /v1 endpoints (or GEMINI_WEB_CLI_API_KEY)")
+	serveCmd.Flags().BoolVar(&serveExposeThoughts, "expose-thoughts", false, "Expose model thoughts/reasoning in API responses")
 	serveCmd.GroupID = "util"
 	rootCmd.AddCommand(serveCmd)
 }

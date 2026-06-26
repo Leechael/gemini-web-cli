@@ -17,23 +17,25 @@ import (
 const maxRequestBodyBytes = 1 << 20
 
 type Server struct {
-	client *client.Client
-	mux    *http.ServeMux
-	apiKey string
+	client         *client.Client
+	mux            *http.ServeMux
+	apiKey         string
+	exposeThoughts bool
 
 	stopRefresh context.CancelFunc
 }
 
-func New(cfg client.Config, apiKey string) (*Server, error) {
+func New(cfg client.Config, apiKey string, exposeThoughts bool) (*Server, error) {
 	c, err := client.New(cfg)
 	if err != nil {
 		return nil, err
 	}
 
 	s := &Server{
-		client: c,
-		mux:    http.NewServeMux(),
-		apiKey: apiKey,
+		client:         c,
+		mux:            http.NewServeMux(),
+		apiKey:         apiKey,
+		exposeThoughts: exposeThoughts,
 	}
 	s.registerRoutes()
 	return s, nil

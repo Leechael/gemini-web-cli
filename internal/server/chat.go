@@ -155,7 +155,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 					if emitErr != nil {
 						return
 					}
-					if err := emit("", out.TextDelta, out.ThoughtsDelta); err != nil {
+					if err := emit("", out.TextDelta, s.reasoningDelta(out)); err != nil {
 						emitErr = err
 						cancel()
 					}
@@ -171,7 +171,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 				writeError(w, http.StatusInternalServerError, err.Error())
 				return
 			}
-			s.writeCompletion(w, req.ChatID, model.Name, output.Text, output.Thoughts)
+			s.writeCompletion(w, req.ChatID, model.Name, output.Text, s.reasoningText(output))
 		}
 		return
 	}
@@ -189,7 +189,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 				if emitErr != nil {
 					return
 				}
-				if err := emit(chatID, out.TextDelta, out.ThoughtsDelta); err != nil {
+				if err := emit(chatID, out.TextDelta, s.reasoningDelta(out)); err != nil {
 					emitErr = err
 					cancel()
 				}
@@ -209,8 +209,22 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		if len(output.Metadata) > 0 {
 			chatID = output.Metadata[0]
 		}
-		s.writeCompletion(w, chatID, model.Name, output.Text, output.Thoughts)
+		s.writeCompletion(w, chatID, model.Name, output.Text, s.reasoningText(output))
 	}
+}
+
+func (s *Server) reasoningDelta(output *types.ModelOutput) string {
+	if !s.exposeThoughts || output == nil {
+		return ""
+	}
+	return output.ThoughtsDelta
+}
+
+func (s *Server) reasoningText(output *types.ModelOutput) string {
+	if !s.exposeThoughts || output == nil {
+		return ""
+	}
+	return output.Thoughts
 }
 
 func (s *Server) writeCompletion(w http.ResponseWriter, chatID, modelName, text, thoughts string) {
