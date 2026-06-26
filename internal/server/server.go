@@ -2,9 +2,11 @@ package server
 
 import (
 	"context"
+	"crypto/subtle"
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Leechael/gemini-web-cli/internal/client"
@@ -14,11 +16,12 @@ import (
 type Server struct {
 	client *client.Client
 	mux    *http.ServeMux
+	apiKey string
 
 	stopRefresh context.CancelFunc
 }
 
-func New(cfg client.Config) (*Server, error) {
+func New(cfg client.Config, apiKey string) (*Server, error) {
 	c, err := client.New(cfg)
 	if err != nil {
 		return nil, err
@@ -27,6 +30,7 @@ func New(cfg client.Config) (*Server, error) {
 	s := &Server{
 		client: c,
 		mux:    http.NewServeMux(),
+		apiKey: apiKey,
 	}
 	s.registerRoutes()
 	return s, nil
@@ -93,13 +97,45 @@ func printBanner(addr string) {
 }
 
 func (s *Server) registerRoutes() {
-	s.mux.HandleFunc("GET /v1/models", s.handleModels)
-	s.mux.HandleFunc("POST /v1/chat/completions", s.handleChatCompletions)
-	s.mux.HandleFunc("POST /v1/research", s.handleResearchCreate)
-	s.mux.HandleFunc("GET /v1/research/{id}/status", s.handleResearchStatus)
-	s.mux.HandleFunc("GET /v1/research/{id}/result", s.handleResearchResult)
+	s.mux.HandleFunc("GET /v1/models", s.requireAuth(s.handleModels))
+	s.mux.HandleFunc("POST /v1/chat/completions", s.requireAuth(s.handleChatCompletions))
+	s.mux.HandleFunc("POST /v1/research", s.requireAuth(s.handleResearchCreate))
+	s.mux.HandleFunc("GET /v1/research/{id}/status", s.requireAuth(s.handleResearchStatus))
+	s.mux.HandleFunc("GET /v1/research/{id}/result", s.requireAuth(s.handleResearchResult))
 	s.mux.HandleFunc("GET /openapi.json", s.handleOpenAPISpec)
 	s.mux.HandleFunc("GET /docs", s.handleSwaggerUI)
+}
+
+func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if s.apiKey == "" {
+			next(w, r)
+			return
+		}
+		if constantTimeEqual(apiKeyFromRequest(r), s.apiKey) {
+			next(w, r)
+			return
+		}
+		writeError(w, http.StatusUnauthorized, "missing or invalid API key")
+	}
+}
+
+func apiKeyFromRequest(r *http.Request) string {
+	if key := r.Header.Get("X-API-Key"); key != "" {
+		return key
+	}
+	auth := r.Header.Get("Authorization")
+	if strings.HasPrefix(auth, "Bearer ") {
+		return strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
+	}
+	return ""
+}
+
+func constantTimeEqual(a, b string) bool {
+	if a == "" || b == "" || len(a) != len(b) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
 
 func (s *Server) refreshLoop(ctx context.Context) {

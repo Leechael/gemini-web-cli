@@ -3,7 +3,9 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -15,8 +17,9 @@ import (
 )
 
 var (
-	servePort int
-	serveHost string
+	servePort   int
+	serveHost   string
+	serveAPIKey string
 )
 
 var serveCmd = &cobra.Command{
@@ -73,7 +76,12 @@ func runServe(cmd *cobra.Command, args []string) error {
 		Timeout:       time.Duration(requestTimeout) * time.Second,
 	}
 
-	srv, err := server.New(cfg)
+	apiKey := firstNonEmpty(serveAPIKey, os.Getenv("GEMINI_WEB_CLI_API_KEY"))
+	if apiKey == "" && !isLoopbackHost(serveHost) {
+		return fmt.Errorf("--api-key or GEMINI_WEB_CLI_API_KEY is required when binding to non-loopback host %q", serveHost)
+	}
+
+	srv, err := server.New(cfg, apiKey)
 	if err != nil {
 		return fmt.Errorf("creating server: %w", err)
 	}
@@ -90,6 +98,16 @@ func runServe(cmd *cobra.Command, args []string) error {
 func init() {
 	serveCmd.Flags().IntVar(&servePort, "port", 8080, "Port to listen on")
 	serveCmd.Flags().StringVar(&serveHost, "host", "127.0.0.1", "Host to bind to")
+	serveCmd.Flags().StringVar(&serveAPIKey, "api-key", "", "API key required for /v1 endpoints (or GEMINI_WEB_CLI_API_KEY)")
 	serveCmd.GroupID = "util"
 	rootCmd.AddCommand(serveCmd)
+}
+
+func isLoopbackHost(host string) bool {
+	host = strings.TrimSpace(host)
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
