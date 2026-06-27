@@ -26,14 +26,22 @@ type chatMessage struct {
 
 func (m *chatMessage) UnmarshalJSON(data []byte) error {
 	type plain struct {
-		Role    string          `json:"role"`
-		Content json.RawMessage `json:"content"`
+		Role         string          `json:"role"`
+		Content      json.RawMessage `json:"content"`
+		ToolCalls    json.RawMessage `json:"tool_calls"`
+		FunctionCall json.RawMessage `json:"function_call"`
 	}
 	var p plain
 	if err := json.Unmarshal(data, &p); err != nil {
 		return err
 	}
 	m.Role = p.Role
+	if len(p.ToolCalls) > 0 && string(p.ToolCalls) != "null" {
+		return fmt.Errorf("tool_calls are not supported")
+	}
+	if len(p.FunctionCall) > 0 && string(p.FunctionCall) != "null" {
+		return fmt.Errorf("function_call is not supported")
+	}
 
 	if len(p.Content) == 0 || string(p.Content) == "null" {
 		return nil
