@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"sort"
 
 	"github.com/Leechael/gemini-web-cli/internal/types"
@@ -9,21 +10,27 @@ import (
 	mcpserver "github.com/mark3labs/mcp-go/server"
 )
 
-func (s *Server) resolveMCPModel(override string) *types.Model {
+const maxMCPResearchListCount = 100
+
+func (s *Server) resolveMCPModel(override string) (*types.Model, error) {
 	name := override
 	if name == "" {
 		name = s.mcpDefaultModel
 	}
 	if name == "" || name == "auto" {
-		return types.FindModel("unspecified")
+		model := types.FindModel("unspecified")
+		if model == nil {
+			return nil, fmt.Errorf("model %q not found", "unspecified")
+		}
+		return model, nil
 	}
 	if m := s.client.ResolveModel(name); m != nil {
-		return m
+		return m, nil
 	}
 	if m := types.FindModel(name); m != nil {
-		return m
+		return m, nil
 	}
-	return types.FindModel("unspecified")
+	return nil, fmt.Errorf("model %q not found", name)
 }
 
 func (s *Server) registerMCPTools(srv *mcpserver.MCPServer) {
@@ -108,9 +115,9 @@ func (s *Server) handleMCPResearchCreate(ctx context.Context, req mcp.CallToolRe
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	modelName := req.GetString("model", "")
-	model := s.resolveMCPModel(modelName)
-	if model == nil {
-		return mcp.NewToolResultError("model not found"), nil
+	model, err := s.resolveMCPModel(modelName)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
 	plan, err := s.client.CreateAndStartDeepResearch(ctx, prompt, model)
@@ -188,6 +195,9 @@ func (s *Server) handleMCPResearchList(ctx context.Context, req mcp.CallToolRequ
 	if count <= 0 {
 		count = 13
 	}
+	if count > maxMCPResearchListCount {
+		return mcp.NewToolResultError(fmt.Sprintf("count must be <= %d", maxMCPResearchListCount)), nil
+	}
 	cursor := req.GetString("cursor", "")
 
 	reports, nextCursor, err := s.client.ListResearchReportsPage(ctx, count, cursor)
@@ -230,20 +240,26 @@ func (s *Server) handleMCPResearchReply(ctx context.Context, req mcp.CallToolReq
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	modelName := req.GetString("model", "")
-	model := s.resolveMCPModel(modelName)
-	if model == nil {
-		return mcp.NewToolResultError("model not found"), nil
+	model, err := s.resolveMCPModel(modelName)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	latest, err := s.client.FetchLatestChatResponse(ctx, id)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	if latest == nil {
+		return mcp.NewToolResultError("latest chat response not found"), nil
 	}
 
 	metadata := make([]string, 10)
 	metadata[0] = id
-	if latest, err := s.client.FetchLatestChatResponse(ctx, id); err == nil && latest != nil {
-		if latest.Rid != "" {
-			metadata[1] = latest.Rid
-		}
-		if latest.RCid != "" {
-			metadata[2] = latest.RCid
-		}
+	if latest.Rid != "" {
+		metadata[1] = latest.Rid
+	}
+	if latest.RCid != "" {
+		metadata[2] = latest.RCid
 	}
 
 	output, err := s.client.SendMessageDeepResearch(ctx, prompt, metadata, model)
@@ -267,9 +283,9 @@ func (s *Server) handleMCPAsk(ctx context.Context, req mcp.CallToolRequest) (*mc
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	modelName := req.GetString("model", "")
-	model := s.resolveMCPModel(modelName)
-	if model == nil {
-		return mcp.NewToolResultError("model not found"), nil
+	model, err := s.resolveMCPModel(modelName)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
 	output, err := s.client.GenerateContent(ctx, prompt, model)

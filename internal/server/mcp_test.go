@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -111,16 +112,27 @@ func TestMCPResourcesAndPromptsListEmpty(t *testing.T) {
 }
 
 func TestMCPLoggingSummarizeArgs(t *testing.T) {
-	long := strings.Repeat("x", maxLoggedArgLen+50)
-	got := summarizeMCPArgs(map[string]any{"prompt": long, "n": 3})
-	if !strings.Contains(got, "\"prompt\":\""+strings.Repeat("x", maxLoggedArgLen)+"...\"") {
-		t.Fatalf("long arg not truncated to %d chars + ...: %s", maxLoggedArgLen, got)
+	secretPrompt := "secret token: sk-test-value"
+	got := summarizeMCPArgs(map[string]any{
+		"prompt": secretPrompt,
+		"n":      3,
+		"items":  []any{"a", "b"},
+		"meta":   map[string]any{"x": 1},
+	})
+	if strings.Contains(got, secretPrompt) || strings.Contains(got, "sk-test-value") {
+		t.Fatalf("string arg value leaked into log summary: %s", got)
 	}
-	if strings.Contains(got, strings.Repeat("x", maxLoggedArgLen+1)) {
-		t.Fatalf("arg exceeds cap of %d chars: %s", maxLoggedArgLen, got)
+	if !strings.Contains(got, fmt.Sprintf(`"prompt":"string(len=%d)"`, len(secretPrompt))) {
+		t.Fatalf("string arg length missing from summary: %s", got)
 	}
 	if !strings.Contains(got, `"n":3`) {
-		t.Fatalf("short arg missing from summary: %s", got)
+		t.Fatalf("numeric arg missing from summary: %s", got)
+	}
+	if !strings.Contains(got, `"items":"array(len=2)"`) {
+		t.Fatalf("array summary missing: %s", got)
+	}
+	if !strings.Contains(got, `"meta":"object(keys=1)"`) {
+		t.Fatalf("object summary missing: %s", got)
 	}
 
 	if got := summarizeMCPArgs(nil); got != "{}" {
@@ -141,10 +153,32 @@ func TestMCPLoggingStatusWriter(t *testing.T) {
 	}
 }
 
+type flushRecorder struct {
+	*httptest.ResponseRecorder
+	flushed bool
+}
+
+func (r *flushRecorder) Flush() {
+	r.flushed = true
+}
+
+func TestMCPLoggingStatusWriterPreservesFlush(t *testing.T) {
+	recorder := &flushRecorder{ResponseRecorder: httptest.NewRecorder()}
+	s := &statusWriter{ResponseWriter: recorder, status: http.StatusOK}
+	s.Flush()
+	if !recorder.flushed {
+		t.Fatal("Flush was not forwarded to underlying ResponseWriter")
+	}
+}
+
 func TestMCPLoggingMethodFromRequest(t *testing.T) {
 	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{}}`
 	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(body))
-	if got := mcpMethodFromRequest(req); got != "tools/call" {
+	got, tooLarge := mcpMethodFromRequest(req)
+	if tooLarge {
+		t.Fatal("method extraction unexpectedly marked request too large")
+	}
+	if got != "tools/call" {
 		t.Fatalf("method = %q, want tools/call", got)
 	}
 	// body must still be readable for downstream handler
@@ -158,14 +192,22 @@ func TestMCPLoggingMethodFromRequest(t *testing.T) {
 
 	// POST with unparseable body
 	req2 := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader("not json"))
-	if got := mcpMethodFromRequest(req2); got != "POST?" {
+	got, tooLarge = mcpMethodFromRequest(req2)
+	if tooLarge {
+		t.Fatal("invalid JSON request unexpectedly marked request too large")
+	}
+	if got != "POST?" {
 		t.Fatalf("method = %q, want POST?", got)
 	}
 
 	// JSON-RPC batch: extract first method
 	batch := `[{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}},{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{}}]`
 	req3 := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(batch))
-	if got := mcpMethodFromRequest(req3); got != "tools/list" {
+	got, tooLarge = mcpMethodFromRequest(req3)
+	if tooLarge {
+		t.Fatal("batch request unexpectedly marked request too large")
+	}
+	if got != "tools/list" {
 		t.Fatalf("batch method = %q, want tools/list", got)
 	}
 	rest3, _ := io.ReadAll(req3.Body)
@@ -177,9 +219,28 @@ func TestMCPLoggingMethodFromRequest(t *testing.T) {
 	// the HTTP method instead of a meaningless "?".
 	for _, m := range []string{http.MethodGet, http.MethodDelete, http.MethodOptions} {
 		r := httptest.NewRequest(m, "/mcp", nil)
-		if got := mcpMethodFromRequest(r); got != m {
+		got, tooLarge = mcpMethodFromRequest(r)
+		if tooLarge {
+			t.Fatalf("%s unexpectedly marked request too large", m)
+		}
+		if got != m {
 			t.Fatalf("%s method = %q, want %q", m, got, m)
 		}
+	}
+}
+
+func TestMCPLoggingMiddlewareRejectsLargeBody(t *testing.T) {
+	largeBody := strings.Repeat("x", maxRequestBodyBytes+1)
+	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(largeBody))
+	req.ContentLength = int64(len(largeBody))
+	w := httptest.NewRecorder()
+
+	mcpLoggingMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("downstream handler should not run for oversized body")
+	})).ServeHTTP(w, req)
+
+	if w.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusRequestEntityTooLarge)
 	}
 }
 
@@ -193,9 +254,7 @@ func TestMCPClientIP(t *testing.T) {
 		{name: "remote with port", remote: "192.168.1.5:54321", want: "192.168.1.5"},
 		{name: "remote no port", remote: "10.0.0.1", want: "10.0.0.1"},
 		{name: "ipv6 remote", remote: "[::1]:1234", want: "::1"},
-		{name: "xff single", remote: "127.0.0.1:1", xff: "203.0.113.7", want: "203.0.113.7"},
-		{name: "xff chain picks first", remote: "127.0.0.1:1", xff: "203.0.113.7, 10.0.0.1", want: "203.0.113.7"},
-		{name: "xff trimmed", remote: "127.0.0.1:1", xff: "  203.0.113.7  , 10.0.0.1", want: "203.0.113.7"},
+		{name: "xff ignored", remote: "127.0.0.1:1", xff: "203.0.113.7", want: "127.0.0.1"},
 	}
 	for _, c := range cases {
 		r := httptest.NewRequest(http.MethodPost, "/mcp", nil)
@@ -317,16 +376,24 @@ func TestResolveMCPModel(t *testing.T) {
 	c := mustTestClient(t)
 
 	s := &Server{client: c, mcpDefaultModel: "gemini-3.5-flash"}
-	if m := s.resolveMCPModel("unspecified"); m == nil || m.Name != "unspecified" {
-		t.Fatalf("override should take precedence, got %v", m)
+	if m, err := s.resolveMCPModel("unspecified"); err != nil || m == nil || m.Name != "unspecified" {
+		t.Fatalf("override should take precedence, got model=%v err=%v", m, err)
 	}
-	if m := s.resolveMCPModel(""); m == nil || m.Name != "gemini-3.5-flash" {
-		t.Fatalf("default model not applied, got %v", m)
+	if m, err := s.resolveMCPModel(""); err != nil || m == nil || m.Name != "gemini-3.5-flash" {
+		t.Fatalf("default model not applied, got model=%v err=%v", m, err)
+	}
+	if _, err := s.resolveMCPModel("missing-model-name"); err == nil {
+		t.Fatal("explicit missing model should return an error")
 	}
 
 	s2 := &Server{client: c}
-	if m := s2.resolveMCPModel(""); m == nil || m.Name != "unspecified" {
-		t.Fatalf("fallback to unspecified failed, got %v", m)
+	if m, err := s2.resolveMCPModel(""); err != nil || m == nil || m.Name != "unspecified" {
+		t.Fatalf("fallback to unspecified failed, got model=%v err=%v", m, err)
+	}
+
+	s3 := &Server{client: c, mcpDefaultModel: "missing-default-model"}
+	if _, err := s3.resolveMCPModel(""); err == nil {
+		t.Fatal("missing default model should return an error")
 	}
 }
 
@@ -387,6 +454,19 @@ func TestMCPResearchResultRequiresID(t *testing.T) {
 	}
 	if result == nil || !result.IsError {
 		t.Fatal("expected tool-level error result for missing id")
+	}
+}
+
+func TestMCPResearchListRejectsTooLargeCount(t *testing.T) {
+	s := &Server{}
+	result, err := s.handleMCPResearchList(context.Background(), mcp.CallToolRequest{
+		Params: mcp.CallToolParams{Arguments: map[string]any{"count": maxMCPResearchListCount + 1}},
+	})
+	if err != nil {
+		t.Fatalf("handler returned Go error: %v", err)
+	}
+	if result == nil || !result.IsError {
+		t.Fatal("expected tool-level error result for too-large count")
 	}
 }
 
