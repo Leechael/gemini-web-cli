@@ -408,7 +408,7 @@ func TestMCPResearchCreateRequiresPrompt(t *testing.T) {
 	}
 }
 
-func TestMCPListModelsEmptyWhenNotFetched(t *testing.T) {
+func TestMCPListModelsFallsBackToBuiltInsWhenNotFetched(t *testing.T) {
 	s := &Server{client: mustTestClient(t)}
 	result, err := s.handleMCPListModels(context.Background(), mcp.CallToolRequest{})
 	if err != nil {
@@ -430,8 +430,8 @@ func TestMCPListModelsEmptyWhenNotFetched(t *testing.T) {
 	if err := json.Unmarshal([]byte(text), &parsed); err != nil {
 		t.Fatalf("unmarshal list_models result: %v", err)
 	}
-	if len(parsed.Models) != 0 {
-		t.Fatalf("models = %d, want 0 when not fetched", len(parsed.Models))
+	if len(parsed.Models) == 0 {
+		t.Fatal("models should fall back to built-in definitions when dynamic models are unavailable")
 	}
 }
 

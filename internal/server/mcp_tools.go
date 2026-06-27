@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"log"
 	"sort"
 
 	"github.com/Leechael/gemini-web-cli/internal/types"
@@ -245,21 +246,17 @@ func (s *Server) handleMCPResearchReply(ctx context.Context, req mcp.CallToolReq
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	latest, err := s.client.FetchLatestChatResponse(ctx, id)
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-	if latest == nil {
-		return mcp.NewToolResultError("latest chat response not found"), nil
-	}
-
 	metadata := make([]string, 10)
 	metadata[0] = id
-	if latest.Rid != "" {
-		metadata[1] = latest.Rid
-	}
-	if latest.RCid != "" {
-		metadata[2] = latest.RCid
+	if latest, err := s.client.FetchLatestChatResponse(ctx, id); err == nil && latest != nil {
+		if latest.Rid != "" {
+			metadata[1] = latest.Rid
+		}
+		if latest.RCid != "" {
+			metadata[2] = latest.RCid
+		}
+	} else if err != nil {
+		log.Printf("mcp research reply continuing without latest metadata chat_id=%q err=%q", id, err.Error())
 	}
 
 	output, err := s.client.SendMessageDeepResearch(ctx, prompt, metadata, model)
@@ -345,7 +342,7 @@ func (s *Server) handleMCPAsk(ctx context.Context, req mcp.CallToolRequest) (*mc
 }
 
 func (s *Server) handleMCPListModels(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	models := s.client.AvailableModels()
+	models := s.availableModels()
 
 	type modelItem struct {
 		Name        string `json:"name"`
