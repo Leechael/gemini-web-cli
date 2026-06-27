@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -157,6 +159,60 @@ func TestMCPLoggingMethodFromRequest(t *testing.T) {
 	req2 := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader("not json"))
 	if got := mcpMethodFromRequest(req2); got != "?" {
 		t.Fatalf("method = %q, want ?", got)
+	}
+}
+
+func TestBannerHostSpecificBind(t *testing.T) {
+	got := bannerHost("127.0.0.1:8080")
+	if len(got) != 1 || got[0] != "127.0.0.1" {
+		t.Fatalf("bannerHost(127.0.0.1:8080) = %v, want [127.0.0.1]", got)
+	}
+	got = bannerHost("localhost:9000")
+	if len(got) != 1 || got[0] != "localhost" {
+		t.Fatalf("bannerHost(localhost:9000) = %v, want [localhost]", got)
+	}
+}
+
+func TestBannerHostWildcardReturnsLAN(t *testing.T) {
+	got := bannerHost("0.0.0.0:8080")
+	if len(got) == 0 {
+		t.Skip("no non-loopback IPv4 interfaces on this host")
+	}
+	for _, h := range got {
+		ip := net.ParseIP(h)
+		if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+			t.Fatalf("bannerHost(0.0.0.0) returned non-LAN addr %q", h)
+		}
+		if ip.To4() == nil {
+			t.Fatalf("bannerHost(0.0.0.0) returned non-IPv4 %q", h)
+		}
+	}
+}
+
+func TestPrintBannerWritesToStderr(t *testing.T) {
+	// Capture stderr: redirect os.Stderr through a pipe. log.Printf also writes
+	// to stderr by default, but printBanner uses fmt.Fprintf(os.Stderr, ...)
+	// directly, so this verifies the banner stream without depending on log.
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	orig := os.Stderr
+	os.Stderr = w
+	defer func() { os.Stderr = orig }()
+
+	printBanner("127.0.0.1:8080", StateInfo{})
+	_ = w.Close()
+
+	out, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatalf("read stderr: %v", err)
+	}
+	if !strings.Contains(string(out), "gemini-web-cli server running on") {
+		t.Fatalf("banner not written to stderr; got %q", string(out))
+	}
+	if !strings.Contains(string(out), "http://127.0.0.1:8080/mcp") {
+		t.Fatalf("banner missing /mcp URL; got %q", string(out))
 	}
 }
 
