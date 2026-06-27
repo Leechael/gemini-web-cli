@@ -11,23 +11,38 @@ import (
 	"time"
 
 	"github.com/Leechael/gemini-web-cli/internal/client"
+	serverstate "github.com/Leechael/gemini-web-cli/internal/server/state"
 	"github.com/Leechael/gemini-web-cli/internal/types"
 )
 
 const maxRequestBodyBytes = 1 << 20
+
+type StateInfo struct {
+	StateDir        string
+	CookieSource    string
+	ChatMappingPath string
+	ChatMappingMode string
+}
 
 type Server struct {
 	client         *client.Client
 	mux            *http.ServeMux
 	apiKey         string
 	exposeThoughts bool
+	stateInfo      StateInfo
+	chatMap        *serverstate.ChatMapStore
 
 	stopRefresh context.CancelFunc
 }
 
-func New(cfg client.Config, apiKey string, exposeThoughts bool) (*Server, error) {
+func New(cfg client.Config, apiKey string, exposeThoughts bool, stateInfo StateInfo) (*Server, error) {
 	c, err := client.New(cfg)
 	if err != nil {
+		return nil, err
+	}
+	chatMap, err := serverstate.NewChatMapStore(stateInfo.ChatMappingPath)
+	if err != nil {
+		c.Close()
 		return nil, err
 	}
 
@@ -36,6 +51,8 @@ func New(cfg client.Config, apiKey string, exposeThoughts bool) (*Server, error)
 		mux:            http.NewServeMux(),
 		apiKey:         apiKey,
 		exposeThoughts: exposeThoughts,
+		stateInfo:      stateInfo,
+		chatMap:        chatMap,
 	}
 	s.registerRoutes()
 	return s, nil
@@ -43,6 +60,9 @@ func New(cfg client.Config, apiKey string, exposeThoughts bool) (*Server, error)
 
 func (s *Server) Init(ctx context.Context) error {
 	if err := s.client.Init(ctx); err != nil {
+		return err
+	}
+	if err := s.client.FetchAndCacheModels(ctx); err != nil {
 		return err
 	}
 
@@ -72,11 +92,11 @@ func (s *Server) ListenAndServe(addr string) error {
 		ReadTimeout:       30 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
-	printBanner(addr)
+	printBanner(addr, s.stateInfo)
 	return srv.ListenAndServe()
 }
 
-func printBanner(addr string) {
+func printBanner(addr string, stateInfo StateInfo) {
 	base := "http://" + addr
 	fmt.Printf("gemini-web-cli server running on %s\n\n", base)
 	fmt.Printf("OpenAI-compatible API:\n")
@@ -96,18 +116,31 @@ func printBanner(addr string) {
 	fmt.Printf("  curl -X POST %s/v1/research \\\n", base)
 	fmt.Printf("    -H 'Content-Type: application/json' \\\n")
 	fmt.Printf("    -d '{\"prompt\":\"Research topic here\"}'\n\n")
-	fmt.Printf("  # Check status / Get result\n")
+	fmt.Printf("  # Check state / status / result\n")
+	fmt.Printf("  curl %s/v1/research/{id}\n", base)
 	fmt.Printf("  curl %s/v1/research/{id}/status\n", base)
 	fmt.Printf("  curl %s/v1/research/{id}/result\n\n", base)
 	fmt.Printf("Docs:\n")
 	fmt.Printf("  Swagger UI:   %s/docs\n", base)
 	fmt.Printf("  OpenAPI spec: %s/openapi.json\n\n", base)
+	fmt.Printf("State:\n")
+	fmt.Printf("  state_dir: %s\n", stateValue(stateInfo.StateDir, "<none>"))
+	fmt.Printf("  cookies: %s\n", stateValue(stateInfo.CookieSource, "<none>"))
+	fmt.Printf("  chat_mapping: %s\n\n", stateValue(stateInfo.ChatMappingMode, "memory only"))
+}
+
+func stateValue(value, fallback string) string {
+	if value == "" {
+		return fallback
+	}
+	return value
 }
 
 func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /v1/models", s.requireAuth(s.handleModels))
 	s.mux.HandleFunc("POST /v1/chat/completions", s.requireAuth(s.handleChatCompletions))
 	s.mux.HandleFunc("POST /v1/research", s.requireAuth(s.handleResearchCreate))
+	s.mux.HandleFunc("GET /v1/research/{id}", s.requireAuth(s.handleResearchGet))
 	s.mux.HandleFunc("GET /v1/research/{id}/status", s.requireAuth(s.handleResearchStatus))
 	s.mux.HandleFunc("GET /v1/research/{id}/result", s.requireAuth(s.handleResearchResult))
 	s.mux.HandleFunc("GET /openapi.json", s.handleOpenAPISpec)
@@ -166,6 +199,11 @@ func (s *Server) refreshLoop(ctx context.Context) {
 func (s *Server) resolveModel(name string) *types.Model {
 	if name == "" || name == "auto" {
 		return types.FindModel("unspecified")
+	}
+	if s.client != nil {
+		if m := s.client.ResolveModel(name); m != nil {
+			return m
+		}
 	}
 	if m := types.FindModel(name); m != nil {
 		return m

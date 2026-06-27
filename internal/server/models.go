@@ -20,7 +20,7 @@ type openAIModelList struct {
 
 func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	var models []openAIModel
-	for _, m := range types.Models {
+	for _, m := range s.availableModels() {
 		if m.Name == "unspecified" {
 			continue
 		}
@@ -36,4 +36,13 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		Object: "list",
 		Data:   models,
 	})
+}
+
+func (s *Server) availableModels() []types.Model {
+	if s.client != nil {
+		if models := s.client.AvailableModels(); len(models) > 0 {
+			return models
+		}
+	}
+	return types.Models
 }

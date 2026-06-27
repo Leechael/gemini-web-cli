@@ -5,15 +5,12 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 
-	"github.com/Leechael/gemini-web-cli/internal/client"
-	"github.com/Leechael/gemini-web-cli/internal/cookies"
 	"github.com/Leechael/gemini-web-cli/internal/server"
-	"github.com/Leechael/gemini-web-cli/internal/types"
 )
 
 var (
@@ -21,6 +18,7 @@ var (
 	serveHost           string
 	serveAPIKey         string
 	serveExposeThoughts bool
+	serveStateDir       string
 )
 
 var serveCmd = &cobra.Command{
@@ -33,48 +31,9 @@ var serveCmd = &cobra.Command{
 func runServe(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
-	var jsonCookies map[string]string
-	var extraCookies map[string]string
-
-	effectiveCookies := resolveCookiesJSON()
-	if effectiveCookies != "" {
-		jar, err := cookies.Load(effectiveCookies)
-		if err != nil {
-			return fmt.Errorf("loading cookies from %s: %w", effectiveCookies, err)
-		}
-		jsonCookies = jar.Cookies
-
-		extraCookies = make(map[string]string)
-		for k, v := range jar.Cookies {
-			if k != "__Secure-1PSID" && k != "__Secure-1PSIDTS" {
-				extraCookies[k] = v
-			}
-		}
-	}
-
-	psid := firstNonEmpty(jsonCookies["__Secure-1PSID"], os.Getenv("GEMINI_SECURE_1PSID"))
-	psidts := firstNonEmpty(jsonCookies["__Secure-1PSIDTS"], os.Getenv("GEMINI_SECURE_1PSIDTS"))
-
-	if psid == "" {
-		return cookiesNotFoundError()
-	}
-
-	var acctIdx *int
-	if rootCmd.PersistentFlags().Changed("account-index") {
-		acctIdx = &accountIndex
-	}
-
-	model := types.FindModel(modelName)
-
-	cfg := client.Config{
-		Secure1PSID:   psid,
-		Secure1PSIDTS: psidts,
-		ExtraCookies:  extraCookies,
-		Proxy:         proxy,
-		AccountIndex:  acctIdx,
-		Model:         model,
-		Verbose:       verbose,
-		Timeout:       time.Duration(requestTimeout) * time.Second,
+	cfg, _, cookieSource, err := clientConfigFromFlagsWithStateDir(serveStateDir)
+	if err != nil {
+		return err
 	}
 
 	apiKey := firstNonEmpty(serveAPIKey, os.Getenv("GEMINI_WEB_CLI_API_KEY"))
@@ -83,8 +42,17 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 
 	exposeThoughts := serveExposeThoughts || os.Getenv("GEMINI_WEB_CLI_EXPOSE_THOUGHTS") == "1"
+	stateInfo := server.StateInfo{
+		StateDir:        serveStateDir,
+		CookieSource:    cookieSource,
+		ChatMappingMode: "memory only",
+	}
+	if serveStateDir != "" {
+		stateInfo.ChatMappingPath = filepath.Join(serveStateDir, "chat-map.pb")
+		stateInfo.ChatMappingMode = stateInfo.ChatMappingPath
+	}
 
-	srv, err := server.New(cfg, apiKey, exposeThoughts)
+	srv, err := server.New(cfg, apiKey, exposeThoughts, stateInfo)
 	if err != nil {
 		return fmt.Errorf("creating server: %w", err)
 	}
@@ -103,6 +71,7 @@ func init() {
 	serveCmd.Flags().StringVar(&serveHost, "host", "127.0.0.1", "Host to bind to")
 	serveCmd.Flags().StringVar(&serveAPIKey, "api-key", "", "API key required for /v1 endpoints (or GEMINI_WEB_CLI_API_KEY)")
 	serveCmd.Flags().BoolVar(&serveExposeThoughts, "expose-thoughts", false, "Expose model thoughts/reasoning in API responses")
+	serveCmd.Flags().StringVar(&serveStateDir, "state-dir", "", "Directory for serve state (cookies.json lookup and chat-map.pb persistence)")
 	serveCmd.GroupID = "util"
 	rootCmd.AddCommand(serveCmd)
 }

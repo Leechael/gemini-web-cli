@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -91,7 +92,7 @@ var askCmd = &cobra.Command{
 				return err
 			}
 			if askShowThoughts {
-				printThoughts(output)
+				printThoughts(cmd.ErrOrStderr(), output)
 			}
 			fmt.Println(output.Text)
 			printImages(output)
@@ -125,6 +126,9 @@ var askCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
+			if thoughtsPrinted {
+				fmt.Fprintf(cmd.ErrOrStderr(), "\n--- End Thinking ---\n\n")
+			}
 			if output != nil {
 				fmt.Println()
 				printImages(output)
@@ -144,11 +148,11 @@ func init() {
 	askCmd.Flags().BoolVar(&askShowThoughts, "show-thoughts", false, "Print model thoughts/reasoning to stderr")
 }
 
-func printThoughts(output *types.ModelOutput) {
+func printThoughts(w io.Writer, output *types.ModelOutput) {
 	if output == nil || output.Thoughts == "" {
 		return
 	}
-	fmt.Fprintf(os.Stderr, "\n--- Thinking ---\n%s\n--- End Thinking ---\n\n", output.Thoughts)
+	fmt.Fprintf(w, "\n--- Thinking ---\n%s\n--- End Thinking ---\n\n", output.Thoughts)
 }
 
 func printImages(output *types.ModelOutput) {

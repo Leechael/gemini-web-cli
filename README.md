@@ -35,7 +35,43 @@ gemini-web-cli reply c_abc123 "And what's its population?"
 
 # List your chats
 gemini-web-cli list
+
+# Start the OpenAI-compatible REST server
+gemini-web-cli serve --state-dir ~/.local/share/gemini-web-cli/serve
 ```
+
+## REST API server
+
+`gemini-web-cli serve` starts a local OpenAI-compatible API server.
+
+```bash
+gemini-web-cli serve --port 8080 --state-dir ~/.local/share/gemini-web-cli/serve
+```
+
+Exposed endpoints:
+
+- `GET /v1/models`
+- `POST /v1/chat/completions`
+- `POST /v1/research`
+- `GET /v1/research/{id}`
+- `GET /v1/research/{id}/status`
+- `GET /v1/research/{id}/result`
+- `GET /docs`
+- `GET /openapi.json`
+
+`chat_id` is a gemini-web-cli extension, not part of the OpenAI Chat Completions API. Standard OpenAI clients can omit it. When `--state-dir` is set, the server persists a chat mapping at `<state-dir>/chat-map.pb` and uses OpenAI `messages` history hashes to try to continue the matching Gemini chat automatically. If no mapping matches, the server creates a new Gemini chat and sends a flattened text prompt.
+
+`--state-dir` also participates in cookie lookup. Serve-mode cookie priority is:
+
+1. `--cookies-json`
+2. `<state-dir>/cookies.json`
+3. `$GEMINI_WEB_COOKIES_JSON_PATH`
+4. Auto-discovered `cookies.json` paths
+5. `GEMINI_SECURE_1PSID` / `GEMINI_SECURE_1PSIDTS`
+
+The startup banner prints the actual cookie source and chat mapping path. Existing cookies are not migrated into `--state-dir` automatically.
+
+Chat mapping entries are either verified or synthetic. Verified entries correspond to Gemini states produced by this server. Synthetic entries are best-effort anchors inferred from client-provided history. Forked conversation branches are not officially supported, and Gemini Web may reject or reinterpret old turn metadata. Image parts, tool calls, and function calls are not supported by the REST chat endpoint.
 
 ## Commands
 

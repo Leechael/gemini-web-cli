@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
+	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -26,14 +29,22 @@ type chatMessage struct {
 
 func (m *chatMessage) UnmarshalJSON(data []byte) error {
 	type plain struct {
-		Role    string          `json:"role"`
-		Content json.RawMessage `json:"content"`
+		Role         string          `json:"role"`
+		Content      json.RawMessage `json:"content"`
+		ToolCalls    json.RawMessage `json:"tool_calls"`
+		FunctionCall json.RawMessage `json:"function_call"`
 	}
 	var p plain
 	if err := json.Unmarshal(data, &p); err != nil {
 		return err
 	}
 	m.Role = p.Role
+	if len(p.ToolCalls) > 0 && string(p.ToolCalls) != "null" {
+		return fmt.Errorf("tool_calls are not supported")
+	}
+	if len(p.FunctionCall) > 0 && string(p.FunctionCall) != "null" {
+		return fmt.Errorf("function_call is not supported")
+	}
 
 	if len(p.Content) == 0 || string(p.Content) == "null" {
 		return nil
@@ -67,6 +78,7 @@ func (m *chatMessage) UnmarshalJSON(data []byte) error {
 
 type chatCompletionResponse struct {
 	ID      string       `json:"id"`
+	ChatID  string       `json:"chat_id,omitempty"`
 	Object  string       `json:"object"`
 	Created int64        `json:"created"`
 	Model   string       `json:"model"`
@@ -101,6 +113,13 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	for _, msg := range req.Messages {
+		if _, _, err := canonicalChatMessage(msg); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+
 	model := s.resolveModel(req.Model)
 	if model == nil {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("model %q not found", req.Model))
@@ -108,24 +127,16 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	last := req.Messages[len(req.Messages)-1]
-	prompt := last.Content
-
-	if len(req.Messages) > 1 && req.ChatID == "" {
-		var parts []string
-		for _, m := range req.Messages[:len(req.Messages)-1] {
-			switch m.Role {
-			case "system":
-				parts = append(parts, fmt.Sprintf("[System]\n%s", m.Content))
-			case "user":
-				parts = append(parts, fmt.Sprintf("[User]\n%s", m.Content))
-			case "assistant":
-				parts = append(parts, fmt.Sprintf("[Assistant]\n%s", m.Content))
-			}
-		}
-		if len(parts) > 0 {
-			prompt = strings.Join(parts, "\n\n") + "\n\n[User]\n" + prompt
-		}
+	lastRole, _, err := canonicalChatMessage(last)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
 	}
+	if lastRole != "user" {
+		writeError(w, http.StatusBadRequest, "last message must have role user")
+		return
+	}
+	prompt := last.Content
 
 	ctx := r.Context()
 
@@ -151,7 +162,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 			defer cancel()
 			var emitErr error
 			s.writeSSE(w, req.ChatID, model.Name, func(emit func(chatID, delta, reasoning string) error) error {
-				_, err := s.client.SendMessageStream(streamCtx, prompt, metadata, model, func(out *types.ModelOutput) {
+				output, err := s.client.SendMessageStream(streamCtx, prompt, metadata, model, func(out *types.ModelOutput) {
 					if emitErr != nil {
 						return
 					}
@@ -163,7 +174,14 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 				if emitErr != nil {
 					return emitErr
 				}
-				return err
+				if err != nil {
+					return err
+				}
+				if err := s.saveChatMapping(req.Messages, output); err != nil {
+					return err
+				}
+				s.logChatCompletion(model.Name, chatIDFromOutput(output, req.ChatID), true, "explicit")
+				return nil
 			})
 		} else {
 			output, err := s.client.SendMessage(ctx, prompt, metadata, model)
@@ -171,46 +189,106 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 				writeError(w, http.StatusInternalServerError, err.Error())
 				return
 			}
+			if err := s.saveChatMapping(req.Messages, output); err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			s.logChatCompletion(model.Name, chatIDFromOutput(output, req.ChatID), false, "explicit")
 			s.writeCompletion(w, req.ChatID, model.Name, output.Text, s.reasoningText(output))
 		}
 		return
 	}
 
+	plan, err := s.planMappedChat(req.Messages)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	prompt = plan.Prompt
 	if req.Stream {
 		chatID := ""
 		streamCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
 		var emitErr error
 		s.writeSSE(w, "", model.Name, func(emit func(chatID, delta, reasoning string) error) error {
-			_, err := s.client.GenerateContentStream(streamCtx, prompt, model, func(out *types.ModelOutput) {
-				if chatID == "" && len(out.Metadata) > 0 {
-					chatID = out.Metadata[0]
-				}
-				if emitErr != nil {
-					return
-				}
-				if err := emit(chatID, out.TextDelta, s.reasoningDelta(out)); err != nil {
-					emitErr = err
-					cancel()
-				}
-			})
+			var output *types.ModelOutput
+			var err error
+			if len(plan.Metadata) > 0 {
+				chatID = plan.Metadata[0]
+				output, err = s.client.SendMessageStream(streamCtx, prompt, plan.Metadata, model, func(out *types.ModelOutput) {
+					if chatID == "" && len(out.Metadata) > 0 {
+						chatID = out.Metadata[0]
+					}
+					if emitErr != nil {
+						return
+					}
+					if err := emit(chatID, out.TextDelta, s.reasoningDelta(out)); err != nil {
+						emitErr = err
+						cancel()
+					}
+				})
+			} else {
+				output, err = s.client.GenerateContentStream(streamCtx, prompt, model, func(out *types.ModelOutput) {
+					if chatID == "" && len(out.Metadata) > 0 {
+						chatID = out.Metadata[0]
+					}
+					if emitErr != nil {
+						return
+					}
+					if err := emit(chatID, out.TextDelta, s.reasoningDelta(out)); err != nil {
+						emitErr = err
+						cancel()
+					}
+				})
+			}
 			if emitErr != nil {
 				return emitErr
 			}
-			return err
+			if err != nil {
+				return err
+			}
+			if err := s.saveChatMapping(req.Messages, output); err != nil {
+				return err
+			}
+			s.logChatCompletion(model.Name, chatIDFromOutput(output, chatID), true, plan.Source)
+			return nil
 		})
 	} else {
-		output, err := s.client.GenerateContent(ctx, prompt, model)
+		var output *types.ModelOutput
+		if len(plan.Metadata) > 0 {
+			output, err = s.client.SendMessage(ctx, prompt, plan.Metadata, model)
+		} else {
+			output, err = s.client.GenerateContent(ctx, prompt, model)
+		}
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 		chatID := ""
+		if len(plan.Metadata) > 0 {
+			chatID = plan.Metadata[0]
+		}
 		if len(output.Metadata) > 0 {
 			chatID = output.Metadata[0]
 		}
+		if err := s.saveChatMapping(req.Messages, output); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		s.logChatCompletion(model.Name, chatID, false, plan.Source)
 		s.writeCompletion(w, chatID, model.Name, output.Text, s.reasoningText(output))
 	}
+}
+
+func (s *Server) logChatCompletion(modelName, chatID string, stream bool, source string) {
+	log.Printf("chat completion finished model=%q chat_id=%q stream=%t source=%q", modelName, chatID, stream, source)
+}
+
+func chatIDFromOutput(output *types.ModelOutput, fallback string) string {
+	if output != nil && len(output.Metadata) > 0 && output.Metadata[0] != "" {
+		return output.Metadata[0]
+	}
+	return fallback
 }
 
 func (s *Server) reasoningDelta(output *types.ModelOutput) string {
@@ -232,6 +310,7 @@ func (s *Server) writeCompletion(w http.ResponseWriter, chatID, modelName, text,
 	msg := &chatMessage{Role: "assistant", Content: text, ReasoningContent: thoughts}
 	resp := chatCompletionResponse{
 		ID:      "chatcmpl-" + chatID,
+		ChatID:  chatID,
 		Object:  "chat.completion",
 		Created: time.Now().Unix(),
 		Model:   modelName,
@@ -267,6 +346,7 @@ func (s *Server) writeSSE(w http.ResponseWriter, chatID, modelName string, gener
 		}
 		chunk := chatCompletionResponse{
 			ID:      "chatcmpl-" + currentChatID,
+			ChatID:  currentChatID,
 			Object:  "chat.completion.chunk",
 			Created: time.Now().Unix(),
 			Model:   modelName,
@@ -287,6 +367,7 @@ func (s *Server) writeSSE(w http.ResponseWriter, chatID, modelName string, gener
 	}
 
 	if err := generate(emit); err != nil {
+		log.Printf("chat stream failed model=%q chat_id=%q err=%q", modelName, currentChatID, sanitizeUpstreamError(err.Error()))
 		if _, writeErr := fmt.Fprintf(w, "data: {\"error\":{\"message\":%q}}\n\n", err.Error()); writeErr == nil {
 			flusher.Flush()
 		}
@@ -296,6 +377,7 @@ func (s *Server) writeSSE(w http.ResponseWriter, chatID, modelName string, gener
 	stop := "stop"
 	finalChunk := chatCompletionResponse{
 		ID:      "chatcmpl-" + currentChatID,
+		ChatID:  currentChatID,
 		Object:  "chat.completion.chunk",
 		Created: time.Now().Unix(),
 		Model:   modelName,
@@ -316,4 +398,17 @@ func (s *Server) writeSSE(w http.ResponseWriter, chatID, modelName string, gener
 		return
 	}
 	flusher.Flush()
+}
+
+var geminiURLWithQueryRE = regexp.MustCompile(`https://gemini\.google\.com/[^\s"]+\?[^\s"]+`)
+
+func sanitizeUpstreamError(message string) string {
+	return geminiURLWithQueryRE.ReplaceAllStringFunc(message, func(raw string) string {
+		u, err := url.Parse(raw)
+		if err != nil {
+			return "https://gemini.google.com/<redacted>"
+		}
+		u.RawQuery = "redacted"
+		return u.String()
+	})
 }

@@ -90,3 +90,19 @@ func TestChatBodySizeLimit(t *testing.T) {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
 	}
 }
+
+func TestChatCompletionsRejectsInvalidEarlierRole(t *testing.T) {
+	s := &Server{}
+	body := `{"model":"auto","messages":[{"role":"tool","content":"x"},{"role":"user","content":"hi"}]}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+	w := httptest.NewRecorder()
+
+	s.handleChatCompletions(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+	if !strings.Contains(w.Body.String(), "unsupported message role") {
+		t.Fatalf("body = %s, want unsupported message role error", w.Body.String())
+	}
+}

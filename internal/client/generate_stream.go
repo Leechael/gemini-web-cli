@@ -15,7 +15,7 @@ func (c *Client) streamGenerate(ctx context.Context, prompt string, metadata []s
 	}
 
 	uuid := generateUUID()
-	mode := resolveGenerationMode(c.generationMode, prompt, uploads)
+	mode := resolveGenerationMode(c.generationModeSnapshot(), prompt, uploads)
 	s := c.session()
 
 	innerReq := c.buildInnerRequest(prompt, metadata, uploads, model, deepResearch, uuid, s.language, mode)
