@@ -92,8 +92,7 @@ func flattenChatMessages(messages []chatMessage) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		content = strings.TrimSpace(content)
-		if content == "" {
+		if strings.TrimSpace(content) == "" {
 			continue
 		}
 		parts = append(parts, fmt.Sprintf("[%s]\n%s", roleLabel(role), content))

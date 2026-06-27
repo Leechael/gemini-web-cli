@@ -64,3 +64,16 @@ func TestCanonicalChatMessageRejectsUnsupportedRole(t *testing.T) {
 		t.Fatal("expected unsupported role error")
 	}
 }
+
+func TestFlattenChatMessagesPreservesWhitespace(t *testing.T) {
+	got, err := flattenChatMessages([]chatMessage{
+		{Role: "user", Content: "  hello world  "},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "[User]\n  hello world  "
+	if got != want {
+		t.Fatalf("flatten = %q, want %q", got, want)
+	}
+}
