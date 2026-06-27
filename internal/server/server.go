@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Leechael/gemini-web-cli/internal/client"
+	serverstate "github.com/Leechael/gemini-web-cli/internal/server/state"
 	"github.com/Leechael/gemini-web-cli/internal/types"
 )
 
@@ -29,6 +30,7 @@ type Server struct {
 	apiKey         string
 	exposeThoughts bool
 	stateInfo      StateInfo
+	chatMap        *serverstate.ChatMapStore
 
 	stopRefresh context.CancelFunc
 }
@@ -38,6 +40,11 @@ func New(cfg client.Config, apiKey string, exposeThoughts bool, stateInfo StateI
 	if err != nil {
 		return nil, err
 	}
+	chatMap, err := serverstate.NewChatMapStore(stateInfo.ChatMappingPath)
+	if err != nil {
+		c.Close()
+		return nil, err
+	}
 
 	s := &Server{
 		client:         c,
@@ -45,6 +52,7 @@ func New(cfg client.Config, apiKey string, exposeThoughts bool, stateInfo StateI
 		apiKey:         apiKey,
 		exposeThoughts: exposeThoughts,
 		stateInfo:      stateInfo,
+		chatMap:        chatMap,
 	}
 	s.registerRoutes()
 	return s, nil

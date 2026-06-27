@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package gemini_web_cli.server.state;
+
+option go_package = "github.com/Leechael/gemini-web-cli/internal/server/state;state";
+
+message ChatMapDB {
+  uint32 version = 1;
+  repeated ChatMapEntry entries = 2;
+}
+
+enum ChatMapConfidence {
+  CHAT_MAP_CONFIDENCE_UNSPECIFIED = 0;
+  VERIFIED = 1;
+  SYNTHETIC = 2;
+}
+
+message ChatMapEntry {
+  string root_hash = 1;
+  string parent_hash = 2;
+  string chat_id = 3;
+  string rid = 4;
+  string rcid = 5;
+  string context = 6;
+  int64 updated_at = 7;
+  uint32 message_count = 8;
+  ChatMapConfidence confidence = 9;
+}
