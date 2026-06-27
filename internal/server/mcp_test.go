@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -104,6 +105,58 @@ func TestMCPResourcesAndPromptsListEmpty(t *testing.T) {
 		if resp.Error != nil {
 			t.Fatalf("%s: got JSON-RPC error code=%d msg=%q; clients expect an empty result, not -32601", method, resp.Error.Code, resp.Error.Message)
 		}
+	}
+}
+
+func TestMCPLoggingSummarizeArgs(t *testing.T) {
+	long := strings.Repeat("x", maxLoggedArgLen+50)
+	got := summarizeMCPArgs(map[string]any{"prompt": long, "n": 3})
+	if !strings.Contains(got, "\"prompt\":\""+strings.Repeat("x", maxLoggedArgLen)+"...\"") {
+		t.Fatalf("long arg not truncated to %d chars + ...: %s", maxLoggedArgLen, got)
+	}
+	if strings.Contains(got, strings.Repeat("x", maxLoggedArgLen+1)) {
+		t.Fatalf("arg exceeds cap of %d chars: %s", maxLoggedArgLen, got)
+	}
+	if !strings.Contains(got, `"n":3`) {
+		t.Fatalf("short arg missing from summary: %s", got)
+	}
+
+	if got := summarizeMCPArgs(nil); got != "{}" {
+		t.Fatalf("nil args = %q, want {}", got)
+	}
+}
+
+func TestMCPLoggingStatusWriter(t *testing.T) {
+	s := &statusWriter{ResponseWriter: httptest.NewRecorder(), status: http.StatusOK}
+	s.WriteHeader(http.StatusTeapot)
+	if s.status != http.StatusTeapot {
+		t.Fatalf("status = %d, want %d", s.status, http.StatusTeapot)
+	}
+	// second WriteHeader must not overwrite
+	s.WriteHeader(http.StatusBadRequest)
+	if s.status != http.StatusTeapot {
+		t.Fatalf("status overwritten to %d", s.status)
+	}
+}
+
+func TestMCPLoggingMethodFromRequest(t *testing.T) {
+	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{}}`
+	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(body))
+	if got := mcpMethodFromRequest(req); got != "tools/call" {
+		t.Fatalf("method = %q, want tools/call", got)
+	}
+	// body must still be readable for downstream handler
+	rest, err := io.ReadAll(req.Body)
+	if err != nil {
+		t.Fatalf("re-read body: %v", err)
+	}
+	if !strings.Contains(string(rest), "tools/call") {
+		t.Fatalf("body not re-readable after peek: %s", string(rest))
+	}
+
+	req2 := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader("not json"))
+	if got := mcpMethodFromRequest(req2); got != "?" {
+		t.Fatalf("method = %q, want ?", got)
 	}
 }
 

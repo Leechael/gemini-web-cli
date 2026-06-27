@@ -15,9 +15,11 @@ func (s *Server) buildMCPHandler() http.Handler {
 		// so the handlers return empty lists.
 		mcpserver.WithResourceCapabilities(false, false),
 		mcpserver.WithPromptCapabilities(false),
+		mcpserver.WithHooks(mcpHooks()),
+		mcpserver.WithToolHandlerMiddleware(mcpToolLoggingMiddleware),
 	)
 	s.registerMCPTools(mcpServer)
-	return mcpserver.NewStreamableHTTPServer(mcpServer,
+	return mcpLoggingMiddleware(mcpserver.NewStreamableHTTPServer(mcpServer,
 		mcpserver.WithStateLess(true),
-	)
+	))
 }
