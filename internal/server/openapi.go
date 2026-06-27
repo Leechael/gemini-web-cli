@@ -81,6 +81,28 @@ const openapiSpec = `{
         }
       }
     },
+    "/v1/research/{id}": {
+      "get": {
+        "operationId": "getResearch",
+        "summary": "Get deep research resource state and latest result",
+        "parameters": [{
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": { "type": "string" }
+        }],
+        "responses": {
+          "200": {
+            "description": "Research resource",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ResearchResourceResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/research/{id}/status": {
       "get": {
         "operationId": "getResearchStatus",
@@ -157,7 +179,7 @@ const openapiSpec = `{
             "items": { "$ref": "#/components/schemas/ChatMessage" }
           },
           "stream": { "type": "boolean", "default": false },
-          "chat_id": { "type": "string", "description": "Continue an existing chat by ID" }
+          "chat_id": { "type": "string", "description": "gemini-web-cli extension: continue an existing Gemini chat by ID. If omitted, the server uses chat-map state when available or starts a new Gemini chat." }
         }
       },
       "ChatMessage": {
@@ -189,6 +211,7 @@ const openapiSpec = `{
         "type": "object",
         "properties": {
           "id": { "type": "string" },
+          "chat_id": { "type": "string", "description": "gemini-web-cli extension: Gemini chat ID for continuation" },
           "object": { "type": "string" },
           "created": { "type": "integer" },
           "model": { "type": "string" },
@@ -228,6 +251,7 @@ const openapiSpec = `{
         "type": "object",
         "properties": {
           "id": { "type": "string" },
+          "chat_id": { "type": "string" },
           "title": { "type": "string" },
           "eta_text": { "type": "string" },
           "steps": { "type": "array", "items": { "type": "string" } }
@@ -237,13 +261,32 @@ const openapiSpec = `{
         "type": "object",
         "properties": {
           "id": { "type": "string" },
+          "chat_id": { "type": "string" },
           "state": { "type": "string", "enum": ["done", "running", "pending_confirm", "not_research", "empty"] }
+        }
+      },
+      "ResearchResourceResponse": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "chat_id": { "type": "string" },
+          "state": { "type": "string", "enum": ["done", "running", "pending_confirm", "not_research", "empty"] },
+          "title": { "type": "string" },
+          "eta_text": { "type": "string" },
+          "steps": { "type": "array", "items": { "type": "string" } },
+          "result": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/ResearchResultResponse" },
+              { "type": "null" }
+            ]
+          }
         }
       },
       "ResearchResultResponse": {
         "type": "object",
         "properties": {
           "id": { "type": "string" },
+          "chat_id": { "type": "string" },
           "text": { "type": "string" },
           "sources": {
             "type": "array",
