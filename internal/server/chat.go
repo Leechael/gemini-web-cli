@@ -116,24 +116,16 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	last := req.Messages[len(req.Messages)-1]
-	prompt := last.Content
-
-	if len(req.Messages) > 1 && req.ChatID == "" {
-		var parts []string
-		for _, m := range req.Messages[:len(req.Messages)-1] {
-			switch m.Role {
-			case "system":
-				parts = append(parts, fmt.Sprintf("[System]\n%s", m.Content))
-			case "user":
-				parts = append(parts, fmt.Sprintf("[User]\n%s", m.Content))
-			case "assistant":
-				parts = append(parts, fmt.Sprintf("[Assistant]\n%s", m.Content))
-			}
-		}
-		if len(parts) > 0 {
-			prompt = strings.Join(parts, "\n\n") + "\n\n[User]\n" + prompt
-		}
+	lastRole, _, err := canonicalChatMessage(last)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
 	}
+	if lastRole != "user" {
+		writeError(w, http.StatusBadRequest, "last message must have role user")
+		return
+	}
+	prompt := last.Content
 
 	ctx := r.Context()
 
@@ -159,7 +151,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 			defer cancel()
 			var emitErr error
 			s.writeSSE(w, req.ChatID, model.Name, func(emit func(chatID, delta, reasoning string) error) error {
-				_, err := s.client.SendMessageStream(streamCtx, prompt, metadata, model, func(out *types.ModelOutput) {
+				output, err := s.client.SendMessageStream(streamCtx, prompt, metadata, model, func(out *types.ModelOutput) {
 					if emitErr != nil {
 						return
 					}
@@ -171,11 +163,18 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 				if emitErr != nil {
 					return emitErr
 				}
-				return err
+				if err != nil {
+					return err
+				}
+				return s.saveChatMapping(req.Messages, output)
 			})
 		} else {
 			output, err := s.client.SendMessage(ctx, prompt, metadata, model)
 			if err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			if err := s.saveChatMapping(req.Messages, output); err != nil {
 				writeError(w, http.StatusInternalServerError, err.Error())
 				return
 			}
@@ -184,31 +183,63 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	plan, err := s.planMappedChat(req.Messages)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	prompt = plan.Prompt
 	if req.Stream {
 		chatID := ""
 		streamCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
 		var emitErr error
 		s.writeSSE(w, "", model.Name, func(emit func(chatID, delta, reasoning string) error) error {
-			_, err := s.client.GenerateContentStream(streamCtx, prompt, model, func(out *types.ModelOutput) {
-				if chatID == "" && len(out.Metadata) > 0 {
-					chatID = out.Metadata[0]
-				}
-				if emitErr != nil {
-					return
-				}
-				if err := emit(chatID, out.TextDelta, s.reasoningDelta(out)); err != nil {
-					emitErr = err
-					cancel()
-				}
-			})
+			var output *types.ModelOutput
+			var err error
+			if len(plan.Metadata) > 0 {
+				chatID = plan.Metadata[0]
+				output, err = s.client.SendMessageStream(streamCtx, prompt, plan.Metadata, model, func(out *types.ModelOutput) {
+					if chatID == "" && len(out.Metadata) > 0 {
+						chatID = out.Metadata[0]
+					}
+					if emitErr != nil {
+						return
+					}
+					if err := emit(chatID, out.TextDelta, s.reasoningDelta(out)); err != nil {
+						emitErr = err
+						cancel()
+					}
+				})
+			} else {
+				output, err = s.client.GenerateContentStream(streamCtx, prompt, model, func(out *types.ModelOutput) {
+					if chatID == "" && len(out.Metadata) > 0 {
+						chatID = out.Metadata[0]
+					}
+					if emitErr != nil {
+						return
+					}
+					if err := emit(chatID, out.TextDelta, s.reasoningDelta(out)); err != nil {
+						emitErr = err
+						cancel()
+					}
+				})
+			}
 			if emitErr != nil {
 				return emitErr
 			}
-			return err
+			if err != nil {
+				return err
+			}
+			return s.saveChatMapping(req.Messages, output)
 		})
 	} else {
-		output, err := s.client.GenerateContent(ctx, prompt, model)
+		var output *types.ModelOutput
+		if len(plan.Metadata) > 0 {
+			output, err = s.client.SendMessage(ctx, prompt, plan.Metadata, model)
+		} else {
+			output, err = s.client.GenerateContent(ctx, prompt, model)
+		}
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -216,6 +247,10 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		chatID := ""
 		if len(output.Metadata) > 0 {
 			chatID = output.Metadata[0]
+		}
+		if err := s.saveChatMapping(req.Messages, output); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
 		}
 		s.writeCompletion(w, chatID, model.Name, output.Text, s.reasoningText(output))
 	}
