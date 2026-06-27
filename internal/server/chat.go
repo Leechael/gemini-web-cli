@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
+	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -336,6 +339,7 @@ func (s *Server) writeSSE(w http.ResponseWriter, chatID, modelName string, gener
 	}
 
 	if err := generate(emit); err != nil {
+		log.Printf("chat stream failed model=%q chat_id=%q err=%q", modelName, currentChatID, sanitizeUpstreamError(err.Error()))
 		if _, writeErr := fmt.Fprintf(w, "data: {\"error\":{\"message\":%q}}\n\n", err.Error()); writeErr == nil {
 			flusher.Flush()
 		}
@@ -366,4 +370,17 @@ func (s *Server) writeSSE(w http.ResponseWriter, chatID, modelName string, gener
 		return
 	}
 	flusher.Flush()
+}
+
+var geminiURLWithQueryRE = regexp.MustCompile(`https://gemini\.google\.com/[^\s"]+\?[^\s"]+`)
+
+func sanitizeUpstreamError(message string) string {
+	return geminiURLWithQueryRE.ReplaceAllStringFunc(message, func(raw string) string {
+		u, err := url.Parse(raw)
+		if err != nil {
+			return "https://gemini.google.com/<redacted>"
+		}
+		u.RawQuery = "redacted"
+		return u.String()
+	})
 }
