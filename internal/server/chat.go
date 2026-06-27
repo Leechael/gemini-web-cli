@@ -113,6 +113,13 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	for _, msg := range req.Messages {
+		if _, _, err := canonicalChatMessage(msg); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+
 	model := s.resolveModel(req.Model)
 	if model == nil {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("model %q not found", req.Model))
