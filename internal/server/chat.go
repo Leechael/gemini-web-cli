@@ -170,7 +170,11 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 				if err != nil {
 					return err
 				}
-				return s.saveChatMapping(req.Messages, output)
+				if err := s.saveChatMapping(req.Messages, output); err != nil {
+					return err
+				}
+				s.logChatCompletion(model.Name, chatIDFromOutput(output, req.ChatID), true, "explicit")
+				return nil
 			})
 		} else {
 			output, err := s.client.SendMessage(ctx, prompt, metadata, model)
@@ -182,6 +186,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 				writeError(w, http.StatusInternalServerError, err.Error())
 				return
 			}
+			s.logChatCompletion(model.Name, chatIDFromOutput(output, req.ChatID), false, "explicit")
 			s.writeCompletion(w, req.ChatID, model.Name, output.Text, s.reasoningText(output))
 		}
 		return
@@ -235,7 +240,11 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				return err
 			}
-			return s.saveChatMapping(req.Messages, output)
+			if err := s.saveChatMapping(req.Messages, output); err != nil {
+				return err
+			}
+			s.logChatCompletion(model.Name, chatIDFromOutput(output, chatID), true, plan.Source)
+			return nil
 		})
 	} else {
 		var output *types.ModelOutput
@@ -259,8 +268,20 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		s.logChatCompletion(model.Name, chatID, false, plan.Source)
 		s.writeCompletion(w, chatID, model.Name, output.Text, s.reasoningText(output))
 	}
+}
+
+func (s *Server) logChatCompletion(modelName, chatID string, stream bool, source string) {
+	log.Printf("chat completion finished model=%q chat_id=%q stream=%t source=%q", modelName, chatID, stream, source)
+}
+
+func chatIDFromOutput(output *types.ModelOutput, fallback string) string {
+	if output != nil && len(output.Metadata) > 0 && output.Metadata[0] != "" {
+		return output.Metadata[0]
+	}
+	return fallback
 }
 
 func (s *Server) reasoningDelta(output *types.ModelOutput) string {

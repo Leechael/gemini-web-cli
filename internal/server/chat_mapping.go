@@ -11,6 +11,7 @@ import (
 type mappedChatPlan struct {
 	Prompt   string
 	Metadata []string
+	Source   string
 }
 
 func (s *Server) planMappedChat(messages []chatMessage) (mappedChatPlan, error) {
@@ -39,14 +40,24 @@ func (s *Server) planMappedChat(messages []chatMessage) (mappedChatPlan, error) 
 		if err != nil {
 			return mappedChatPlan{}, err
 		}
-		return mappedChatPlan{Prompt: prompt, Metadata: metadataFromEntry(entry)}, nil
+		return mappedChatPlan{Prompt: prompt, Metadata: metadataFromEntry(entry), Source: chatPlanSource(entry)}, nil
 	}
 
 	prompt, err := flattenChatMessages(messages)
 	if err != nil {
 		return mappedChatPlan{}, err
 	}
-	return mappedChatPlan{Prompt: prompt}, nil
+	return mappedChatPlan{Prompt: prompt, Source: "new"}, nil
+}
+
+func chatPlanSource(entry *serverstate.ChatMapEntry) string {
+	if entry.Confidence == serverstate.ChatMapConfidence_VERIFIED {
+		return "mapped_verified"
+	}
+	if entry.Confidence == serverstate.ChatMapConfidence_SYNTHETIC {
+		return "mapped_synthetic"
+	}
+	return "mapped"
 }
 
 func promptForMappedSuffix(entry *serverstate.ChatMapEntry, suffix []chatMessage) (string, error) {

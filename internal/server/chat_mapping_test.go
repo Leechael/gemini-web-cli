@@ -41,6 +41,9 @@ func TestPlanMappedChatVerifiedSendsOnlyLastUser(t *testing.T) {
 	if plan.Prompt != "u2" {
 		t.Fatalf("prompt = %q, want final user only", plan.Prompt)
 	}
+	if plan.Source != "mapped_verified" {
+		t.Fatalf("source = %q, want mapped_verified", plan.Source)
+	}
 	if got := plan.Metadata[0]; got != "c_1" {
 		t.Fatalf("metadata chat id = %q", got)
 	}
@@ -78,6 +81,9 @@ func TestPlanMappedChatSyntheticFlattensSuffix(t *testing.T) {
 	want := "[User]\nu2\n\n[Assistant]\na2\n\n[User]\nu3"
 	if plan.Prompt != want {
 		t.Fatalf("prompt = %q, want %q", plan.Prompt, want)
+	}
+	if plan.Source != "mapped_synthetic" {
+		t.Fatalf("source = %q, want mapped_synthetic", plan.Source)
 	}
 }
 
