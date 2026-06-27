@@ -16,16 +16,24 @@ import (
 
 const maxRequestBodyBytes = 1 << 20
 
+type StateInfo struct {
+	StateDir        string
+	CookieSource    string
+	ChatMappingPath string
+	ChatMappingMode string
+}
+
 type Server struct {
 	client         *client.Client
 	mux            *http.ServeMux
 	apiKey         string
 	exposeThoughts bool
+	stateInfo      StateInfo
 
 	stopRefresh context.CancelFunc
 }
 
-func New(cfg client.Config, apiKey string, exposeThoughts bool) (*Server, error) {
+func New(cfg client.Config, apiKey string, exposeThoughts bool, stateInfo StateInfo) (*Server, error) {
 	c, err := client.New(cfg)
 	if err != nil {
 		return nil, err
@@ -36,6 +44,7 @@ func New(cfg client.Config, apiKey string, exposeThoughts bool) (*Server, error)
 		mux:            http.NewServeMux(),
 		apiKey:         apiKey,
 		exposeThoughts: exposeThoughts,
+		stateInfo:      stateInfo,
 	}
 	s.registerRoutes()
 	return s, nil
@@ -75,11 +84,11 @@ func (s *Server) ListenAndServe(addr string) error {
 		ReadTimeout:       30 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
-	printBanner(addr)
+	printBanner(addr, s.stateInfo)
 	return srv.ListenAndServe()
 }
 
-func printBanner(addr string) {
+func printBanner(addr string, stateInfo StateInfo) {
 	base := "http://" + addr
 	fmt.Printf("gemini-web-cli server running on %s\n\n", base)
 	fmt.Printf("OpenAI-compatible API:\n")
@@ -105,6 +114,17 @@ func printBanner(addr string) {
 	fmt.Printf("Docs:\n")
 	fmt.Printf("  Swagger UI:   %s/docs\n", base)
 	fmt.Printf("  OpenAPI spec: %s/openapi.json\n\n", base)
+	fmt.Printf("State:\n")
+	fmt.Printf("  state_dir: %s\n", stateValue(stateInfo.StateDir, "<none>"))
+	fmt.Printf("  cookies: %s\n", stateValue(stateInfo.CookieSource, "<none>"))
+	fmt.Printf("  chat_mapping: %s\n\n", stateValue(stateInfo.ChatMappingMode, "memory only"))
+}
+
+func stateValue(value, fallback string) string {
+	if value == "" {
+		return fallback
+	}
+	return value
 }
 
 func (s *Server) registerRoutes() {

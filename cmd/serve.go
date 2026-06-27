@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -17,6 +18,7 @@ var (
 	serveHost           string
 	serveAPIKey         string
 	serveExposeThoughts bool
+	serveStateDir       string
 )
 
 var serveCmd = &cobra.Command{
@@ -29,7 +31,7 @@ var serveCmd = &cobra.Command{
 func runServe(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
-	cfg, _, err := clientConfigFromFlags()
+	cfg, _, cookieSource, err := clientConfigFromFlagsWithStateDir(serveStateDir)
 	if err != nil {
 		return err
 	}
@@ -40,8 +42,17 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 
 	exposeThoughts := serveExposeThoughts || os.Getenv("GEMINI_WEB_CLI_EXPOSE_THOUGHTS") == "1"
+	stateInfo := server.StateInfo{
+		StateDir:        serveStateDir,
+		CookieSource:    cookieSource,
+		ChatMappingMode: "memory only",
+	}
+	if serveStateDir != "" {
+		stateInfo.ChatMappingPath = filepath.Join(serveStateDir, "chat-map.pb")
+		stateInfo.ChatMappingMode = stateInfo.ChatMappingPath
+	}
 
-	srv, err := server.New(cfg, apiKey, exposeThoughts)
+	srv, err := server.New(cfg, apiKey, exposeThoughts, stateInfo)
 	if err != nil {
 		return fmt.Errorf("creating server: %w", err)
 	}
@@ -60,6 +71,7 @@ func init() {
 	serveCmd.Flags().StringVar(&serveHost, "host", "127.0.0.1", "Host to bind to")
 	serveCmd.Flags().StringVar(&serveAPIKey, "api-key", "", "API key required for /v1 endpoints (or GEMINI_WEB_CLI_API_KEY)")
 	serveCmd.Flags().BoolVar(&serveExposeThoughts, "expose-thoughts", false, "Expose model thoughts/reasoning in API responses")
+	serveCmd.Flags().StringVar(&serveStateDir, "state-dir", "", "Directory for serve state (cookies.json lookup and chat-map.pb persistence)")
 	serveCmd.GroupID = "util"
 	rootCmd.AddCommand(serveCmd)
 }

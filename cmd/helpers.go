@@ -38,31 +38,47 @@ func defaultCookiesPath() string {
 // resolveCookiesJSON returns the effective cookies path.
 // Priority: --cookies-json flag > $GEMINI_WEB_COOKIES_JSON_PATH > auto-discover.
 func resolveCookiesJSON() string {
+	path, _ := resolveCookiesJSONWithStateDir("")
+	return path
+}
+
+func resolveCookiesJSONWithStateDir(stateDir string) (string, string) {
 	if cookiesJSON != "" {
-		return cookiesJSON
+		return cookiesJSON, "--cookies-json"
+	}
+	if stateDir != "" {
+		p := filepath.Join(stateDir, "cookies.json")
+		if _, err := os.Stat(p); err == nil {
+			return p, "state-dir"
+		}
 	}
 	if p := os.Getenv(envCookiesPath); p != "" {
-		return p
+		return p, "$" + envCookiesPath
 	}
 	// Auto-discover from search paths
 	for _, p := range cookiesSearchPaths() {
 		if _, err := os.Stat(p); err == nil {
-			return p
+			return p, "auto-discover"
 		}
 	}
-	return ""
+	return "", ""
 }
 
 // clientConfigFromFlags builds client configuration from CLI flags and environment.
 func clientConfigFromFlags() (client.Config, map[string]string, error) {
+	cfg, jsonCookies, _, err := clientConfigFromFlagsWithStateDir("")
+	return cfg, jsonCookies, err
+}
+
+func clientConfigFromFlagsWithStateDir(stateDir string) (client.Config, map[string]string, string, error) {
 	var jsonCookies map[string]string
 	var extraCookies map[string]string
 
-	effectiveCookies := resolveCookiesJSON()
+	effectiveCookies, cookieSource := resolveCookiesJSONWithStateDir(stateDir)
 	if effectiveCookies != "" {
 		jar, err := cookies.Load(effectiveCookies)
 		if err != nil {
-			return client.Config{}, nil, fmt.Errorf("loading cookies from %s: %w", effectiveCookies, err)
+			return client.Config{}, nil, "", fmt.Errorf("loading cookies from %s: %w", effectiveCookies, err)
 		}
 		jsonCookies = jar.Cookies
 
@@ -78,7 +94,7 @@ func clientConfigFromFlags() (client.Config, map[string]string, error) {
 	psidts := firstNonEmpty(jsonCookies["__Secure-1PSIDTS"], os.Getenv("GEMINI_SECURE_1PSIDTS"))
 
 	if psid == "" {
-		return client.Config{}, nil, cookiesNotFoundError()
+		return client.Config{}, nil, "", cookiesNotFoundError()
 	}
 	if psidts == "" {
 		fmt.Fprintln(os.Stderr, "Warning: __Secure-1PSIDTS not found. Session may still work with long-lived cookies.")
@@ -91,6 +107,10 @@ func clientConfigFromFlags() (client.Config, map[string]string, error) {
 
 	model := types.FindModel(modelName)
 
+	if effectiveCookies == "" {
+		cookieSource = "env vars"
+	}
+
 	return client.Config{
 		Secure1PSID:   psid,
 		Secure1PSIDTS: psidts,
@@ -100,7 +120,17 @@ func clientConfigFromFlags() (client.Config, map[string]string, error) {
 		Model:         model,
 		Verbose:       verbose,
 		Timeout:       time.Duration(requestTimeout * float64(time.Second)),
-	}, jsonCookies, nil
+	}, jsonCookies, cookieSourceName(effectiveCookies, cookieSource), nil
+}
+
+func cookieSourceName(path, source string) string {
+	if path == "" {
+		return source
+	}
+	if source == "" {
+		return path
+	}
+	return fmt.Sprintf("%s (%s)", path, source)
 }
 
 // initClient creates and initializes a GeminiClient from CLI flags.
