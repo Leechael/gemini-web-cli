@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -22,20 +24,22 @@ type StateInfo struct {
 	CookieSource    string
 	ChatMappingPath string
 	ChatMappingMode string
+	MCPDefaultModel string
 }
 
 type Server struct {
-	client         *client.Client
-	mux            *http.ServeMux
-	apiKey         string
-	exposeThoughts bool
-	stateInfo      StateInfo
-	chatMap        *serverstate.ChatMapStore
+	client          *client.Client
+	mux             *http.ServeMux
+	apiKey          string
+	exposeThoughts  bool
+	mcpDefaultModel string
+	stateInfo       StateInfo
+	chatMap         *serverstate.ChatMapStore
 
 	stopRefresh context.CancelFunc
 }
 
-func New(cfg client.Config, apiKey string, exposeThoughts bool, stateInfo StateInfo) (*Server, error) {
+func New(cfg client.Config, apiKey string, exposeThoughts bool, mcpDefaultModel string, stateInfo StateInfo) (*Server, error) {
 	c, err := client.New(cfg)
 	if err != nil {
 		return nil, err
@@ -47,12 +51,13 @@ func New(cfg client.Config, apiKey string, exposeThoughts bool, stateInfo StateI
 	}
 
 	s := &Server{
-		client:         c,
-		mux:            http.NewServeMux(),
-		apiKey:         apiKey,
-		exposeThoughts: exposeThoughts,
-		stateInfo:      stateInfo,
-		chatMap:        chatMap,
+		client:          c,
+		mux:             http.NewServeMux(),
+		apiKey:          apiKey,
+		exposeThoughts:  exposeThoughts,
+		mcpDefaultModel: mcpDefaultModel,
+		stateInfo:       stateInfo,
+		chatMap:         chatMap,
 	}
 	s.registerRoutes()
 	return s, nil
@@ -96,37 +101,118 @@ func (s *Server) ListenAndServe(addr string) error {
 	return srv.ListenAndServe()
 }
 
+// bannerHost returns the host to display in startup URLs. When the server is
+// bound to all interfaces (0.0.0.0 or ::), it sniffs the host's non-loopback
+// IPv4 addresses so the printed URLs are actually reachable from the LAN.
+// Multiple interfaces (e.g. Wi-Fi + Ethernet) yield multiple printed URLs.
+// For a specific bind host it returns that host unchanged.
+func bannerHost(addr string) []string {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		host = addr
+	}
+	host = strings.TrimSpace(host)
+	if host != "" && host != "0.0.0.0" && host != "::" && host != "[::]" {
+		return []string{host}
+	}
+	return lanIPv4s()
+}
+
+// lanIPv4s returns non-loopback, non-link-local, non-unspecified IPv4
+// addresses of the host. It returns nil if none are found, in which case
+// callers fall back to 127.0.0.1.
+func lanIPv4s() []string {
+	ifs, err := net.Interfaces()
+	if err != nil {
+		return nil
+	}
+	var addrs []string
+	for _, ifi := range ifs {
+		if ifi.Flags&net.FlagUp == 0 || ifi.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		ipAddrs, err := ifi.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range ipAddrs {
+			ipNet, ok := a.(*net.IPNet)
+			if !ok {
+				continue
+			}
+			ip := ipNet.IP.To4()
+			if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsUnspecified() {
+				continue
+			}
+			addrs = append(addrs, ip.String())
+		}
+	}
+	return addrs
+}
+
 func printBanner(addr string, stateInfo StateInfo) {
-	base := "http://" + addr
-	fmt.Printf("gemini-web-cli server running on %s\n\n", base)
-	fmt.Printf("OpenAI-compatible API:\n")
-	fmt.Printf("  export OPENAI_API_BASE=%s/v1\n\n", base)
-	fmt.Printf("  # Chat (streaming)\n")
-	fmt.Printf("  curl %s/v1/chat/completions \\\n", base)
-	fmt.Printf("    -H 'Content-Type: application/json' \\\n")
-	fmt.Printf("    -d '{\"model\":\"gemini-3.5-flash\",\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}'\n\n")
-	fmt.Printf("  # Chat (non-streaming)\n")
-	fmt.Printf("  curl %s/v1/chat/completions \\\n", base)
-	fmt.Printf("    -H 'Content-Type: application/json' \\\n")
-	fmt.Printf("    -d '{\"model\":\"gemini-3.5-flash\",\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}'\n\n")
-	fmt.Printf("  # List models\n")
-	fmt.Printf("  curl %s/v1/models\n\n", base)
-	fmt.Printf("Deep Research API:\n")
-	fmt.Printf("  # Submit\n")
-	fmt.Printf("  curl -X POST %s/v1/research \\\n", base)
-	fmt.Printf("    -H 'Content-Type: application/json' \\\n")
-	fmt.Printf("    -d '{\"prompt\":\"Research topic here\"}'\n\n")
-	fmt.Printf("  # Check state / status / result\n")
-	fmt.Printf("  curl %s/v1/research/{id}\n", base)
-	fmt.Printf("  curl %s/v1/research/{id}/status\n", base)
-	fmt.Printf("  curl %s/v1/research/{id}/result\n\n", base)
-	fmt.Printf("Docs:\n")
-	fmt.Printf("  Swagger UI:   %s/docs\n", base)
-	fmt.Printf("  OpenAPI spec: %s/openapi.json\n\n", base)
-	fmt.Printf("State:\n")
-	fmt.Printf("  state_dir: %s\n", stateValue(stateInfo.StateDir, "<none>"))
-	fmt.Printf("  cookies: %s\n", stateValue(stateInfo.CookieSource, "<none>"))
-	fmt.Printf("  chat_mapping: %s\n\n", stateValue(stateInfo.ChatMappingMode, "memory only"))
+	hosts := bannerHost(addr)
+	if len(hosts) == 0 {
+		hosts = []string{"127.0.0.1"}
+	}
+	// For banner URLs, prefer the first LAN IP when bound to 0.0.0.0, but
+	// also list alternates so multi-interface (Wi-Fi + Ethernet) setups are
+	// visible. Port is reused from the bind addr.
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		port = "8080"
+	}
+	bases := make([]string, 0, len(hosts))
+	for _, h := range hosts {
+		bases = append(bases, "http://"+net.JoinHostPort(h, port))
+	}
+	primary := bases[0]
+
+	w := os.Stderr
+	fmt.Fprintf(w, "gemini-web-cli server running on %s\n", primary)
+	if len(bases) > 1 {
+		fmt.Fprintf(w, "  also reachable on:\n")
+		for _, b := range bases[1:] {
+			fmt.Fprintf(w, "    %s\n", b)
+		}
+	}
+	fmt.Fprintln(w)
+
+	fmt.Fprintf(w, "OpenAI-compatible API:\n")
+	fmt.Fprintf(w, "  export OPENAI_API_BASE=%s/v1\n\n", primary)
+	fmt.Fprintf(w, "  # Chat (streaming)\n")
+	fmt.Fprintf(w, "  curl %s/v1/chat/completions \\\n", primary)
+	fmt.Fprintf(w, "    -H 'Content-Type: application/json' \\\n")
+	fmt.Fprintf(w, "    -d '{\"model\":\"gemini-3.5-flash\",\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}'\n\n")
+	fmt.Fprintf(w, "  # Chat (non-streaming)\n")
+	fmt.Fprintf(w, "  curl %s/v1/chat/completions \\\n", primary)
+	fmt.Fprintf(w, "    -H 'Content-Type: application/json' \\\n")
+	fmt.Fprintf(w, "    -d '{\"model\":\"gemini-3.5-flash\",\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}'\n\n")
+	fmt.Fprintf(w, "  # List models\n")
+	fmt.Fprintf(w, "  curl %s/v1/models\n\n", primary)
+	fmt.Fprintf(w, "Deep Research API:\n")
+	fmt.Fprintf(w, "  # Submit\n")
+	fmt.Fprintf(w, "  curl -X POST %s/v1/research \\\n", primary)
+	fmt.Fprintf(w, "    -H 'Content-Type: application/json' \\\n")
+	fmt.Fprintf(w, "    -d '{\"prompt\":\"Research topic here\"}'\n\n")
+	fmt.Fprintf(w, "  # Check state / status / result\n")
+	fmt.Fprintf(w, "  curl %s/v1/research/{id}\n", primary)
+	fmt.Fprintf(w, "  curl %s/v1/research/{id}/status\n", primary)
+	fmt.Fprintf(w, "  curl %s/v1/research/{id}/result\n\n", primary)
+	fmt.Fprintf(w, "MCP Server:\n")
+	fmt.Fprintf(w, "  %s/mcp\n", primary)
+	if stateInfo.MCPDefaultModel != "" {
+		fmt.Fprintf(w, "  default model: %s\n", stateInfo.MCPDefaultModel)
+	}
+	fmt.Fprintln(w)
+
+	fmt.Fprintf(w, "Docs:\n")
+	fmt.Fprintf(w, "  Swagger UI:   %s/docs\n", primary)
+	fmt.Fprintf(w, "  OpenAPI spec: %s/openapi.json\n\n", primary)
+	fmt.Fprintf(w, "State:\n")
+	fmt.Fprintf(w, "  state_dir: %s\n", stateValue(stateInfo.StateDir, "<none>"))
+	fmt.Fprintf(w, "  cookies: %s\n", stateValue(stateInfo.CookieSource, "<none>"))
+	fmt.Fprintf(w, "  chat_mapping: %s\n\n", stateValue(stateInfo.ChatMappingMode, "memory only"))
 }
 
 func stateValue(value, fallback string) string {
@@ -143,6 +229,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /v1/research/{id}", s.requireAuth(s.handleResearchGet))
 	s.mux.HandleFunc("GET /v1/research/{id}/status", s.requireAuth(s.handleResearchStatus))
 	s.mux.HandleFunc("GET /v1/research/{id}/result", s.requireAuth(s.handleResearchResult))
+	s.mux.Handle("/mcp", s.buildMCPHandler())
 	s.mux.HandleFunc("GET /openapi.json", s.handleOpenAPISpec)
 	s.mux.HandleFunc("GET /docs", s.handleSwaggerUI)
 }

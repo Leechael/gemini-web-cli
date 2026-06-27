@@ -3,10 +3,8 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -14,11 +12,12 @@ import (
 )
 
 var (
-	servePort           int
-	serveHost           string
-	serveAPIKey         string
-	serveExposeThoughts bool
-	serveStateDir       string
+	servePort            int
+	serveHost            string
+	serveAPIKey          string
+	serveExposeThoughts  bool
+	serveStateDir        string
+	serveMCPDefaultModel string
 )
 
 var serveCmd = &cobra.Command{
@@ -37,9 +36,6 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 
 	apiKey := firstNonEmpty(serveAPIKey, os.Getenv("GEMINI_WEB_CLI_API_KEY"))
-	if apiKey == "" && !isLoopbackHost(serveHost) {
-		return fmt.Errorf("--api-key or GEMINI_WEB_CLI_API_KEY is required when binding to non-loopback host %q", serveHost)
-	}
 
 	exposeThoughts := serveExposeThoughts || os.Getenv("GEMINI_WEB_CLI_EXPOSE_THOUGHTS") == "1"
 	stateInfo := server.StateInfo{
@@ -51,8 +47,9 @@ func runServe(cmd *cobra.Command, args []string) error {
 		stateInfo.ChatMappingPath = filepath.Join(serveStateDir, "chat-map.pb")
 		stateInfo.ChatMappingMode = stateInfo.ChatMappingPath
 	}
+	stateInfo.MCPDefaultModel = serveMCPDefaultModel
 
-	srv, err := server.New(cfg, apiKey, exposeThoughts, stateInfo)
+	srv, err := server.New(cfg, apiKey, exposeThoughts, serveMCPDefaultModel, stateInfo)
 	if err != nil {
 		return fmt.Errorf("creating server: %w", err)
 	}
@@ -69,18 +66,10 @@ func runServe(cmd *cobra.Command, args []string) error {
 func init() {
 	serveCmd.Flags().IntVar(&servePort, "port", 8080, "Port to listen on")
 	serveCmd.Flags().StringVar(&serveHost, "host", "127.0.0.1", "Host to bind to")
-	serveCmd.Flags().StringVar(&serveAPIKey, "api-key", "", "API key required for /v1 endpoints (or GEMINI_WEB_CLI_API_KEY)")
+	serveCmd.Flags().StringVar(&serveAPIKey, "api-key", "", "API key for /v1 endpoints (or GEMINI_WEB_CLI_API_KEY)")
 	serveCmd.Flags().BoolVar(&serveExposeThoughts, "expose-thoughts", false, "Expose model thoughts/reasoning in API responses")
 	serveCmd.Flags().StringVar(&serveStateDir, "state-dir", "", "Directory for serve state (cookies.json lookup and chat-map.pb persistence)")
+	serveCmd.Flags().StringVar(&serveMCPDefaultModel, "mcp-default-model", "", "Default model for MCP tools (used when a tool call omits model)")
 	serveCmd.GroupID = "util"
 	rootCmd.AddCommand(serveCmd)
-}
-
-func isLoopbackHost(host string) bool {
-	host = strings.TrimSpace(host)
-	if host == "localhost" {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
 }
