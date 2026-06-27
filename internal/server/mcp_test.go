@@ -41,7 +41,12 @@ func TestMCPRouteRegisteredWithoutAuth(t *testing.T) {
 	var resp struct {
 		Result struct {
 			ProtocolVersion string `json:"protocolVersion"`
-			ServerInfo      struct {
+			Capabilities    struct {
+				Tools     json.RawMessage `json:"tools"`
+				Resources json.RawMessage `json:"resources"`
+				Prompts   json.RawMessage `json:"prompts"`
+			} `json:"capabilities"`
+			ServerInfo struct {
 				Name    string `json:"name"`
 				Version string `json:"version"`
 			} `json:"serverInfo"`
@@ -53,11 +58,52 @@ func TestMCPRouteRegisteredWithoutAuth(t *testing.T) {
 	if resp.Result.ProtocolVersion != "2025-06-18" {
 		t.Fatalf("protocolVersion = %q, want 2025-06-18", resp.Result.ProtocolVersion)
 	}
+	if len(resp.Result.Capabilities.Tools) == 0 {
+		t.Fatal("initialize result missing tools capability; clients expect it advertised")
+	}
+	if len(resp.Result.Capabilities.Resources) == 0 {
+		t.Fatal("initialize result missing resources capability; clients probing resources/list get -32601 without it")
+	}
+	if len(resp.Result.Capabilities.Prompts) == 0 {
+		t.Fatal("initialize result missing prompts capability; clients probing prompts/list get -32601 without it")
+	}
 	if resp.Result.ServerInfo.Name != "gemini-web-cli" {
 		t.Fatalf("serverInfo.name = %q, want gemini-web-cli", resp.Result.ServerInfo.Name)
 	}
 	if resp.Result.ServerInfo.Version != "dev" {
 		t.Fatalf("serverInfo.version = %q, want dev", resp.Result.ServerInfo.Version)
+	}
+}
+
+func TestMCPResourcesAndPromptsListEmpty(t *testing.T) {
+	s := &Server{mux: http.NewServeMux()}
+	s.registerRoutes()
+
+	for _, method := range []string{"resources/list", "prompts/list"} {
+		body := `{"jsonrpc":"2.0","id":99,"method":"` + method + `","params":{}}`
+		req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json, text/event-stream")
+		req.Header.Set("MCP-Protocol-Version", "2025-06-18")
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("%s: status = %d, want %d; body = %s", method, w.Code, http.StatusOK, w.Body.String())
+		}
+		var resp struct {
+			Error *struct {
+				Code    int    `json:"code"`
+				Message string `json:"message"`
+			} `json:"error"`
+			Result json.RawMessage `json:"result"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("%s: unmarshal response: %v; body=%s", method, err, w.Body.String())
+		}
+		if resp.Error != nil {
+			t.Fatalf("%s: got JSON-RPC error code=%d msg=%q; clients expect an empty result, not -32601", method, resp.Error.Code, resp.Error.Message)
+		}
 	}
 }
 

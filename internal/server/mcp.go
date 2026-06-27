@@ -9,6 +9,12 @@ import (
 func (s *Server) buildMCPHandler() http.Handler {
 	mcpServer := mcpserver.NewMCPServer("gemini-web-cli", "dev",
 		mcpserver.WithToolCapabilities(false),
+		// Advertise resources and prompts capabilities so MCP clients that probe
+		// resources/list or prompts/list during connect get an empty result
+		// instead of JSON-RPC -32601 "method not found". We register none,
+		// so the handlers return empty lists.
+		mcpserver.WithResourceCapabilities(false, false),
+		mcpserver.WithPromptCapabilities(false),
 	)
 	s.registerMCPTools(mcpServer)
 	return mcpserver.NewStreamableHTTPServer(mcpServer,
