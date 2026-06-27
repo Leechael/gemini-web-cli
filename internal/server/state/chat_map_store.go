@@ -118,6 +118,9 @@ func (s *ChatMapStore) load() error {
 	if err := proto.Unmarshal(data, &db); err != nil {
 		return fmt.Errorf("decode chat map: %w", err)
 	}
+	if db.Version != currentChatMapVersion {
+		return fmt.Errorf("chat map version %d is incompatible (expected %d)", db.Version, currentChatMapVersion)
+	}
 	for _, entry := range db.Entries {
 		if entry == nil || entry.RootHash == "" {
 			continue
