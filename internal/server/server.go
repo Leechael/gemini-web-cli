@@ -118,9 +118,9 @@ func bannerHost(addr string) []string {
 	return lanIPv4s()
 }
 
-// lanIPv4s returns non-loopback, non-link-local IPv4 addresses of the host.
-// It returns nil if none are found, in which case callers fall back to
-// 127.0.0.1.
+// lanIPv4s returns non-loopback, non-link-local, non-unspecified IPv4
+// addresses of the host. It returns nil if none are found, in which case
+// callers fall back to 127.0.0.1.
 func lanIPv4s() []string {
 	ifs, err := net.Interfaces()
 	if err != nil {
@@ -141,7 +141,7 @@ func lanIPv4s() []string {
 				continue
 			}
 			ip := ipNet.IP.To4()
-			if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+			if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsUnspecified() {
 				continue
 			}
 			addrs = append(addrs, ip.String())
