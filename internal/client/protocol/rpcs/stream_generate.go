@@ -224,6 +224,9 @@ func parseStreamGenerateEnvelope(envelope []any) *types.ModelOutput {
 					out.Text = html.UnescapeString(alt)
 				}
 			}
+			if thoughts := protocol.StringAt(cand, 37, 0, 0); thoughts != "" {
+				out.Thoughts = html.UnescapeString(thoughts)
+			}
 			if len(cand) > 12 && cand[12] != nil {
 				out.Images = ExtractImages(cand[12])
 				out.Videos = ExtractVideos(cand[12])

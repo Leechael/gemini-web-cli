@@ -15,9 +15,10 @@ func (c *Client) streamGenerate(ctx context.Context, prompt string, metadata []s
 	}
 
 	uuid := generateUUID()
-	mode := c.resolveGenerationMode(prompt, uploads)
+	mode := resolveGenerationMode(c.generationMode, prompt, uploads)
+	s := c.session()
 
-	innerReq := c.buildInnerRequest(prompt, metadata, uploads, model, deepResearch, uuid, mode)
+	innerReq := c.buildInnerRequest(prompt, metadata, uploads, model, deepResearch, uuid, s.language, mode)
 	innerJSON, err := json.Marshal(innerReq)
 	if err != nil {
 		return fmt.Errorf("marshaling inner request: %w", err)
@@ -28,12 +29,12 @@ func (c *Client) streamGenerate(ctx context.Context, prompt string, metadata []s
 		fmt.Fprintf(logWriter, "f.req payload: %s\n", string(outerJSON))
 	}
 
-	body, err := c.CallStreamGenerate(ctx, transport.StreamGenerateRequest{
-		AccessToken: c.accessToken,
+	body, err := c.callStreamGenerate(ctx, transport.StreamGenerateRequest{
+		AccessToken: s.accessToken,
 		InnerReq:    innerJSON,
 		UUID:        uuid,
 		ModelHeader: model.Headers,
-	})
+	}, s)
 	if err != nil {
 		return err
 	}

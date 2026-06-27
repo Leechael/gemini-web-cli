@@ -130,7 +130,7 @@ func TestPrefetchViaBatch_RequestFailure(t *testing.T) {
 	c := newTestClient()
 	c.accessToken = "token"
 	c.language = "en"
-	c.reqID = 1
+	c.reqID.Store(1)
 	c.httpClient = srv.Client()
 	bs := c.prefetchViaBatch(t.Context())
 	if len(bs.Errors) != 6 {
@@ -163,7 +163,7 @@ func newBootstrapTestClient(t *testing.T, delay time.Duration, failRPC string) (
 	c := newTestClient()
 	c.accessToken = "token"
 	c.language = "en"
-	c.reqID = 1
+	c.reqID.Store(1)
 	c.httpClient = srv.Client()
 	return c, srv
 }

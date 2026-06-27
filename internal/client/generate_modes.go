@@ -39,8 +39,8 @@ func generateHexUUID() string {
 	return hex.EncodeToString(b)
 }
 
-func (c *Client) resolveGenerationMode(prompt string, uploads []*UploadResult) string {
-	mode := strings.ToLower(strings.TrimSpace(c.generationMode))
+func resolveGenerationMode(clientMode string, prompt string, uploads []*UploadResult) string {
+	mode := strings.ToLower(strings.TrimSpace(clientMode))
 	switch mode {
 	case "text", "", "auto":
 	case "video", "image-to-video", "music":

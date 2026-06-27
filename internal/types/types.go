@@ -10,6 +10,8 @@ import (
 type ModelOutput struct {
 	Text             string
 	TextDelta        string
+	Thoughts         string
+	ThoughtsDelta    string
 	RCid             string
 	Metadata         []string // [cid, rid, rcid, ...]
 	Images           []Image

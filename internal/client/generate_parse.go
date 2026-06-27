@@ -22,6 +22,7 @@ func (c *Client) parseStreamResponse(body io.Reader, cb StreamCallback) error {
 	parser := newStreamFrameParser()
 	buf := make([]byte, 64*1024)
 	var lastText string
+	var lastThoughts string
 	var output *types.ModelOutput
 
 	for {
@@ -53,6 +54,10 @@ func (c *Client) parseStreamResponse(body io.Reader, cb StreamCallback) error {
 				if parsed.Text != "" {
 					parsed.TextDelta = calculateDelta(lastText, parsed.Text)
 					lastText = parsed.Text
+				}
+				if parsed.Thoughts != "" {
+					parsed.ThoughtsDelta = calculateDelta(lastThoughts, parsed.Thoughts)
+					lastThoughts = parsed.Thoughts
 				}
 				output = parsed
 				cb(parsed)

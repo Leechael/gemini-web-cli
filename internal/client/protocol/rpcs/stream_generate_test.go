@@ -102,6 +102,25 @@ func TestDecodeStreamGenerateFrame_Basic(t *testing.T) {
 	}
 }
 
+func TestDecodeStreamGenerateFrame_Thoughts(t *testing.T) {
+	candidate := make([]any, 38)
+	candidate[0] = "rc_ghi"
+	candidate[1] = []any{"hello"}
+	candidate[37] = []any{[]any{"thinking"}}
+	content := make([]any, 5)
+	content[4] = []any{candidate}
+	contentJSON, _ := json.Marshal(content)
+	envelope := []any{[]any{"wrb.fr", nil, string(contentJSON)}}
+
+	out, err := DecodeStreamGenerateFrame(envelope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out == nil || out.Thoughts != "thinking" {
+		t.Fatalf("thoughts = %#v, want thinking", out)
+	}
+}
+
 func TestDecodeStreamGenerateFrame_EnvelopeError(t *testing.T) {
 	_, err := DecodeStreamGenerateFrame([]any{"wrb.fr", nil, "", nil, nil, []any{float64(1052)}})
 	if e, ok := err.(*EnvelopeError); !ok || e.Code != 1052 {

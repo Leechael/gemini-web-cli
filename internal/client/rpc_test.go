@@ -44,7 +44,7 @@ func TestCallRPC(t *testing.T) {
 	c.language = "en"
 	c.buildLabel = "bl"
 	c.sessionID = "sid"
-	c.reqID = 123
+	c.reqID.Store(123)
 	c.accountPath = "/u/1"
 	c.httpClient = srv.Client()
 
@@ -88,7 +88,7 @@ func TestCallRPC_WithSourcePath(t *testing.T) {
 	c := newTestClient()
 	c.accessToken = "token"
 	c.language = "en"
-	c.reqID = 1
+	c.reqID.Store(1)
 	c.accountPath = "/u/1"
 	c.httpClient = srv.Client()
 
@@ -117,7 +117,7 @@ func TestCallRPC_SourcePathOverridesSourceCid(t *testing.T) {
 	c := newTestClient()
 	c.accessToken = "token"
 	c.language = "en"
-	c.reqID = 1
+	c.reqID.Store(1)
 	c.accountPath = "/u/1"
 	c.httpClient = srv.Client()
 
@@ -160,7 +160,7 @@ func TestCallRPCBatch_HappyPath(t *testing.T) {
 	c := newTestClient()
 	c.accessToken = "token"
 	c.language = "en"
-	c.reqID = 1
+	c.reqID.Store(1)
 	c.httpClient = srv.Client()
 
 	bodies, rejectCodes, err := c.CallRPCBatch(t.Context(), []RPCCall{{ID: "one", Payload: "[1]"}, {ID: "two", Payload: "[2]"}})
@@ -205,7 +205,7 @@ func TestCallRPCBatch_PartialResponse(t *testing.T) {
 	c := newTestClient()
 	c.accessToken = "token"
 	c.language = "en"
-	c.reqID = 1
+	c.reqID.Store(1)
 	c.httpClient = srv.Client()
 
 	bodies, rejectCodes, err := c.CallRPCBatch(t.Context(), []RPCCall{{ID: "one", Payload: "[1]"}, {ID: "two", Payload: "[2]"}, {ID: "missing", Payload: "[]"}})
