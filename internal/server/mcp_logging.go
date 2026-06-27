@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -34,8 +35,26 @@ func mcpLoggingMiddleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(sw, r)
 
-		log.Printf("mcp http %s status=%d dur=%s", method, sw.status, time.Since(start).Round(time.Millisecond))
+		log.Printf("mcp http %s path=%s remote=%s status=%d dur=%s",
+			method, r.URL.Path, clientIP(r), sw.status, time.Since(start).Round(time.Millisecond))
 	})
+}
+
+// clientIP returns the request originator's IP without the port. It honors
+// the first X-Forwarded-For value when present so reverse-proxied deployments
+// log the real client; otherwise it falls back to r.RemoteAddr.
+func clientIP(r *http.Request) string {
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		if i := strings.IndexByte(xff, ','); i >= 0 {
+			xff = xff[:i]
+		}
+		return strings.TrimSpace(xff)
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }
 
 // statusWriter captures the response status code.

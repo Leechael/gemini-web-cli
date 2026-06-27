@@ -183,6 +183,32 @@ func TestMCPLoggingMethodFromRequest(t *testing.T) {
 	}
 }
 
+func TestMCPClientIP(t *testing.T) {
+	cases := []struct {
+		name   string
+		remote string
+		xff    string
+		want   string
+	}{
+		{name: "remote with port", remote: "192.168.1.5:54321", want: "192.168.1.5"},
+		{name: "remote no port", remote: "10.0.0.1", want: "10.0.0.1"},
+		{name: "ipv6 remote", remote: "[::1]:1234", want: "::1"},
+		{name: "xff single", remote: "127.0.0.1:1", xff: "203.0.113.7", want: "203.0.113.7"},
+		{name: "xff chain picks first", remote: "127.0.0.1:1", xff: "203.0.113.7, 10.0.0.1", want: "203.0.113.7"},
+		{name: "xff trimmed", remote: "127.0.0.1:1", xff: "  203.0.113.7  , 10.0.0.1", want: "203.0.113.7"},
+	}
+	for _, c := range cases {
+		r := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+		r.RemoteAddr = c.remote
+		if c.xff != "" {
+			r.Header.Set("X-Forwarded-For", c.xff)
+		}
+		if got := clientIP(r); got != c.want {
+			t.Fatalf("%s: clientIP = %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
 func TestBannerHostSpecificBind(t *testing.T) {
 	got := bannerHost("127.0.0.1:8080")
 	if len(got) != 1 || got[0] != "127.0.0.1" {
