@@ -22,20 +22,22 @@ type StateInfo struct {
 	CookieSource    string
 	ChatMappingPath string
 	ChatMappingMode string
+	MCPDefaultModel string
 }
 
 type Server struct {
-	client         *client.Client
-	mux            *http.ServeMux
-	apiKey         string
-	exposeThoughts bool
-	stateInfo      StateInfo
-	chatMap        *serverstate.ChatMapStore
+	client          *client.Client
+	mux             *http.ServeMux
+	apiKey          string
+	exposeThoughts  bool
+	mcpDefaultModel string
+	stateInfo       StateInfo
+	chatMap         *serverstate.ChatMapStore
 
 	stopRefresh context.CancelFunc
 }
 
-func New(cfg client.Config, apiKey string, exposeThoughts bool, stateInfo StateInfo) (*Server, error) {
+func New(cfg client.Config, apiKey string, exposeThoughts bool, mcpDefaultModel string, stateInfo StateInfo) (*Server, error) {
 	c, err := client.New(cfg)
 	if err != nil {
 		return nil, err
@@ -47,12 +49,13 @@ func New(cfg client.Config, apiKey string, exposeThoughts bool, stateInfo StateI
 	}
 
 	s := &Server{
-		client:         c,
-		mux:            http.NewServeMux(),
-		apiKey:         apiKey,
-		exposeThoughts: exposeThoughts,
-		stateInfo:      stateInfo,
-		chatMap:        chatMap,
+		client:          c,
+		mux:             http.NewServeMux(),
+		apiKey:          apiKey,
+		exposeThoughts:  exposeThoughts,
+		mcpDefaultModel: mcpDefaultModel,
+		stateInfo:       stateInfo,
+		chatMap:         chatMap,
 	}
 	s.registerRoutes()
 	return s, nil
@@ -120,6 +123,13 @@ func printBanner(addr string, stateInfo StateInfo) {
 	fmt.Printf("  curl %s/v1/research/{id}\n", base)
 	fmt.Printf("  curl %s/v1/research/{id}/status\n", base)
 	fmt.Printf("  curl %s/v1/research/{id}/result\n\n", base)
+	fmt.Printf("MCP Server:\n")
+	fmt.Printf("  %s/mcp\n", base)
+	if stateInfo.MCPDefaultModel != "" {
+		fmt.Printf("  default model: %s\n", stateInfo.MCPDefaultModel)
+	}
+	fmt.Println()
+
 	fmt.Printf("Docs:\n")
 	fmt.Printf("  Swagger UI:   %s/docs\n", base)
 	fmt.Printf("  OpenAPI spec: %s/openapi.json\n\n", base)
@@ -143,6 +153,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /v1/research/{id}", s.requireAuth(s.handleResearchGet))
 	s.mux.HandleFunc("GET /v1/research/{id}/status", s.requireAuth(s.handleResearchStatus))
 	s.mux.HandleFunc("GET /v1/research/{id}/result", s.requireAuth(s.handleResearchResult))
+	s.mux.Handle("/mcp", s.buildMCPHandler())
 	s.mux.HandleFunc("GET /openapi.json", s.handleOpenAPISpec)
 	s.mux.HandleFunc("GET /docs", s.handleSwaggerUI)
 }
