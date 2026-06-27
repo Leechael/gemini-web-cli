@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -53,28 +54,58 @@ func (s *statusWriter) WriteHeader(code int) {
 	s.ResponseWriter.WriteHeader(code)
 }
 
-// mcpMethodFromRequest extracts the JSON-RPC method from the request body for
-// logging without consuming it. It re-arms r.Body so downstream handlers read
-// the original payload. On any parse failure it returns "?".
+// mcpMethodFromRequest extracts the JSON-RPC method from the request body
+// for logging without consuming it. It re-arms r.Body so downstream handlers
+// read the original payload. For non-POST requests (GET SSE probe, DELETE
+// session terminate, OPTIONS preflight) the body is empty, so it returns the
+// HTTP method to keep the log line meaningful. On POST parse failure it
+// returns "?".
 func mcpMethodFromRequest(r *http.Request) string {
+	if r.Method != http.MethodPost {
+		return r.Method
+	}
 	if r.Body == nil {
-		return "?"
+		return "POST?"
 	}
 	buf, err := io.ReadAll(r.Body)
 	_ = r.Body.Close()
 	if err != nil {
 		r.Body = http.NoBody
-		return "?"
+		return "POST?"
 	}
 	r.Body = io.NopCloser(strings.NewReader(string(buf)))
 
-	var peek struct {
+	// JSON-RPC over HTTP may carry a single object or a batch array. Extract
+	// the first method found either way.
+	if method := methodFromJSONRPC(buf); method != "" {
+		return method
+	}
+	return "POST?"
+}
+
+// methodFromJSONRPC returns the JSON-RPC method from a single-object body,
+// or the first method from a batch array body. Empty on any failure.
+func methodFromJSONRPC(buf []byte) string {
+	trimmed := bytes.TrimSpace(buf)
+	if len(trimmed) == 0 {
+		return ""
+	}
+	if trimmed[0] == '[' {
+		var batch []struct {
+			Method string `json:"method"`
+		}
+		if json.Unmarshal(trimmed, &batch) != nil || len(batch) == 0 {
+			return ""
+		}
+		return batch[0].Method
+	}
+	var single struct {
 		Method string `json:"method"`
 	}
-	if json.Unmarshal(buf, &peek) != nil || peek.Method == "" {
-		return "?"
+	if json.Unmarshal(trimmed, &single) != nil {
+		return ""
 	}
-	return peek.Method
+	return single.Method
 }
 
 // mcpHooks returns the *mcpserver.Hooks that log MCP connections and tool

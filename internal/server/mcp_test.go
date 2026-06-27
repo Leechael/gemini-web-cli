@@ -156,9 +156,30 @@ func TestMCPLoggingMethodFromRequest(t *testing.T) {
 		t.Fatalf("body not re-readable after peek: %s", string(rest))
 	}
 
+	// POST with unparseable body
 	req2 := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader("not json"))
-	if got := mcpMethodFromRequest(req2); got != "?" {
-		t.Fatalf("method = %q, want ?", got)
+	if got := mcpMethodFromRequest(req2); got != "POST?" {
+		t.Fatalf("method = %q, want POST?", got)
+	}
+
+	// JSON-RPC batch: extract first method
+	batch := `[{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}},{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{}}]`
+	req3 := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(batch))
+	if got := mcpMethodFromRequest(req3); got != "tools/list" {
+		t.Fatalf("batch method = %q, want tools/list", got)
+	}
+	rest3, _ := io.ReadAll(req3.Body)
+	if !strings.Contains(string(rest3), "tools/call") {
+		t.Fatalf("batch body not re-readable: %s", string(rest3))
+	}
+
+	// Non-POST (GET SSE probe, DELETE session terminate) has empty body: log
+	// the HTTP method instead of a meaningless "?".
+	for _, m := range []string{http.MethodGet, http.MethodDelete, http.MethodOptions} {
+		r := httptest.NewRequest(m, "/mcp", nil)
+		if got := mcpMethodFromRequest(r); got != m {
+			t.Fatalf("%s method = %q, want %q", m, got, m)
+		}
 	}
 }
 
