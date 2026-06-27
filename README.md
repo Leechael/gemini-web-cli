@@ -90,10 +90,12 @@ Exposed MCP tools:
 - `gemini_research_create` — submit a deep research task; returns `id`, `title`, `eta_text`, `steps`. Args: `prompt` (required), `model` (optional).
 - `gemini_research_status` — poll task state (`done`, `running`, `pending_confirm`, `not_research`, `empty`). Args: `id` (required).
 - `gemini_research_result` — fetch the completed report text and source citations. Args: `id` (required).
+- `gemini_research_list` — list completed deep research reports from the library. Args: `count` (optional, default `13`), `cursor` (optional).
+- `gemini_research_reply` — send a follow-up prompt to an existing deep research chat to refine or continue the research; returns an immediate acknowledgement, then poll `gemini_research_status`. Args: `id` (required), `prompt` (required), `model` (optional).
 - `gemini_ask` — single-turn prompt (search-like, no conversation state); returns `text` plus any generated image/video/media URLs. Args: `prompt` (required), `model` (optional).
 - `gemini_list_models` — list available model names and display names. No args.
 
-Deep research is asynchronous: call `gemini_research_create`, poll `gemini_research_status` until `state` is `done`, then call `gemini_research_result`.
+Deep research is asynchronous: call `gemini_research_create`, poll `gemini_research_status` until `state` is `done`, then call `gemini_research_result`. Use `gemini_research_list` to browse completed reports and `gemini_research_reply` to refine an in-progress or completed research thread.
 
 ### Client configuration
 
