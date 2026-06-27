@@ -93,6 +93,8 @@ func TestMCPToolsList(t *testing.T) {
 		"gemini_ask":             false,
 		"gemini_list_models":     false,
 		"gemini_research_create": false,
+		"gemini_research_list":   false,
+		"gemini_research_reply":  false,
 		"gemini_research_status": false,
 		"gemini_research_result": false,
 	}
@@ -183,5 +185,31 @@ func TestMCPResearchResultRequiresID(t *testing.T) {
 	}
 	if result == nil || !result.IsError {
 		t.Fatal("expected tool-level error result for missing id")
+	}
+}
+
+func TestMCPResearchReplyRequiresID(t *testing.T) {
+	s := &Server{}
+	result, err := s.handleMCPResearchReply(context.Background(), mcp.CallToolRequest{
+		Params: mcp.CallToolParams{Arguments: map[string]any{"prompt": "refine"}},
+	})
+	if err != nil {
+		t.Fatalf("handler returned Go error: %v", err)
+	}
+	if result == nil || !result.IsError {
+		t.Fatal("expected tool-level error result for missing id")
+	}
+}
+
+func TestMCPResearchReplyRequiresPrompt(t *testing.T) {
+	s := &Server{}
+	result, err := s.handleMCPResearchReply(context.Background(), mcp.CallToolRequest{
+		Params: mcp.CallToolParams{Arguments: map[string]any{"id": "c_abc123"}},
+	})
+	if err != nil {
+		t.Fatalf("handler returned Go error: %v", err)
+	}
+	if result == nil || !result.IsError {
+		t.Fatal("expected tool-level error result for missing prompt")
 	}
 }
