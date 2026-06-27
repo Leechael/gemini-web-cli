@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -14,14 +15,16 @@ type researchRequest struct {
 
 type researchCreateResponse struct {
 	ID      string   `json:"id"`
+	ChatID  string   `json:"chat_id"`
 	Title   string   `json:"title,omitempty"`
 	ETAText string   `json:"eta_text,omitempty"`
 	Steps   []string `json:"steps,omitempty"`
 }
 
 type researchStatusResponse struct {
-	ID    string `json:"id"`
-	State string `json:"state"`
+	ID     string `json:"id"`
+	ChatID string `json:"chat_id"`
+	State  string `json:"state"`
 }
 
 type researchSource struct {
@@ -31,8 +34,19 @@ type researchSource struct {
 
 type researchResultResponse struct {
 	ID      string           `json:"id"`
+	ChatID  string           `json:"chat_id"`
 	Text    string           `json:"text"`
 	Sources []researchSource `json:"sources,omitempty"`
+}
+
+type researchResourceResponse struct {
+	ID      string                  `json:"id"`
+	ChatID  string                  `json:"chat_id"`
+	State   string                  `json:"state"`
+	Title   string                  `json:"title,omitempty"`
+	ETAText string                  `json:"eta_text,omitempty"`
+	Steps   []string                `json:"steps,omitempty"`
+	Result  *researchResultResponse `json:"result"`
 }
 
 func (s *Server) handleResearchCreate(w http.ResponseWriter, r *http.Request) {
@@ -63,6 +77,7 @@ func (s *Server) handleResearchCreate(w http.ResponseWriter, r *http.Request) {
 
 	resp := researchCreateResponse{
 		ID:      plan.Cid,
+		ChatID:  plan.Cid,
 		Title:   plan.Title,
 		ETAText: plan.ETAText,
 		Steps:   plan.Steps,
@@ -85,10 +100,40 @@ func (s *Server) handleResearchStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := researchStatusResponse{
-		ID:    id,
-		State: status.State,
+		ID:     id,
+		ChatID: id,
+		State:  status.State,
 	}
 
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) handleResearchGet(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		writeError(w, http.StatusBadRequest, "research id is required")
+		return
+	}
+
+	status, err := s.client.CheckDeepResearch(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	resp := researchResourceResponse{
+		ID:     id,
+		ChatID: id,
+		State:  status.State,
+	}
+	if status.State == "done" {
+		result, err := s.researchResult(r.Context(), id)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		resp.Result = result
+	}
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -99,10 +144,19 @@ func (s *Server) handleResearchResult(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	text, sources, err := s.client.GetDeepResearchResult(r.Context(), id)
+	resp, err := s.researchResult(r.Context(), id)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) researchResult(ctx context.Context, id string) (*researchResultResponse, error) {
+	text, sources, err := s.client.GetDeepResearchResult(ctx, id)
+	if err != nil {
+		return nil, err
 	}
 
 	keys := make([]int, 0, len(sources))
@@ -120,11 +174,10 @@ func (s *Server) handleResearchResult(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	resp := researchResultResponse{
+	return &researchResultResponse{
 		ID:      id,
+		ChatID:  id,
 		Text:    text,
 		Sources: respSources,
-	}
-
-	writeJSON(w, http.StatusOK, resp)
+	}, nil
 }

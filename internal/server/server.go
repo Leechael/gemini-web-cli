@@ -139,6 +139,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /v1/models", s.requireAuth(s.handleModels))
 	s.mux.HandleFunc("POST /v1/chat/completions", s.requireAuth(s.handleChatCompletions))
 	s.mux.HandleFunc("POST /v1/research", s.requireAuth(s.handleResearchCreate))
+	s.mux.HandleFunc("GET /v1/research/{id}", s.requireAuth(s.handleResearchGet))
 	s.mux.HandleFunc("GET /v1/research/{id}/status", s.requireAuth(s.handleResearchStatus))
 	s.mux.HandleFunc("GET /v1/research/{id}/result", s.requireAuth(s.handleResearchResult))
 	s.mux.HandleFunc("GET /openapi.json", s.handleOpenAPISpec)
