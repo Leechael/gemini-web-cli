@@ -75,6 +75,7 @@ func (m *chatMessage) UnmarshalJSON(data []byte) error {
 
 type chatCompletionResponse struct {
 	ID      string       `json:"id"`
+	ChatID  string       `json:"chat_id,omitempty"`
 	Object  string       `json:"object"`
 	Created int64        `json:"created"`
 	Model   string       `json:"model"`
@@ -245,6 +246,9 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		chatID := ""
+		if len(plan.Metadata) > 0 {
+			chatID = plan.Metadata[0]
+		}
 		if len(output.Metadata) > 0 {
 			chatID = output.Metadata[0]
 		}
@@ -275,6 +279,7 @@ func (s *Server) writeCompletion(w http.ResponseWriter, chatID, modelName, text,
 	msg := &chatMessage{Role: "assistant", Content: text, ReasoningContent: thoughts}
 	resp := chatCompletionResponse{
 		ID:      "chatcmpl-" + chatID,
+		ChatID:  chatID,
 		Object:  "chat.completion",
 		Created: time.Now().Unix(),
 		Model:   modelName,
@@ -310,6 +315,7 @@ func (s *Server) writeSSE(w http.ResponseWriter, chatID, modelName string, gener
 		}
 		chunk := chatCompletionResponse{
 			ID:      "chatcmpl-" + currentChatID,
+			ChatID:  currentChatID,
 			Object:  "chat.completion.chunk",
 			Created: time.Now().Unix(),
 			Model:   modelName,
@@ -339,6 +345,7 @@ func (s *Server) writeSSE(w http.ResponseWriter, chatID, modelName string, gener
 	stop := "stop"
 	finalChunk := chatCompletionResponse{
 		ID:      "chatcmpl-" + currentChatID,
+		ChatID:  currentChatID,
 		Object:  "chat.completion.chunk",
 		Created: time.Now().Unix(),
 		Model:   modelName,
