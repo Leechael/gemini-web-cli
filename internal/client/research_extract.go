@@ -8,33 +8,148 @@ import (
 	"github.com/Leechael/gemini-web-cli/internal/types"
 )
 
-// extractResearchResultFromRaw extracts the deep research report from raw turn data.
+type researchRawState struct {
+	state   string
+	text    string
+	sources map[int]types.GroundingSource
+}
+
+// extractResearchResultFromRaw extracts the latest completed deep research report
+// from raw turn data. If a newer raw turn says the task is still running or
+// waiting for confirmation, older completed reports in the same chat are ignored.
 func extractResearchResultFromRaw(rawTurns []json.RawMessage) (string, map[int]types.GroundingSource) {
+	for _, rawTurn := range rawTurns {
+		state := inspectResearchRawTurn(rawTurn)
+		switch state.state {
+		case "done":
+			return state.text, state.sources
+		case "running", "pending_confirm":
+			return "", nil
+		}
+	}
+	return "", nil
+}
+
+func inspectResearchStatusFromRaw(rawTurns []json.RawMessage) *ResearchStatus {
+	for _, rawTurn := range rawTurns {
+		state := inspectResearchRawTurn(rawTurn)
+		switch state.state {
+		case "done":
+			return &ResearchStatus{State: "done", TextLen: len(state.text)}
+		case "running", "pending_confirm":
+			return &ResearchStatus{State: state.state}
+		}
+	}
+	return nil
+}
+
+func inspectResearchRawTurn(rawTurn json.RawMessage) researchRawState {
+	var turn []any
+	if err := json.Unmarshal(rawTurn, &turn); err != nil {
+		return researchRawState{}
+	}
+
+	cand, _ := protocol.ArrayAt(turn, 3, 0, 0)
+	if cand != nil {
+		if text, sources := extractResearchResultFromCandidate(cand); text != "" {
+			return researchRawState{state: "done", text: text, sources: sources}
+		}
+	}
+
+	markers := researchMarkers{}
+	collectResearchMarkers(turn, &markers)
+	if markers.running {
+		return researchRawState{state: "running"}
+	}
+	if markers.pendingConfirm {
+		return researchRawState{state: "pending_confirm"}
+	}
+	return researchRawState{}
+}
+
+func latestAssistantTextFromRaw(rawTurns []json.RawMessage) string {
 	for _, rawTurn := range rawTurns {
 		var turn []any
 		if err := json.Unmarshal(rawTurn, &turn); err != nil {
 			continue
 		}
-
 		cand, _ := protocol.ArrayAt(turn, 3, 0, 0)
 		if cand == nil {
 			continue
 		}
-
-		drData, _ := protocol.ArrayAt(cand, 30, 0)
-		if drData == nil || len(drData) < 5 {
-			continue
+		text := protocol.FirstString(protocol.StringAt(cand, 1, 0), protocol.StringAt(cand, 22, 0))
+		text = protocol.StripCardURLLines(text)
+		if text != "" {
+			return text
 		}
-
-		candidateText, ok := drData[4].(string)
-		if !ok || len(candidateText) < 200 {
-			continue
-		}
-
-		sources := extractResearchSources(drData)
-		return candidateText, sources
 	}
-	return "", nil
+	return ""
+}
+
+func extractResearchResultFromCandidate(cand []any) (string, map[int]types.GroundingSource) {
+	drData, _ := protocol.ArrayAt(cand, 30, 0)
+	if drData == nil || len(drData) < 5 {
+		return "", nil
+	}
+
+	candidateText, ok := drData[4].(string)
+	if !ok || len(candidateText) < 200 {
+		return "", nil
+	}
+
+	sources := extractResearchSources(drData)
+	return candidateText, sources
+}
+
+type researchMarkers struct {
+	running        bool
+	pendingConfirm bool
+}
+
+func collectResearchMarkers(value any, markers *researchMarkers) {
+	switch v := value.(type) {
+	case []any:
+		for _, item := range v {
+			collectResearchMarkers(item, markers)
+		}
+	case map[string]any:
+		if rawState, ok := v["70"]; ok {
+			switch researchStateNumber(rawState) {
+			case 3:
+				markers.running = true
+			case 2:
+				markers.pendingConfirm = true
+			}
+		}
+		if _, ok := v["56"]; ok {
+			markers.pendingConfirm = true
+		}
+		for _, item := range v {
+			collectResearchMarkers(item, markers)
+		}
+	case string:
+		if strings.Contains(v, "immersive_entry_chip") {
+			markers.running = true
+		}
+		if strings.Contains(v, "deep_research_confirmation_content") {
+			markers.pendingConfirm = true
+		}
+	}
+}
+
+func researchStateNumber(value any) int {
+	switch v := value.(type) {
+	case float64:
+		if v == float64(int(v)) {
+			return int(v)
+		}
+	case int:
+		return v
+	case json.Number:
+		i, _ := v.Int64()
+		return int(i)
+	}
+	return 0
 }
 
 func extractResearchSources(drData []any) map[int]types.GroundingSource {
