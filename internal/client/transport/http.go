@@ -8,6 +8,10 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
+
+	"github.com/Leechael/gemini-web-cli/internal/client/protocol"
+	"github.com/Leechael/gemini-web-cli/internal/client/transport/rpclog"
 )
 
 const defaultUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
@@ -39,6 +43,8 @@ type PostBatchMultiRequest struct {
 
 // PostBatch sends a batchexecute request and returns the raw response body.
 func PostBatch(ctx context.Context, req PostBatchRequest) ([]byte, error) {
+	start := time.Now()
+
 	rpcReq := []any{
 		[]any{
 			[]any{req.RPCID, req.Payload, nil, "generic"},
@@ -52,12 +58,22 @@ func PostBatch(ctx context.Context, req PostBatchRequest) ([]byte, error) {
 	form := url.Values{}
 	form.Set("at", req.AccessToken)
 	form.Set("f.req", string(reqJSON))
+	formEncoded := form.Encode()
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", req.URL, strings.NewReader(form.Encode()))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", req.URL, strings.NewReader(formEncoded))
 	if err != nil {
 		return nil, err
 	}
 	setBatchHeaders(httpReq, req.URL, req.UserAgent)
+
+	entry := rpclog.Entry{
+		Method:     httpReq.Method,
+		URL:        httpReq.URL.String(),
+		Kind:       rpclog.KindBatch,
+		ReqHeaders: httpReq.Header.Clone(),
+		ReqBody:    rpclog.RedactAT(formEncoded),
+		RPCIDs:     []string{req.RPCID},
+	}
 
 	client := req.Client
 	if client == nil {
@@ -65,13 +81,32 @@ func PostBatch(ctx context.Context, req PostBatchRequest) ([]byte, error) {
 	}
 	resp, err := client.Do(httpReq)
 	if err != nil {
+		entry.Status = 0
+		entry.Error = err.Error()
+		entry.DurMS = time.Since(start).Milliseconds()
+		_ = rpclog.Log(ctx, entry)
 		return nil, err
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
+	body, readErr := io.ReadAll(resp.Body)
+	entry.Status = resp.StatusCode
+	entry.RespBody = rpclog.BytesBody(body)
+	entry.DurMS = time.Since(start).Milliseconds()
+	if readErr != nil {
+		entry.Error = readErr.Error()
+	} else if resp.StatusCode != http.StatusOK {
+		entry.Error = fmt.Sprintf("batchexecute returned HTTP %d", resp.StatusCode)
+	} else {
+		stripped := protocol.StripResponsePrefix(body)
+		if _, code, _ := protocol.ExtractRPCBody(stripped, req.RPCID); code != 0 {
+			entry.RejectCode = &code
+		}
+	}
+	_ = rpclog.Log(ctx, entry)
+
+	if readErr != nil {
+		return nil, readErr
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("batchexecute returned HTTP %d", resp.StatusCode)
@@ -81,9 +116,13 @@ func PostBatch(ctx context.Context, req PostBatchRequest) ([]byte, error) {
 
 // PostBatchMulti sends multiple RPCs in one batchexecute request and returns the raw response body.
 func PostBatchMulti(ctx context.Context, req PostBatchMultiRequest) ([]byte, error) {
+	start := time.Now()
+
 	calls := make([]any, 0, len(req.Calls))
+	rpcIDs := make([]string, 0, len(req.Calls))
 	for _, call := range req.Calls {
 		calls = append(calls, []any{call.ID, call.Payload, nil, "generic"})
+		rpcIDs = append(rpcIDs, call.ID)
 	}
 	rpcReq := []any{calls}
 	reqJSON, err := json.Marshal(rpcReq)
@@ -94,12 +133,22 @@ func PostBatchMulti(ctx context.Context, req PostBatchMultiRequest) ([]byte, err
 	form := url.Values{}
 	form.Set("at", req.AccessToken)
 	form.Set("f.req", string(reqJSON))
+	formEncoded := form.Encode()
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", req.URL, strings.NewReader(form.Encode()))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", req.URL, strings.NewReader(formEncoded))
 	if err != nil {
 		return nil, err
 	}
 	setBatchHeaders(httpReq, req.URL, req.UserAgent)
+
+	entry := rpclog.Entry{
+		Method:     httpReq.Method,
+		URL:        httpReq.URL.String(),
+		Kind:       rpclog.KindBatchMulti,
+		ReqHeaders: httpReq.Header.Clone(),
+		ReqBody:    rpclog.RedactAT(formEncoded),
+		RPCIDs:     rpcIDs,
+	}
 
 	client := req.Client
 	if client == nil {
@@ -107,13 +156,37 @@ func PostBatchMulti(ctx context.Context, req PostBatchMultiRequest) ([]byte, err
 	}
 	resp, err := client.Do(httpReq)
 	if err != nil {
+		entry.Status = 0
+		entry.Error = err.Error()
+		entry.DurMS = time.Since(start).Milliseconds()
+		_ = rpclog.Log(ctx, entry)
 		return nil, err
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
+	body, readErr := io.ReadAll(resp.Body)
+	entry.Status = resp.StatusCode
+	entry.RespBody = rpclog.BytesBody(body)
+	entry.DurMS = time.Since(start).Milliseconds()
+	if readErr != nil {
+		entry.Error = readErr.Error()
+	} else if resp.StatusCode != http.StatusOK {
+		entry.Error = fmt.Sprintf("batchexecute returned HTTP %d", resp.StatusCode)
+	} else {
+		stripped := protocol.StripResponsePrefix(body)
+		if _, codes, _ := protocol.ExtractRPCBodies(stripped, rpcIDs); len(codes) > 0 {
+			for _, id := range rpcIDs {
+				if code, ok := codes[id]; ok && code != 0 {
+					entry.RejectCode = &code
+					break
+				}
+			}
+		}
+	}
+	_ = rpclog.Log(ctx, entry)
+
+	if readErr != nil {
+		return nil, readErr
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("batchexecute returned HTTP %d", resp.StatusCode)

@@ -8,6 +8,9 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
+
+	"github.com/Leechael/gemini-web-cli/internal/client/transport/rpclog"
 )
 
 // StreamURLConfig contains the query and path inputs for a StreamGenerate URL.
@@ -84,6 +87,8 @@ func (e *StreamRequestError) Unwrap() error {
 
 // PostStreamGenerate sends a StreamGenerate request and returns the response body.
 func PostStreamGenerate(ctx context.Context, req StreamGenerateRequest) (io.ReadCloser, error) {
+	start := time.Now()
+
 	outerReq := []any{nil, string(req.InnerReq)}
 	outerJSON, err := json.Marshal(outerReq)
 	if err != nil {
@@ -93,8 +98,9 @@ func PostStreamGenerate(ctx context.Context, req StreamGenerateRequest) (io.Read
 	form := url.Values{}
 	form.Set("at", req.AccessToken)
 	form.Set("f.req", string(outerJSON))
+	formEncoded := form.Encode()
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", req.URL, strings.NewReader(form.Encode()))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", req.URL, strings.NewReader(formEncoded))
 	if err != nil {
 		return nil, err
 	}
@@ -104,22 +110,49 @@ func PostStreamGenerate(ctx context.Context, req StreamGenerateRequest) (io.Read
 	}
 	httpReq.Header.Set("x-goog-ext-525005358-jspb", fmt.Sprintf(`["%s",1]`, req.UUID))
 
+	entry := rpclog.Entry{
+		Method:     httpReq.Method,
+		URL:        httpReq.URL.String(),
+		Kind:       rpclog.KindStream,
+		ReqHeaders: httpReq.Header.Clone(),
+		ReqBody:    rpclog.RedactAT(formEncoded),
+	}
+
 	client := req.Client
 	if client == nil {
 		client = http.DefaultClient
 	}
 	resp, err := client.Do(httpReq)
 	if err != nil {
+		entry.Status = 0
+		entry.Error = err.Error()
+		entry.DurMS = time.Since(start).Milliseconds()
+		_ = rpclog.Log(ctx, entry)
 		return nil, &StreamRequestError{Err: err}
 	}
 	if resp.StatusCode != http.StatusOK {
 		defer resp.Body.Close()
 		body, _ := io.ReadAll(resp.Body)
+		entry.Status = resp.StatusCode
+		entry.RespBody = rpclog.BytesBody(body)
+		entry.Error = fmt.Sprintf("stream returned HTTP %d", resp.StatusCode)
+		entry.DurMS = time.Since(start).Milliseconds()
+		_ = rpclog.Log(ctx, entry)
 		snippet := string(body)
 		if len(snippet) > 200 {
 			snippet = snippet[:200]
 		}
 		return nil, &HTTPStatusError{StatusCode: resp.StatusCode, BodySnippet: snippet}
 	}
-	return resp.Body, nil
+
+	entry.Status = http.StatusOK
+	wrapped := rpclog.WrapStreamReadCloser(resp.Body, func(buf []byte, readErr error) {
+		entry.RespBody = rpclog.BytesBody(buf)
+		entry.DurMS = time.Since(start).Milliseconds()
+		if readErr != nil && readErr != io.EOF {
+			entry.Error = readErr.Error()
+		}
+		_ = rpclog.Log(ctx, entry)
+	})
+	return wrapped, nil
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/Leechael/gemini-web-cli/internal/client/transport/rpclog"
 	"github.com/Leechael/gemini-web-cli/internal/server"
 )
 
@@ -29,6 +30,8 @@ var serveCmd = &cobra.Command{
 
 func runServe(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
+
+	rpclog.SetEnabled(true)
 
 	cfg, _, cookieSource, err := clientConfigFromFlagsWithStateDir(serveStateDir)
 	if err != nil {

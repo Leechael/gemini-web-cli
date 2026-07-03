@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Leechael/gemini-web-cli/internal/client/transport/rpclog"
 	"github.com/Leechael/gemini-web-cli/internal/types"
 )
 
@@ -142,6 +143,7 @@ func New(cfg Config) (*Client, error) {
 
 // Init fetches the access token and session data from the Gemini app page.
 func (c *Client) Init(ctx context.Context) error {
+	start := time.Now()
 	appURL := c.appPath()
 
 	req, err := http.NewRequestWithContext(ctx, "GET", baseURL+appURL, nil)
@@ -150,18 +152,39 @@ func (c *Client) Init(ctx context.Context) error {
 	}
 	req.Header.Set("User-Agent", userAgent)
 
+	entry := rpclog.Entry{
+		Method:     req.Method,
+		URL:        req.URL.String(),
+		Kind:       rpclog.KindInit,
+		ReqHeaders: req.Header.Clone(),
+	}
+
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		entry.Status = 0
+		entry.Error = err.Error()
+		entry.DurMS = time.Since(start).Milliseconds()
+		_ = rpclog.Log(ctx, entry)
 		return fmt.Errorf("init request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	finalURL := resp.Request.URL.String()
 	if strings.Contains(finalURL, "accounts.google.com") {
+		entry.Status = resp.StatusCode
+		entry.DurMS = time.Since(start).Milliseconds()
+		entry.Error = "redirected to Google login"
+		_ = rpclog.Log(ctx, entry)
 		return fmt.Errorf("session expired — redirected to Google login. Re-import cookies with: gemini-web-cli import '<cookie_string>'")
 	}
 
 	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		entry.Status = resp.StatusCode
+		entry.RespBody = rpclog.BytesBody(body)
+		entry.Error = fmt.Sprintf("init returned HTTP %d", resp.StatusCode)
+		entry.DurMS = time.Since(start).Milliseconds()
+		_ = rpclog.Log(ctx, entry)
 		if resp.StatusCode == 429 {
 			return &RateLimitError{StatusCode: resp.StatusCode}
 		}
@@ -169,6 +192,13 @@ func (c *Client) Init(ctx context.Context) error {
 	}
 
 	body, err := io.ReadAll(resp.Body)
+	entry.Status = resp.StatusCode
+	entry.RespBody = rpclog.BytesBody(body)
+	entry.DurMS = time.Since(start).Milliseconds()
+	if err != nil {
+		entry.Error = fmt.Sprintf("reading init response: %v", err)
+	}
+	_ = rpclog.Log(ctx, entry)
 	if err != nil {
 		return fmt.Errorf("reading init response: %w", err)
 	}

@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Leechael/gemini-web-cli/internal/client"
+	"github.com/Leechael/gemini-web-cli/internal/client/transport/rpclog"
 )
 
 var (
@@ -38,6 +39,7 @@ var rootCmd = &cobra.Command{
 		cmd.SilenceUsage = true
 		if verbose {
 			client.SetVerbose(os.Stderr)
+			rpclog.SetEnabled(true)
 		}
 	},
 }
