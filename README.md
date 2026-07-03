@@ -18,7 +18,7 @@ cd gemini-web-cli
 make build    # outputs to ./bin/gemini-web-cli
 ```
 
-## Quick Start
+## Quick start
 
 ```bash
 # Import cookies from browser (copy raw cookie string from DevTools)
@@ -36,109 +36,23 @@ gemini-web-cli reply c_abc123 "And what's its population?"
 # List your chats
 gemini-web-cli list
 
-# Start the OpenAI-compatible REST server
+# Start the OpenAI-compatible REST server and MCP endpoint
 gemini-web-cli serve --state-dir ~/.local/share/gemini-web-cli/serve
 ```
 
-## REST API server
+## Serve & MCP
 
-`gemini-web-cli serve` starts a local OpenAI-compatible API server.
+`gemini-web-cli serve` starts a local HTTP server with:
+
+- OpenAI-compatible REST API at `/v1/`
+- Model Context Protocol (MCP) endpoint at `/mcp` (Streamable HTTP, stateless)
+- Swagger UI at `/docs`
 
 ```bash
 gemini-web-cli serve --port 8080 --state-dir ~/.local/share/gemini-web-cli/serve
 ```
 
-Exposed endpoints:
-
-- `GET /v1/models`
-- `POST /v1/chat/completions`
-- `POST /v1/research`
-- `GET /v1/research/{id}`
-- `GET /v1/research/{id}/status`
-- `GET /v1/research/{id}/result`
-- `GET /docs`
-- `GET /openapi.json`
-
-`chat_id` is a gemini-web-cli extension, not part of the OpenAI Chat Completions API. Standard OpenAI clients can omit it. When `--state-dir` is set, the server persists a chat mapping at `<state-dir>/chat-map.pb` and uses OpenAI `messages` history hashes to try to continue the matching Gemini chat automatically. If no mapping matches, the server creates a new Gemini chat and sends a flattened text prompt.
-
-`--state-dir` also participates in cookie lookup. Serve-mode cookie priority is:
-
-1. `--cookies-json`
-2. `<state-dir>/cookies.json`
-3. `$GEMINI_WEB_COOKIES_JSON_PATH`
-4. Auto-discovered `cookies.json` paths
-5. `GEMINI_SECURE_1PSID` / `GEMINI_SECURE_1PSIDTS`
-
-The startup banner prints the actual cookie source and chat mapping path. Existing cookies are not migrated into `--state-dir` automatically.
-
-Chat mapping entries are either verified or synthetic. Verified entries correspond to Gemini states produced by this server. Synthetic entries are best-effort anchors inferred from client-provided history. Forked conversation branches are not officially supported, and Gemini Web may reject or reinterpret old turn metadata. Image parts, tool calls, and function calls are not supported by the REST chat endpoint.
-
-## MCP server
-
-`gemini-web-cli serve` also exposes a [Model Context Protocol](https://modelcontextprotocol.io) server at `/mcp` using the Streamable HTTP transport (stateless). It lets MCP-compatible clients (Cursor, VS Code, Claude Desktop, etc.) drive Gemini deep research and one-shot prompts as tools.
-
-```bash
-gemini-web-cli serve --port 8080 --mcp-default-model gemini-3.5-flash
-```
-
-The MCP endpoint reuses the same server process, cookies, and state as the OpenAI-compatible REST API, and is reachable at `http://127.0.0.1:8080/mcp`. It is **not** behind the `--api-key` middleware, so keep it bound to `127.0.0.1` (the default) and do not expose it on a public host without your own auth proxy.
-
-`--mcp-default-model` sets the default model for MCP tool calls that omit `model`. A per-call `model` argument overrides it; when both are empty, Gemini auto-selects (`unspecified`).
-
-Exposed MCP tools:
-
-- `gemini_research_create` — submit a deep research task; returns `id`, `title`, `eta_text`, `steps`. Args: `prompt` (required), `model` (optional).
-- `gemini_research_status` — poll task state (`done`, `running`, `pending_confirm`, `not_research`, `empty`). Args: `id` (required).
-- `gemini_research_result` — fetch the completed report text and source citations. Args: `id` (required).
-- `gemini_research_list` — list completed deep research reports from the library. Args: `count` (optional, default `13`), `cursor` (optional).
-- `gemini_research_reply` — send a follow-up prompt to an existing deep research chat to refine or continue the research; returns an immediate acknowledgement, then poll `gemini_research_status`. Args: `id` (required), `prompt` (required), `model` (optional).
-- `gemini_ask` — single-turn prompt (search-like, no conversation state); returns `text` plus any generated image/video/media URLs. Args: `prompt` (required), `model` (optional).
-- `gemini_list_models` — list available model names and display names. No args.
-
-Deep research is asynchronous: call `gemini_research_create`, poll `gemini_research_status` until `state` is `done`, then call `gemini_research_result`. Use `gemini_research_list` to browse completed reports and `gemini_research_reply` to refine an in-progress or completed research thread.
-
-### Client configuration
-
-Cursor (`.cursor/mcp.json`) — supports local Streamable HTTP directly:
-
-```json
-{
-  "mcpServers": {
-    "gemini-web-cli": {
-      "type": "streamable-http",
-      "url": "http://127.0.0.1:8080/mcp"
-    }
-  }
-}
-```
-
-VS Code (`.vscode/mcp.json`):
-
-```json
-{
-  "servers": {
-    "gemini-web-cli": {
-      "type": "http",
-      "url": "http://127.0.0.1:8080/mcp"
-    }
-  }
-}
-```
-
-Claude Desktop's local `claude_desktop_config.json` only launches stdio servers; to reach this local HTTP endpoint, bridge it with [`mcp-remote`](https://www.npmjs.com/package/mcp-remote):
-
-```json
-{
-  "mcpServers": {
-    "gemini-web-cli": {
-      "command": "npx",
-      "args": ["-y", "mcp-remote", "http://127.0.0.1:8080/mcp"]
-    }
-  }
-}
-```
-
-Restart the client after editing its config. Keep `gemini-web-cli serve` running while you use the tools.
+See [docs/serve.md](docs/serve.md) for the full reference: serve flags, REST endpoints, chat state mapping, MCP tools, and client configuration (Cursor, VS Code, Claude Desktop).
 
 ## Commands
 
@@ -407,7 +321,7 @@ gemini-web-cli debug housekeeping list-gems --pretty
 
 Supported housekeeping names: `heartbeat`, `ui-heartbeat`, `set-lang`, `ma-gu-ac`, `list-gems`, `bulk-log`, `log-event`, `log-model-select`.
 
-## Global Flags
+## Global flags
 
 | Flag | Description | Default |
 |------|-------------|---------|
@@ -438,7 +352,7 @@ The file accepts multiple formats:
 
 The required cookie is `__Secure-1PSID`. `__Secure-1PSIDTS` is recommended but optional.
 
-## E2E Tests
+## E2E tests
 
 ```bash
 ./scripts/e2e-test.sh cookies.json
