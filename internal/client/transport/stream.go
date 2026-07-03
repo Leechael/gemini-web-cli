@@ -69,6 +69,19 @@ func (e *HTTPStatusError) Error() string {
 	return fmt.Sprintf("stream returned HTTP %d: %s", e.StatusCode, e.BodySnippet)
 }
 
+// StreamRequestError wraps failures that happen before Gemini returns an HTTP response.
+type StreamRequestError struct {
+	Err error
+}
+
+func (e *StreamRequestError) Error() string {
+	return fmt.Sprintf("stream request failed: %v", e.Err)
+}
+
+func (e *StreamRequestError) Unwrap() error {
+	return e.Err
+}
+
 // PostStreamGenerate sends a StreamGenerate request and returns the response body.
 func PostStreamGenerate(ctx context.Context, req StreamGenerateRequest) (io.ReadCloser, error) {
 	outerReq := []any{nil, string(req.InnerReq)}
@@ -97,7 +110,7 @@ func PostStreamGenerate(ctx context.Context, req StreamGenerateRequest) (io.Read
 	}
 	resp, err := client.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("stream request failed: %w", err)
+		return nil, &StreamRequestError{Err: err}
 	}
 	if resp.StatusCode != http.StatusOK {
 		defer resp.Body.Close()

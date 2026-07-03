@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Leechael/gemini-web-cli/internal/client/transport"
 	"github.com/Leechael/gemini-web-cli/internal/types"
 )
 
@@ -56,6 +57,48 @@ func TestParseStreamResponse_ReturnsNonEOFReadErrorAfterOutput(t *testing.T) {
 	err := (&Client{}).parseStreamResponse(reader, func(out *types.ModelOutput) {})
 	if err == nil || !strings.Contains(err.Error(), "boom") {
 		t.Fatalf("err = %v, want boom", err)
+	}
+}
+
+func TestIsRetryableStreamGenerateError(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "unexpected EOF before response",
+			err:  &transport.StreamRequestError{Err: io.ErrUnexpectedEOF},
+			want: true,
+		},
+		{
+			name: "wrapped EOF before response",
+			err:  &transport.StreamRequestError{Err: errors.New(`Post "https://gemini.google.com/...": unexpected EOF`)},
+			want: true,
+		},
+		{
+			name: "bad gateway",
+			err:  &transport.HTTPStatusError{StatusCode: 502},
+			want: true,
+		},
+		{
+			name: "bad request",
+			err:  &transport.HTTPStatusError{StatusCode: 400},
+			want: false,
+		},
+		{
+			name: "non stream request error",
+			err:  errors.New("unexpected EOF"),
+			want: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isRetryableStreamGenerateError(tc.err); got != tc.want {
+				t.Fatalf("isRetryableStreamGenerateError() = %t, want %t", got, tc.want)
+			}
+		})
 	}
 }
 
