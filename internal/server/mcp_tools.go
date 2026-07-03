@@ -146,9 +146,11 @@ func (s *Server) handleMCPResearchStatus(ctx context.Context, req mcp.CallToolRe
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
+	log.Printf("mcp research status state=%q text_len=%d", status.State, status.TextLen)
 	result := map[string]any{
-		"id":    id,
-		"state": status.State,
+		"id":       id,
+		"state":    status.State,
+		"text_len": status.TextLen,
 	}
 	return mcp.NewToolResultJSON(result)
 }
@@ -183,6 +185,7 @@ func (s *Server) handleMCPResearchResult(ctx context.Context, req mcp.CallToolRe
 		})
 	}
 
+	log.Printf("mcp research result text_len=%d sources=%d", len(text), len(respSources))
 	result := map[string]any{
 		"id":      id,
 		"text":    text,

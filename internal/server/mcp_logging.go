@@ -178,7 +178,11 @@ func mcpToolLoggingMiddleware(next mcpserver.ToolHandlerFunc) mcpserver.ToolHand
 			return result, err
 		}
 		isError := result != nil && result.IsError
-		log.Printf("mcp call done tool=%q is_error=%t dur=%s", req.Params.Name, isError, dur)
+		if isError {
+			log.Printf("mcp call done tool=%q is_error=true error=%q dur=%s", req.Params.Name, summarizeMCPToolError(result), dur)
+			return result, nil
+		}
+		log.Printf("mcp call done tool=%q is_error=false dur=%s", req.Params.Name, dur)
 		return result, nil
 	}
 }
@@ -213,4 +217,23 @@ func summarizeMCPArgValue(v any) any {
 	default:
 		return value
 	}
+}
+
+func summarizeMCPToolError(result *mcp.CallToolResult) string {
+	if result == nil || len(result.Content) == 0 {
+		return ""
+	}
+	for _, item := range result.Content {
+		if text, ok := item.(mcp.TextContent); ok {
+			return truncateLogText(text.Text, 500)
+		}
+	}
+	return truncateLogText(fmt.Sprintf("%v", result.Content[0]), 500)
+}
+
+func truncateLogText(text string, limit int) string {
+	if len(text) <= limit {
+		return text
+	}
+	return text[:limit] + "..."
 }
