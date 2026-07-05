@@ -18,6 +18,7 @@ The following flags are available:
 | `--expose-thoughts` | Include model thoughts/reasoning in API responses (or `GEMINI_WEB_CLI_EXPOSE_THOUGHTS=1`) | `false` |
 | `--state-dir` | Directory for state (cookie lookup + chat map persistence) | — |
 | `--mcp-default-model` | Default model for MCP tool calls that omit `model` | — |
+| `--rpc-log` | Enable RPC request/response logging to `data/rpc_logs` (or `GEMINI_WEB_CLI_RPC_LOG_DIR`) | `false` |
 
 The startup banner prints the active cookie source, LAN IPs, and chat mapping path.
 
