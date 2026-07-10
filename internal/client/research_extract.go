@@ -121,8 +121,10 @@ func collectResearchMarkers(value any, markers *researchMarkers) {
 				markers.pendingConfirm = true
 			}
 		}
-		if _, ok := v["56"]; ok {
-			markers.pendingConfirm = true
+		for _, key := range []string{"56", "57"} {
+			if _, ok := v[key]; ok {
+				markers.pendingConfirm = true
+			}
 		}
 		for _, item := range v {
 			collectResearchMarkers(item, markers)

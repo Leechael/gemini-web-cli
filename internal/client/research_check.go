@@ -39,6 +39,15 @@ func (c *Client) CheckDeepResearch(ctx context.Context, cid string) (*ResearchSt
 
 func classifyResearchText(text string) *ResearchStatus {
 	lower := strings.ToLower(text)
+	done := strings.Contains(text, "我已经完成了研究") ||
+		strings.Contains(text, "研究完成") ||
+		strings.Contains(lower, "i have completed the research") ||
+		strings.Contains(lower, "i've completed the research") ||
+		strings.Contains(lower, "research is complete")
+	trimmed := strings.TrimLeft(text, " \t\n")
+	if done || (len(text) > 2000 && (strings.HasPrefix(trimmed, "#") || strings.Contains(text, "\n## "))) {
+		return &ResearchStatus{State: "done", TextLen: len(text)}
+	}
 	if strings.Contains(lower, "deep research") || strings.Contains(text, "深度研究") || strings.Contains(lower, "deep_research") {
 		return &ResearchStatus{State: "running", TextLen: len(text)}
 	}
