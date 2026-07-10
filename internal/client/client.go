@@ -181,7 +181,7 @@ func (c *Client) Init(ctx context.Context) error {
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(resp.Body)
 		entry.Status = resp.StatusCode
-		entry.RespBody = rpclog.BytesBody(body)
+		entry.RespBody = rpclog.BytesBody(rpclog.RedactInitBody(body))
 		entry.Error = fmt.Sprintf("init returned HTTP %d", resp.StatusCode)
 		entry.DurMS = time.Since(start).Milliseconds()
 		rpclog.Log(ctx, entry)
@@ -193,7 +193,7 @@ func (c *Client) Init(ctx context.Context) error {
 
 	body, err := io.ReadAll(resp.Body)
 	entry.Status = resp.StatusCode
-	entry.RespBody = rpclog.BytesBody(body)
+	entry.RespBody = rpclog.BytesBody(rpclog.RedactInitBody(body))
 	entry.DurMS = time.Since(start).Milliseconds()
 	if err != nil {
 		entry.Error = fmt.Sprintf("reading init response: %v", err)

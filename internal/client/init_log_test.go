@@ -60,8 +60,11 @@ func TestInitLogsRequestResponse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadFile resp_body: %v", err)
 	}
-	if !strings.Contains(string(respBody), "init-token") {
-		t.Fatalf("resp_body missing token: %s", respBody)
+	if strings.Contains(string(respBody), "init-token") || strings.Contains(string(respBody), `"FdrFJe":"sid"`) {
+		t.Fatalf("resp_body contains session credentials: %s", respBody)
+	}
+	if !strings.Contains(string(respBody), `"SNlM0e":"<redacted>"`) || !strings.Contains(string(respBody), `"FdrFJe":"<redacted>"`) {
+		t.Fatalf("resp_body missing redaction markers: %s", respBody)
 	}
 	if entry.ReqHeaders.Get("User-Agent") == "" {
 		t.Fatalf("User-Agent header missing")

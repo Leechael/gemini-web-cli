@@ -278,7 +278,10 @@ func Log(ctx context.Context, e Entry) {
 	}
 }
 
-var atRe = regexp.MustCompile(`(^|&)at=[^&]*`)
+var (
+	atRe             = regexp.MustCompile(`(^|&)at=[^&]*`)
+	initCredentialRe = regexp.MustCompile(`("(?:SNlM0e|FdrFJe)"\s*:\s*")[^"]*(")`)
+)
 
 // RedactAT replaces `at=<token>` form values with `at=<redacted>`.
 func RedactAT(s string) string {
@@ -288,6 +291,11 @@ func RedactAT(s string) string {
 		}
 		return "at=<redacted>"
 	})
+}
+
+// RedactInitBody removes credentials embedded in the Gemini app HTML.
+func RedactInitBody(body []byte) []byte {
+	return initCredentialRe.ReplaceAll(body, []byte(`${1}<redacted>${2}`))
 }
 
 // RedactHeaders returns a copy of h with sensitive header values redacted.
