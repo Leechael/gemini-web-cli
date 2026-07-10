@@ -476,7 +476,7 @@ func TestStreamReadCloserLogsOnError(t *testing.T) {
 	assertBodyBlob(t, dir, entry.RespBody, []byte("partial"))
 }
 
-func TestStreamReadCloserLogsOnCloseWithoutEOF(t *testing.T) {
+func TestStreamReadCloserDrainsCompleteBodyOnClose(t *testing.T) {
 	dir, logger, capture := newStreamCapture(t)
 	inner := io.NopCloser(strings.NewReader("never read"))
 	wrapped := WrapStreamReadCloser(inner, capture, func(body *Body, err error) {
@@ -489,7 +489,7 @@ func TestStreamReadCloserLogsOnCloseWithoutEOF(t *testing.T) {
 		t.Fatalf("Close: %v", err)
 	}
 	entry := readLatestLoggerEntry(t, dir)
-	assertBodyBlob(t, dir, entry.RespBody, nil)
+	assertBodyBlob(t, dir, entry.RespBody, []byte("never read"))
 }
 
 func newStreamCapture(t *testing.T) (string, *Logger, *BodyCapture) {

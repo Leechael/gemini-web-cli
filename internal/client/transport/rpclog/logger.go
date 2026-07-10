@@ -438,12 +438,13 @@ func (l *Logger) materializeBodyLocked(body *Body, label, today string) error {
 // StreamReadCloser copies a stream response directly to a body blob and logs
 // it when the stream ends, fails, or is closed.
 type StreamReadCloser struct {
-	rc      io.ReadCloser
-	capture *BodyCapture
-	err     error
-	logged  bool
-	mu      sync.Mutex
-	fn      func(*Body, error)
+	rc       io.ReadCloser
+	capture  *BodyCapture
+	readErr  error
+	finalErr error
+	logged   bool
+	mu       sync.Mutex
+	fn       func(*Body, error)
 }
 
 // WrapStreamReadCloser wraps rc with disk-backed body capture.
@@ -458,8 +459,8 @@ func (r *StreamReadCloser) Read(p []byte) (int, error) {
 	}
 	if err != nil {
 		r.mu.Lock()
-		if r.err == nil {
-			r.err = err
+		if r.readErr == nil {
+			r.readErr = err
 		}
 		r.mu.Unlock()
 	}
@@ -472,13 +473,20 @@ func (r *StreamReadCloser) SetFinalError(err error) {
 		return
 	}
 	r.mu.Lock()
-	r.err = err
+	r.finalErr = err
 	r.mu.Unlock()
 }
 
 func (r *StreamReadCloser) Close() error {
+	r.mu.Lock()
+	shouldDrain := r.readErr == nil
+	r.mu.Unlock()
+	if shouldDrain {
+		_, _ = io.Copy(io.Discard, r)
+	}
+	closeErr := r.rc.Close()
 	r.flush()
-	return r.rc.Close()
+	return closeErr
 }
 
 func (r *StreamReadCloser) flush() {
@@ -488,7 +496,11 @@ func (r *StreamReadCloser) flush() {
 		return
 	}
 	r.logged = true
-	r.fn(r.capture.Body(), r.err)
+	err := r.finalErr
+	if err == nil {
+		err = r.readErr
+	}
+	r.fn(r.capture.Body(), err)
 }
 
 // CaptureReadCloser copies reads directly to capture while preserving the
