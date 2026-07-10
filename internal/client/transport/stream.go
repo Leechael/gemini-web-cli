@@ -127,7 +127,7 @@ func PostStreamGenerate(ctx context.Context, req StreamGenerateRequest) (io.Read
 		entry.Status = 0
 		entry.Error = err.Error()
 		entry.DurMS = time.Since(start).Milliseconds()
-		_ = rpclog.Log(ctx, entry)
+		rpclog.Log(ctx, entry)
 		return nil, &StreamRequestError{Err: err}
 	}
 	if resp.StatusCode != http.StatusOK {
@@ -137,7 +137,7 @@ func PostStreamGenerate(ctx context.Context, req StreamGenerateRequest) (io.Read
 		entry.RespBody = rpclog.BytesBody(body)
 		entry.Error = fmt.Sprintf("stream returned HTTP %d", resp.StatusCode)
 		entry.DurMS = time.Since(start).Milliseconds()
-		_ = rpclog.Log(ctx, entry)
+		rpclog.Log(ctx, entry)
 		snippet := string(body)
 		if len(snippet) > 200 {
 			snippet = snippet[:200]
@@ -156,7 +156,7 @@ func PostStreamGenerate(ctx context.Context, req StreamGenerateRequest) (io.Read
 		if readErr != nil && readErr != io.EOF {
 			entry.Error = readErr.Error()
 		}
-		_ = rpclog.Log(ctx, entry)
+		rpclog.Log(ctx, entry)
 	})
 	return wrapped, nil
 }

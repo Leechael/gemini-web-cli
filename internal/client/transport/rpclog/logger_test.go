@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -201,6 +202,32 @@ func TestLoggerAppendsMultipleEntries(t *testing.T) {
 	}
 }
 
+func TestLoggerSetDirSwitchesTheActiveFile(t *testing.T) {
+	firstDir := t.TempDir()
+	secondDir := t.TempDir()
+	l := New()
+	l.SetDir(firstDir)
+	l.SetEnabled(true)
+	defer l.Close()
+
+	if err := l.Log(context.Background(), Entry{URL: "https://example.com/first"}); err != nil {
+		t.Fatalf("Log first: %v", err)
+	}
+	l.SetDir(secondDir)
+	if err := l.Log(context.Background(), Entry{URL: "https://example.com/second"}); err != nil {
+		t.Fatalf("Log second: %v", err)
+	}
+
+	first := readLatestLoggerEntry(t, firstDir)
+	if first.URL != "https://example.com/first" {
+		t.Fatalf("first URL = %q", first.URL)
+	}
+	second := readLatestLoggerEntry(t, secondDir)
+	if second.URL != "https://example.com/second" {
+		t.Fatalf("second URL = %q", second.URL)
+	}
+}
+
 func TestLoggerCleanupOldFiles(t *testing.T) {
 	dir := t.TempDir()
 
@@ -233,6 +260,77 @@ func TestLoggerCleanupOldFiles(t *testing.T) {
 	}
 	if entries[0].Name() != filepath.Base(recentFile) {
 		t.Fatalf("kept wrong file: %s", entries[0].Name())
+	}
+}
+
+func TestLoggerCleansOldLogsAndBlobsOnDailyRotation(t *testing.T) {
+	dir := t.TempDir()
+	l := New()
+	l.SetDir(dir)
+	l.SetEnabled(true)
+	defer l.Close()
+	if err := l.Log(context.Background(), Entry{URL: "https://example.com/today"}); err != nil {
+		t.Fatalf("Log initial: %v", err)
+	}
+
+	oldTime := time.Now().Add(-8 * 24 * time.Hour)
+	oldDate := oldTime.Format("2006-01-02")
+	oldLog := filepath.Join(dir, oldDate+".ndjson")
+	if err := os.WriteFile(oldLog, []byte("old\n"), 0640); err != nil {
+		t.Fatalf("WriteFile old log: %v", err)
+	}
+	oldBlobDir := filepath.Join(dir, "blobs", oldDate)
+	if err := os.MkdirAll(oldBlobDir, 0750); err != nil {
+		t.Fatalf("MkdirAll old blobs: %v", err)
+	}
+	oldBlob := filepath.Join(oldBlobDir, "response.blob")
+	if err := os.WriteFile(oldBlob, []byte("old body"), 0600); err != nil {
+		t.Fatalf("WriteFile old blob: %v", err)
+	}
+	if err := os.Chtimes(oldLog, oldTime, oldTime); err != nil {
+		t.Fatalf("Chtimes old log: %v", err)
+	}
+	if err := os.Chtimes(oldBlob, oldTime, oldTime); err != nil {
+		t.Fatalf("Chtimes old blob: %v", err)
+	}
+	if err := os.Chtimes(oldBlobDir, oldTime, oldTime); err != nil {
+		t.Fatalf("Chtimes old blob dir: %v", err)
+	}
+
+	l.mu.Lock()
+	l.date = oldDate
+	l.mu.Unlock()
+	if err := l.Log(context.Background(), Entry{URL: "https://example.com/rotated"}); err != nil {
+		t.Fatalf("Log rotated: %v", err)
+	}
+	if _, err := os.Stat(oldLog); !os.IsNotExist(err) {
+		t.Fatalf("old log still exists: %v", err)
+	}
+	if _, err := os.Stat(oldBlobDir); !os.IsNotExist(err) {
+		t.Fatalf("old blob directory still exists: %v", err)
+	}
+}
+
+func TestPackageLogReportsWriteFailure(t *testing.T) {
+	blockingPath := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(blockingPath, []byte("not a directory"), 0600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	logger := New()
+	logger.SetDir(filepath.Join(blockingPath, "rpc-logs"))
+	logger.SetEnabled(true)
+	origLogger := Default()
+	SetDefault(logger)
+	defer SetDefault(origLogger)
+
+	var output bytes.Buffer
+	origOutput := log.Writer()
+	log.SetOutput(&output)
+	defer log.SetOutput(origOutput)
+
+	Log(context.Background(), Entry{URL: "https://example.com"})
+	if !strings.Contains(output.String(), "rpc log: write entry:") {
+		t.Fatalf("log output = %q", output.String())
 	}
 }
 

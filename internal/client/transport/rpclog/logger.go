@@ -170,6 +170,14 @@ func (l *Logger) SetEnabled(enabled bool) {
 func (l *Logger) SetDir(dir string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if l.dir == dir {
+		return
+	}
+	if l.file != nil {
+		_ = l.file.Close()
+		l.file = nil
+	}
+	l.date = ""
 	l.dir = dir
 }
 
@@ -230,6 +238,7 @@ func (l *Logger) Log(ctx context.Context, e Entry) error {
 			l.file = nil
 		}
 		l.date = today
+		l.cleanupOldFilesLocked()
 	}
 	if l.file == nil {
 		path := filepath.Join(l.dir, today+".ndjson")
@@ -262,9 +271,11 @@ func (l *Logger) Log(ctx context.Context, e Entry) error {
 	return nil
 }
 
-// Log writes a single entry using the package-level logger.
-func Log(ctx context.Context, e Entry) error {
-	return defaultLogger.Log(ctx, e)
+// Log writes a single entry using the package-level logger and reports failures.
+func Log(ctx context.Context, e Entry) {
+	if err := defaultLogger.Log(ctx, e); err != nil {
+		log.Printf("rpc log: write entry: %v", err)
+	}
 }
 
 var atRe = regexp.MustCompile(`(^|&)at=[^&]*`)
@@ -461,24 +472,32 @@ func (l *Logger) cleanupOldFilesLocked() {
 	if l.dir == "" {
 		return
 	}
+	cutoff := time.Now().Add(-7 * 24 * time.Hour)
 	entries, err := os.ReadDir(l.dir)
+	if err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".ndjson") {
+				continue
+			}
+			info, infoErr := entry.Info()
+			if infoErr == nil && info.ModTime().Before(cutoff) {
+				_ = os.Remove(filepath.Join(l.dir, entry.Name()))
+			}
+		}
+	}
+
+	blobRoot := filepath.Join(l.dir, "blobs")
+	blobDirs, err := os.ReadDir(blobRoot)
 	if err != nil {
 		return
 	}
-	cutoff := time.Now().Add(-7 * 24 * time.Hour)
-	for _, e := range entries {
-		if e.IsDir() {
+	for _, entry := range blobDirs {
+		if !entry.IsDir() {
 			continue
 		}
-		if !strings.HasSuffix(e.Name(), ".ndjson") {
-			continue
-		}
-		info, err := e.Info()
-		if err != nil {
-			continue
-		}
-		if info.ModTime().Before(cutoff) {
-			_ = os.Remove(filepath.Join(l.dir, e.Name()))
+		info, infoErr := entry.Info()
+		if infoErr == nil && info.ModTime().Before(cutoff) {
+			_ = os.RemoveAll(filepath.Join(blobRoot, entry.Name()))
 		}
 	}
 }

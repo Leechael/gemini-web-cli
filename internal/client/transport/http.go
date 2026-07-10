@@ -84,7 +84,7 @@ func PostBatch(ctx context.Context, req PostBatchRequest) ([]byte, error) {
 		entry.Status = 0
 		entry.Error = err.Error()
 		entry.DurMS = time.Since(start).Milliseconds()
-		_ = rpclog.Log(ctx, entry)
+		rpclog.Log(ctx, entry)
 		return nil, err
 	}
 	defer resp.Body.Close()
@@ -103,7 +103,7 @@ func PostBatch(ctx context.Context, req PostBatchRequest) ([]byte, error) {
 			entry.RejectCode = &code
 		}
 	}
-	_ = rpclog.Log(ctx, entry)
+	rpclog.Log(ctx, entry)
 
 	if readErr != nil {
 		return nil, readErr
@@ -159,7 +159,7 @@ func PostBatchMulti(ctx context.Context, req PostBatchMultiRequest) ([]byte, err
 		entry.Status = 0
 		entry.Error = err.Error()
 		entry.DurMS = time.Since(start).Milliseconds()
-		_ = rpclog.Log(ctx, entry)
+		rpclog.Log(ctx, entry)
 		return nil, err
 	}
 	defer resp.Body.Close()
@@ -183,7 +183,7 @@ func PostBatchMulti(ctx context.Context, req PostBatchMultiRequest) ([]byte, err
 			}
 		}
 	}
-	_ = rpclog.Log(ctx, entry)
+	rpclog.Log(ctx, entry)
 
 	if readErr != nil {
 		return nil, readErr

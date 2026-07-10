@@ -164,7 +164,7 @@ func (c *Client) Init(ctx context.Context) error {
 		entry.Status = 0
 		entry.Error = err.Error()
 		entry.DurMS = time.Since(start).Milliseconds()
-		_ = rpclog.Log(ctx, entry)
+		rpclog.Log(ctx, entry)
 		return fmt.Errorf("init request failed: %w", err)
 	}
 	defer resp.Body.Close()
@@ -174,7 +174,7 @@ func (c *Client) Init(ctx context.Context) error {
 		entry.Status = resp.StatusCode
 		entry.DurMS = time.Since(start).Milliseconds()
 		entry.Error = "redirected to Google login"
-		_ = rpclog.Log(ctx, entry)
+		rpclog.Log(ctx, entry)
 		return fmt.Errorf("session expired — redirected to Google login. Re-import cookies with: gemini-web-cli import '<cookie_string>'")
 	}
 
@@ -184,7 +184,7 @@ func (c *Client) Init(ctx context.Context) error {
 		entry.RespBody = rpclog.BytesBody(body)
 		entry.Error = fmt.Sprintf("init returned HTTP %d", resp.StatusCode)
 		entry.DurMS = time.Since(start).Milliseconds()
-		_ = rpclog.Log(ctx, entry)
+		rpclog.Log(ctx, entry)
 		if resp.StatusCode == 429 {
 			return &RateLimitError{StatusCode: resp.StatusCode}
 		}
@@ -198,7 +198,7 @@ func (c *Client) Init(ctx context.Context) error {
 	if err != nil {
 		entry.Error = fmt.Sprintf("reading init response: %v", err)
 	}
-	_ = rpclog.Log(ctx, entry)
+	rpclog.Log(ctx, entry)
 	if err != nil {
 		return fmt.Errorf("reading init response: %w", err)
 	}

@@ -66,7 +66,7 @@ func uploadStart(ctx context.Context, req UploadRequest) (string, error) {
 		entry.Status = 0
 		entry.Error = err.Error()
 		entry.DurMS = time.Since(start).Milliseconds()
-		_ = rpclog.Log(ctx, entry)
+		rpclog.Log(ctx, entry)
 		return "", fmt.Errorf("upload start request failed: %w", err)
 	}
 	defer resp.Body.Close()
@@ -80,7 +80,7 @@ func uploadStart(ctx context.Context, req UploadRequest) (string, error) {
 	} else if resp.StatusCode != http.StatusOK {
 		entry.Error = fmt.Sprintf("upload start returned HTTP %d: %s", resp.StatusCode, snippet(respBody, 200))
 	}
-	_ = rpclog.Log(ctx, entry)
+	rpclog.Log(ctx, entry)
 
 	if readErr != nil {
 		return "", fmt.Errorf("reading upload start response: %w", readErr)
@@ -125,7 +125,7 @@ func uploadFinalize(ctx context.Context, sessionURL string, req UploadRequest) (
 		entry.Status = 0
 		entry.Error = err.Error()
 		entry.DurMS = time.Since(start).Milliseconds()
-		_ = rpclog.Log(ctx, entry)
+		rpclog.Log(ctx, entry)
 		return "", fmt.Errorf("upload finalize request failed: %w", err)
 	}
 	defer resp.Body.Close()
@@ -139,7 +139,7 @@ func uploadFinalize(ctx context.Context, sessionURL string, req UploadRequest) (
 	} else if resp.StatusCode != http.StatusOK {
 		entry.Error = fmt.Sprintf("upload finalize returned HTTP %d: %s", resp.StatusCode, snippet(respBody, 200))
 	}
-	_ = rpclog.Log(ctx, entry)
+	rpclog.Log(ctx, entry)
 
 	if readErr != nil {
 		return "", fmt.Errorf("reading upload response: %w", readErr)
