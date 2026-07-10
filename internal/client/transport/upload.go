@@ -58,7 +58,7 @@ func uploadStart(ctx context.Context, req UploadRequest) (string, error) {
 		URL:        httpReq.URL.String(),
 		Kind:       rpclog.KindUploadStart,
 		ReqHeaders: httpReq.Header.Clone(),
-		ReqBody:    body,
+		ReqBody:    rpclog.StringBody(body),
 	}
 
 	resp, err := uploadHTTPClient(req).Do(httpReq)
@@ -107,9 +107,9 @@ func uploadFinalize(ctx context.Context, sessionURL string, req UploadRequest) (
 	httpReq.Header.Set("X-Goog-Upload-Offset", "0")
 	httpReq.ContentLength = req.Size
 
-	capture := &rpclog.CaptureWriter{}
-	if req.Body != nil {
-		httpReq.Body = io.NopCloser(io.TeeReader(req.Body, capture))
+	capture := rpclog.StartBodyCapture("upload-request")
+	if capture != nil {
+		httpReq.Body = rpclog.CaptureReadCloser(httpReq.Body, capture)
 	}
 
 	entry := rpclog.Entry{
@@ -120,7 +120,7 @@ func uploadFinalize(ctx context.Context, sessionURL string, req UploadRequest) (
 	}
 
 	resp, err := uploadHTTPClient(req).Do(httpReq)
-	entry.ReqBody = rpclog.BytesBody(capture.Bytes())
+	entry.ReqBody = capture.Body()
 	if err != nil {
 		entry.Status = 0
 		entry.Error = err.Error()

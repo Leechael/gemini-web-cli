@@ -51,11 +51,12 @@ func TestPostBatchLogsRequestResponse(t *testing.T) {
 	if entry.Kind != rpclog.KindBatch {
 		t.Fatalf("kind = %q", entry.Kind)
 	}
-	if !strings.Contains(entry.ReqBody, "at=<redacted>") {
-		t.Fatalf("at not redacted in req_body: %s", entry.ReqBody)
+	reqBody := string(readBodyBlob(t, dir, entry.ReqBody))
+	if !strings.Contains(reqBody, "at=<redacted>") {
+		t.Fatalf("at not redacted in req_body: %s", reqBody)
 	}
-	if !strings.Contains(entry.ReqBody, "f.req=") {
-		t.Fatalf("f.req missing from req_body: %s", entry.ReqBody)
+	if !strings.Contains(reqBody, "f.req=") {
+		t.Fatalf("f.req missing from req_body: %s", reqBody)
 	}
 	if entry.Status != 200 {
 		t.Fatalf("status = %d", entry.Status)
@@ -63,6 +64,42 @@ func TestPostBatchLogsRequestResponse(t *testing.T) {
 	if entry.RejectCode == nil || *entry.RejectCode != 13 {
 		t.Fatalf("reject_code = %v", entry.RejectCode)
 	}
+}
+
+func TestPostStreamGenerateDoesNotWrapBodyWhenLoggingDisabled(t *testing.T) {
+	orig := rpclog.Default()
+	l := rpclog.New()
+	rpclog.SetDefault(l)
+	defer rpclog.SetDefault(orig)
+
+	body := io.NopCloser(strings.NewReader("stream chunk"))
+	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       body,
+		}, nil
+	})}
+
+	rc, err := PostStreamGenerate(t.Context(), StreamGenerateRequest{
+		Client:      client,
+		URL:         "https://example.com/stream",
+		AccessToken: "secret-token",
+		InnerReq:    []byte("[]"),
+		UUID:        "uuid",
+	})
+	if err != nil {
+		t.Fatalf("PostStreamGenerate: %v", err)
+	}
+	if rc != body {
+		t.Fatalf("response body was wrapped while rpc logging was disabled")
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
 }
 
 func TestPostStreamGenerateLogsStreamBody(t *testing.T) {
@@ -106,14 +143,14 @@ func TestPostStreamGenerateLogsStreamBody(t *testing.T) {
 	if entry.Kind != rpclog.KindStream {
 		t.Fatalf("kind = %q", entry.Kind)
 	}
-	if !strings.Contains(entry.ReqBody, "at=<redacted>") {
-		t.Fatalf("at not redacted: %s", entry.ReqBody)
+	if reqBody := string(readBodyBlob(t, dir, entry.ReqBody)); !strings.Contains(reqBody, "at=<redacted>") {
+		t.Fatalf("at not redacted: %s", reqBody)
 	}
 	if entry.Status != 200 {
 		t.Fatalf("status = %d", entry.Status)
 	}
-	if entry.RespBody != "stream chunk" {
-		t.Fatalf("resp_body = %q", entry.RespBody)
+	if respBody := string(readBodyBlob(t, dir, entry.RespBody)); respBody != "stream chunk" {
+		t.Fatalf("resp_body = %q", respBody)
 	}
 }
 
@@ -163,14 +200,14 @@ func TestPostUploadLogsStartAndFinalize(t *testing.T) {
 	for _, entry := range readAllEntries(t, dir) {
 		if entry.Kind == rpclog.KindUploadStart {
 			sawStart = true
-			if entry.ReqBody != "File name: sample.txt" {
-				t.Fatalf("upload start req_body = %q", entry.ReqBody)
+			if reqBody := string(readBodyBlob(t, dir, entry.ReqBody)); reqBody != "File name: sample.txt" {
+				t.Fatalf("upload start req_body = %q", reqBody)
 			}
 		}
 		if entry.Kind == rpclog.KindUploadFinalize {
 			sawFinalize = true
-			if entry.ReqBody != "hello world" {
-				t.Fatalf("upload finalize req_body = %q", entry.ReqBody)
+			if reqBody := string(readBodyBlob(t, dir, entry.ReqBody)); reqBody != "hello world" {
+				t.Fatalf("upload finalize req_body = %q", reqBody)
 			}
 		}
 	}
@@ -215,8 +252,8 @@ func TestPostStreamGenerateLogsHTTPError(t *testing.T) {
 	if entry.Status != 429 {
 		t.Fatalf("status = %d", entry.Status)
 	}
-	if entry.RespBody != "rate limited" {
-		t.Fatalf("resp_body = %q", entry.RespBody)
+	if respBody := string(readBodyBlob(t, dir, entry.RespBody)); respBody != "rate limited" {
+		t.Fatalf("resp_body = %q", respBody)
 	}
 	if entry.Error == "" {
 		t.Fatalf("expected error field")
@@ -254,9 +291,24 @@ func TestPostBatchLogsNetworkError(t *testing.T) {
 	if entry.Error == "" {
 		t.Fatalf("expected error field")
 	}
-	if !strings.Contains(entry.ReqBody, "at=<redacted>") {
-		t.Fatalf("at not redacted: %s", entry.ReqBody)
+	if reqBody := string(readBodyBlob(t, dir, entry.ReqBody)); !strings.Contains(reqBody, "at=<redacted>") {
+		t.Fatalf("at not redacted: %s", reqBody)
 	}
+}
+
+func readBodyBlob(t *testing.T, dir string, body *rpclog.Body) []byte {
+	t.Helper()
+	if body == nil || body.Path == "" {
+		t.Fatalf("body reference = %+v", body)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(body.Path)))
+	if err != nil {
+		t.Fatalf("ReadFile body: %v", err)
+	}
+	if int64(len(data)) != body.Size {
+		t.Fatalf("body size = %d, want %d", len(data), body.Size)
+	}
+	return data
 }
 
 func readLatestEntry(t *testing.T, dir string) rpclog.Entry {

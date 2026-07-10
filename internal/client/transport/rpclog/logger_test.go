@@ -1,6 +1,7 @@
 package rpclog
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -75,6 +76,105 @@ func TestLoggerWritesEntry(t *testing.T) {
 	if got.TS == "" {
 		t.Fatalf("ts not set")
 	}
+}
+
+func TestLoggerDoesNotCaptureBodiesWhenDisabled(t *testing.T) {
+	l := New()
+	l.SetDir(t.TempDir())
+
+	capture, err := l.NewBodyCapture("response")
+	if err != nil {
+		t.Fatalf("NewBodyCapture: %v", err)
+	}
+	if capture != nil {
+		t.Fatalf("capture = %+v, want nil", capture)
+	}
+}
+
+func TestLoggerStreamsCompleteBodyToBlobFile(t *testing.T) {
+	dir := t.TempDir()
+	l := New()
+	l.SetDir(dir)
+	l.SetEnabled(true)
+	defer l.Close()
+
+	capture, err := l.NewBodyCapture("response")
+	if err != nil {
+		t.Fatalf("NewBodyCapture: %v", err)
+	}
+	for _, chunk := range [][]byte{[]byte("first "), []byte("second "), {0xff, 0x00}} {
+		if _, err := capture.Write(chunk); err != nil {
+			t.Fatalf("Write: %v", err)
+		}
+	}
+	if err := l.Log(context.Background(), Entry{RespBody: capture.Body()}); err != nil {
+		t.Fatalf("Log: %v", err)
+	}
+
+	entry := readLatestLoggerEntry(t, dir)
+	assertBodyBlob(t, dir, entry.RespBody, []byte{'f', 'i', 'r', 's', 't', ' ', 's', 'e', 'c', 'o', 'n', 'd', ' ', 0xff, 0x00})
+}
+
+func TestLoggerStoresBodiesInReferencedBlobFiles(t *testing.T) {
+	dir := t.TempDir()
+	l := New()
+	l.SetDir(dir)
+	l.SetEnabled(true)
+	defer l.Close()
+
+	if err := l.Log(context.Background(), Entry{
+		Method:   "POST",
+		URL:      "https://gemini.google.com/batch",
+		Kind:     KindBatch,
+		ReqBody:  BytesBody([]byte("request body")),
+		RespBody: BytesBody([]byte{0xff, 0xfe, 0x00}),
+	}); err != nil {
+		t.Fatalf("Log: %v", err)
+	}
+
+	entry := readLatestLoggerEntry(t, dir)
+	assertBodyBlob(t, dir, entry.ReqBody, []byte("request body"))
+	assertBodyBlob(t, dir, entry.RespBody, []byte{0xff, 0xfe, 0x00})
+
+	logPath := filepath.Join(dir, time.Now().Format("2006-01-02")+".ndjson")
+	logData, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("ReadFile log: %v", err)
+	}
+	if strings.Contains(string(logData), "request body") {
+		t.Fatalf("body was embedded in ndjson: %s", logData)
+	}
+}
+
+func assertBodyBlob(t *testing.T, dir string, body *Body, want []byte) {
+	t.Helper()
+	if body == nil || body.Path == "" {
+		t.Fatalf("body reference = %+v", body)
+	}
+	if body.Size != int64(len(want)) {
+		t.Fatalf("body size = %d, want %d", body.Size, len(want))
+	}
+	got, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(body.Path)))
+	if err != nil {
+		t.Fatalf("ReadFile body: %v", err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("body = %v, want %v", got, want)
+	}
+}
+
+func readLatestLoggerEntry(t *testing.T, dir string) Entry {
+	t.Helper()
+	path := filepath.Join(dir, time.Now().Format("2006-01-02")+".ndjson")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	var entry Entry
+	if err := json.Unmarshal(data, &entry); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	return entry
 }
 
 func TestLoggerAppendsMultipleEntries(t *testing.T) {
@@ -233,24 +333,15 @@ func TestLoggerRedactsHeaders(t *testing.T) {
 	}
 }
 
-func TestBytesBodyUTF8AndBinary(t *testing.T) {
-	if got := BytesBody([]byte("hello")); got != "hello" {
-		t.Fatalf("UTF-8 body = %q", got)
-	}
-	binary := []byte{0xff, 0xfe}
-	got := BytesBody(binary)
-	if got == string(binary) {
-		t.Fatalf("binary body should be base64 encoded")
-	}
-}
-
 func TestStreamReadCloserLogsOnEOF(t *testing.T) {
+	dir, logger, capture := newStreamCapture(t)
 	inner := io.NopCloser(strings.NewReader("stream data"))
-	var logged []byte
 	var loggedErr error
-	wrapped := WrapStreamReadCloser(inner, func(buf []byte, err error) {
-		logged = buf
+	wrapped := WrapStreamReadCloser(inner, capture, func(body *Body, err error) {
 		loggedErr = err
+		if logErr := logger.Log(context.Background(), Entry{RespBody: body}); logErr != nil {
+			t.Fatalf("Log: %v", logErr)
+		}
 	})
 
 	if _, err := io.Copy(io.Discard, wrapped); err != nil {
@@ -259,21 +350,22 @@ func TestStreamReadCloserLogsOnEOF(t *testing.T) {
 	if err := wrapped.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
-	if string(logged) != "stream data" {
-		t.Fatalf("logged body = %q", logged)
-	}
+	entry := readLatestLoggerEntry(t, dir)
+	assertBodyBlob(t, dir, entry.RespBody, []byte("stream data"))
 	if loggedErr != io.EOF {
 		t.Fatalf("logged err = %v, want EOF", loggedErr)
 	}
 }
 
 func TestStreamReadCloserLogsOnError(t *testing.T) {
+	dir, logger, capture := newStreamCapture(t)
 	inner := &errorReadCloser{err: errors.New("unexpected EOF")}
-	var logged []byte
 	var loggedErr error
-	wrapped := WrapStreamReadCloser(inner, func(buf []byte, err error) {
-		logged = buf
+	wrapped := WrapStreamReadCloser(inner, capture, func(body *Body, err error) {
 		loggedErr = err
+		if logErr := logger.Log(context.Background(), Entry{RespBody: body}); logErr != nil {
+			t.Fatalf("Log: %v", logErr)
+		}
 	})
 
 	_, _ = io.Copy(io.Discard, wrapped)
@@ -282,24 +374,38 @@ func TestStreamReadCloserLogsOnError(t *testing.T) {
 	if loggedErr == nil || loggedErr.Error() != "unexpected EOF" {
 		t.Fatalf("logged err = %v", loggedErr)
 	}
-	if string(logged) != "partial" {
-		t.Fatalf("logged body = %q", logged)
-	}
+	entry := readLatestLoggerEntry(t, dir)
+	assertBodyBlob(t, dir, entry.RespBody, []byte("partial"))
 }
 
 func TestStreamReadCloserLogsOnCloseWithoutEOF(t *testing.T) {
+	dir, logger, capture := newStreamCapture(t)
 	inner := io.NopCloser(strings.NewReader("never read"))
-	var logged []byte
-	wrapped := WrapStreamReadCloser(inner, func(buf []byte, err error) {
-		logged = buf
+	wrapped := WrapStreamReadCloser(inner, capture, func(body *Body, err error) {
+		if logErr := logger.Log(context.Background(), Entry{RespBody: body}); logErr != nil {
+			t.Fatalf("Log: %v", logErr)
+		}
 	})
 
 	if err := wrapped.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
-	if len(logged) != 0 {
-		t.Fatalf("expected empty body, got %q", logged)
+	entry := readLatestLoggerEntry(t, dir)
+	assertBodyBlob(t, dir, entry.RespBody, nil)
+}
+
+func newStreamCapture(t *testing.T) (string, *Logger, *BodyCapture) {
+	t.Helper()
+	dir := t.TempDir()
+	logger := New()
+	logger.SetDir(dir)
+	logger.SetEnabled(true)
+	t.Cleanup(func() { _ = logger.Close() })
+	capture, err := logger.NewBodyCapture("stream-response")
+	if err != nil {
+		t.Fatalf("NewBodyCapture: %v", err)
 	}
+	return dir, logger, capture
 }
 
 type errorReadCloser struct {

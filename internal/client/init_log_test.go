@@ -56,8 +56,12 @@ func TestInitLogsRequestResponse(t *testing.T) {
 	if entry.Status != 200 {
 		t.Fatalf("status = %d", entry.Status)
 	}
-	if !strings.Contains(entry.RespBody, "init-token") {
-		t.Fatalf("resp_body missing token: %s", entry.RespBody)
+	respBody, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(entry.RespBody.Path)))
+	if err != nil {
+		t.Fatalf("ReadFile resp_body: %v", err)
+	}
+	if !strings.Contains(string(respBody), "init-token") {
+		t.Fatalf("resp_body missing token: %s", respBody)
 	}
 	if entry.ReqHeaders.Get("User-Agent") == "" {
 		t.Fatalf("User-Agent header missing")

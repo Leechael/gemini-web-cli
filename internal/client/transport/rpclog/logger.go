@@ -7,10 +7,10 @@ package rpclog
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -18,7 +18,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 )
 
 const (
@@ -30,6 +29,16 @@ const (
 	KindInit           = "init"
 )
 
+// Body points to a complete request or response body stored under the logger directory.
+type Body struct {
+	Path string `json:"path"`
+	Size int64  `json:"size"`
+
+	data    []byte
+	text    string
+	capture *BodyCapture
+}
+
 // Entry is one request/response log record.
 type Entry struct {
 	TS         string      `json:"ts"`
@@ -37,9 +46,9 @@ type Entry struct {
 	URL        string      `json:"url"`
 	Kind       string      `json:"kind"`
 	ReqHeaders http.Header `json:"req_headers"`
-	ReqBody    string      `json:"req_body"`
+	ReqBody    *Body       `json:"req_body,omitempty"`
 	Status     int         `json:"status"`
-	RespBody   string      `json:"resp_body"`
+	RespBody   *Body       `json:"resp_body,omitempty"`
 	RejectCode *int        `json:"reject_code"`
 	DurMS      int64       `json:"dur_ms"`
 	Error      string      `json:"error"`
@@ -53,6 +62,51 @@ type Logger struct {
 	dir     string
 	file    *os.File
 	date    string
+}
+
+// BodyCapture streams a body directly to its final blob file.
+type BodyCapture struct {
+	mu     sync.Mutex
+	file   *os.File
+	rel    string
+	size   int64
+	err    error
+	closed bool
+}
+
+// Write appends bytes to the body blob without buffering them in memory.
+func (c *BodyCapture) Write(p []byte) (int, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed {
+		return 0, os.ErrClosed
+	}
+	n, err := c.file.Write(p)
+	c.size += int64(n)
+	if err != nil && c.err == nil {
+		c.err = err
+	}
+	return n, err
+}
+
+// Body returns the body reference that Logger.Log finalizes.
+func (c *BodyCapture) Body() *Body {
+	if c == nil {
+		return nil
+	}
+	return &Body{capture: c}
+}
+
+func (c *BodyCapture) finish() (string, int64, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.closed {
+		if err := c.file.Close(); err != nil && c.err == nil {
+			c.err = err
+		}
+		c.closed = true
+	}
+	return c.rel, c.size, c.err
 }
 
 // New creates a disabled logger with the default directory.
@@ -78,8 +132,28 @@ func SetDefault(l *Logger) {
 // SetEnabled enables or disables the package-level logger.
 func SetEnabled(enabled bool) { defaultLogger.SetEnabled(enabled) }
 
+// Enabled reports whether the package-level logger is enabled.
+func Enabled() bool { return defaultLogger.Enabled() }
+
 // SetDir sets the output directory for the package-level logger.
 func SetDir(dir string) { defaultLogger.SetDir(dir) }
+
+// StartBodyCapture streams a body to a blob file when logging is enabled.
+func StartBodyCapture(label string) *BodyCapture {
+	capture, err := defaultLogger.NewBodyCapture(label)
+	if err != nil {
+		log.Printf("rpc log: start %s body capture: %v", label, err)
+		return nil
+	}
+	return capture
+}
+
+// Enabled reports whether this logger is enabled.
+func (l *Logger) Enabled() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.enabled && l.dir != ""
+}
 
 // SetEnabled enables or disables this logger. Enabling triggers cleanup of
 // files older than 7 days.
@@ -97,6 +171,32 @@ func (l *Logger) SetDir(dir string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.dir = dir
+}
+
+// NewBodyCapture starts streaming a body to a blob file. It returns nil when
+// logging is disabled.
+func (l *Logger) NewBodyCapture(label string) (*BodyCapture, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if !l.enabled || l.dir == "" {
+		return nil, nil
+	}
+	today := time.Now().Format("2006-01-02")
+	blobDir := filepath.Join(l.dir, "blobs", today)
+	if err := os.MkdirAll(blobDir, 0750); err != nil {
+		return nil, err
+	}
+	file, err := os.CreateTemp(blobDir, label+"-*.blob")
+	if err != nil {
+		return nil, err
+	}
+	rel, err := filepath.Rel(l.dir, file.Name())
+	if err != nil {
+		_ = file.Close()
+		_ = os.Remove(file.Name())
+		return nil, err
+	}
+	return &BodyCapture{file: file, rel: filepath.ToSlash(rel)}, nil
 }
 
 // Close flushes and closes the current log file.
@@ -145,6 +245,12 @@ func (l *Logger) Log(ctx context.Context, e Entry) error {
 	}
 
 	e.ReqHeaders = RedactHeaders(e.ReqHeaders)
+	if err := l.materializeBodyLocked(e.ReqBody, "req", today); err != nil {
+		return err
+	}
+	if err := l.materializeBodyLocked(e.RespBody, "resp", today); err != nil {
+		return err
+	}
 
 	data, err := json.Marshal(e)
 	if err != nil {
@@ -220,37 +326,96 @@ func redactAuthorizationValue(v string) string {
 	return fields[0] + " <redacted>"
 }
 
-// BytesBody converts a byte slice to the log string. Valid UTF-8 is kept as
-// text; binary content is base64 encoded.
-func BytesBody(b []byte) string {
-	if utf8.Valid(b) {
-		return string(b)
+// BytesBody prepares a complete byte body for blob storage when the entry is logged.
+func BytesBody(b []byte) *Body {
+	return &Body{data: b}
+}
+
+// StringBody prepares a complete string body for blob storage when the entry is logged.
+func StringBody(s string) *Body {
+	return &Body{text: s}
+}
+
+func (l *Logger) materializeBodyLocked(body *Body, label, today string) error {
+	if body == nil || body.Path != "" {
+		return nil
 	}
-	return base64.StdEncoding.EncodeToString(b)
+	if body.capture != nil {
+		path, size, err := body.capture.finish()
+		if err != nil {
+			return err
+		}
+		body.Path = path
+		body.Size = size
+		body.capture = nil
+		return nil
+	}
+	blobDir := filepath.Join(l.dir, "blobs", today)
+	if err := os.MkdirAll(blobDir, 0750); err != nil {
+		return err
+	}
+	file, err := os.CreateTemp(blobDir, label+"-*.blob")
+	if err != nil {
+		return err
+	}
+	path := file.Name()
+	removeOnError := true
+	defer func() {
+		_ = file.Close()
+		if removeOnError {
+			_ = os.Remove(path)
+		}
+	}()
+
+	var size int64
+	if body.data != nil {
+		n, writeErr := file.Write(body.data)
+		size = int64(n)
+		if writeErr != nil {
+			return writeErr
+		}
+	} else {
+		n, writeErr := io.WriteString(file, body.text)
+		size = int64(n)
+		if writeErr != nil {
+			return writeErr
+		}
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	rel, err := filepath.Rel(l.dir, path)
+	if err != nil {
+		return err
+	}
+	body.Path = filepath.ToSlash(rel)
+	body.Size = size
+	body.data = nil
+	body.text = ""
+	removeOnError = false
+	return nil
 }
 
-// StreamReadCloser wraps a stream response body so the full response can be
-// logged after the stream ends or fails.
+// StreamReadCloser copies a stream response directly to a body blob and logs
+// it when the stream ends, fails, or is closed.
 type StreamReadCloser struct {
-	rc     io.ReadCloser
-	buf    []byte
-	err    error
-	logged bool
-	mu     sync.Mutex
-	fn     func([]byte, error)
+	rc      io.ReadCloser
+	capture *BodyCapture
+	err     error
+	logged  bool
+	mu      sync.Mutex
+	fn      func(*Body, error)
 }
 
-// WrapStreamReadCloser wraps rc. When the stream reaches EOF, an error, or is
-// closed, fn is called once with the accumulated bytes and the final read error
-// (io.EOF is passed through unchanged).
-func WrapStreamReadCloser(rc io.ReadCloser, fn func([]byte, error)) *StreamReadCloser {
-	return &StreamReadCloser{rc: rc, fn: fn}
+// WrapStreamReadCloser wraps rc with disk-backed body capture.
+func WrapStreamReadCloser(rc io.ReadCloser, capture *BodyCapture, fn func(*Body, error)) *StreamReadCloser {
+	return &StreamReadCloser{rc: rc, capture: capture, fn: fn}
 }
 
 func (r *StreamReadCloser) Read(p []byte) (int, error) {
 	n, err := r.rc.Read(p)
-	if n > 0 {
-		r.buf = append(r.buf, p[:n]...)
+	if n > 0 && r.capture != nil {
+		_, _ = r.capture.Write(p[:n])
 	}
 	if err != nil {
 		r.mu.Lock()
@@ -275,22 +440,21 @@ func (r *StreamReadCloser) flush() {
 		return
 	}
 	r.logged = true
-	r.fn(r.buf, r.err)
+	r.fn(r.capture.Body(), r.err)
 }
 
-// CaptureWriter is an io.Writer that records everything written to it.
-type CaptureWriter struct {
-	buf []byte
+// CaptureReadCloser copies reads directly to capture while preserving the
+// original closer.
+func CaptureReadCloser(rc io.ReadCloser, capture *BodyCapture) io.ReadCloser {
+	if rc == nil || capture == nil {
+		return rc
+	}
+	return &capturingReadCloser{Reader: io.TeeReader(rc, capture), Closer: rc}
 }
 
-func (w *CaptureWriter) Write(p []byte) (int, error) {
-	w.buf = append(w.buf, p...)
-	return len(p), nil
-}
-
-// Bytes returns the captured bytes.
-func (w *CaptureWriter) Bytes() []byte {
-	return w.buf
+type capturingReadCloser struct {
+	io.Reader
+	io.Closer
 }
 
 func (l *Logger) cleanupOldFilesLocked() {

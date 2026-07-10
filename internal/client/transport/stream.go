@@ -115,7 +115,7 @@ func PostStreamGenerate(ctx context.Context, req StreamGenerateRequest) (io.Read
 		URL:        httpReq.URL.String(),
 		Kind:       rpclog.KindStream,
 		ReqHeaders: httpReq.Header.Clone(),
-		ReqBody:    rpclog.RedactAT(formEncoded),
+		ReqBody:    rpclog.StringBody(rpclog.RedactAT(formEncoded)),
 	}
 
 	client := req.Client
@@ -146,8 +146,12 @@ func PostStreamGenerate(ctx context.Context, req StreamGenerateRequest) (io.Read
 	}
 
 	entry.Status = http.StatusOK
-	wrapped := rpclog.WrapStreamReadCloser(resp.Body, func(buf []byte, readErr error) {
-		entry.RespBody = rpclog.BytesBody(buf)
+	if !rpclog.Enabled() {
+		return resp.Body, nil
+	}
+	capture := rpclog.StartBodyCapture("stream-response")
+	wrapped := rpclog.WrapStreamReadCloser(resp.Body, capture, func(body *rpclog.Body, readErr error) {
+		entry.RespBody = body
 		entry.DurMS = time.Since(start).Milliseconds()
 		if readErr != nil && readErr != io.EOF {
 			entry.Error = readErr.Error()

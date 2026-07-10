@@ -71,7 +71,7 @@ func PostBatch(ctx context.Context, req PostBatchRequest) ([]byte, error) {
 		URL:        httpReq.URL.String(),
 		Kind:       rpclog.KindBatch,
 		ReqHeaders: httpReq.Header.Clone(),
-		ReqBody:    rpclog.RedactAT(formEncoded),
+		ReqBody:    rpclog.StringBody(rpclog.RedactAT(formEncoded)),
 		RPCIDs:     []string{req.RPCID},
 	}
 
@@ -146,7 +146,7 @@ func PostBatchMulti(ctx context.Context, req PostBatchMultiRequest) ([]byte, err
 		URL:        httpReq.URL.String(),
 		Kind:       rpclog.KindBatchMulti,
 		ReqHeaders: httpReq.Header.Clone(),
-		ReqBody:    rpclog.RedactAT(formEncoded),
+		ReqBody:    rpclog.StringBody(rpclog.RedactAT(formEncoded)),
 		RPCIDs:     rpcIDs,
 	}
 
