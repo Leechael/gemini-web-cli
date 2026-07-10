@@ -22,6 +22,14 @@ The following flags are available:
 
 The startup banner prints the active cookie source, LAN IPs, and chat mapping path.
 
+### RPC logs
+
+`--rpc-log` records every outbound Gemini request and response. Logging is disabled by default. `GEMINI_WEB_CLI_RPC_LOG_DIR` changes the output directory but does not enable logging.
+
+The logger writes a daily NDJSON index at `<log-dir>/YYYY-MM-DD.ndjson`. Complete request and response bodies are stored separately as raw blob files under `<log-dir>/blobs/YYYY-MM-DD/`; each index entry points to its body blobs with a relative `path` and byte `size`. Stream responses and uploads write directly to blob files instead of buffering a second complete copy in memory.
+
+Cookie, Authorization, Set-Cookie, batchexecute `at`, init access-token, and init session-ID values are redacted. Prompts, uploaded file contents, model responses, URLs, and other protocol metadata remain readable for debugging, so protect the log directory as sensitive data. Files older than seven days are removed when logging starts and during daily rotation.
+
 ## REST API
 
 ### Endpoints

@@ -330,6 +330,7 @@ Supported housekeeping names: `heartbeat`, `ui-heartbeat`, `set-lang`, `ma-gu-ac
 | `--proxy` | HTTP/SOCKS proxy URL | `$HTTPS_PROXY` |
 | `--account-index` | Google account index (for multi-login, e.g. `/u/2`) | — |
 | `--verbose` | Debug logging to stderr | `false` |
+| `--rpc-log` | Log complete Gemini RPC requests and responses to disk | `false` |
 | `--no-persist` | Don't write updated cookies back to file | `false` |
 | `--request-timeout` | HTTP timeout in seconds | `300` |
 
