@@ -43,45 +43,52 @@ type PostBatchMultiRequest struct {
 
 // PostBatch sends a batchexecute request and returns the raw response body.
 func PostBatch(ctx context.Context, req PostBatchRequest) ([]byte, error) {
-	start := time.Now()
+	return postBatch(ctx, req.Client, req.URL, req.AccessToken, req.UserAgent, rpclog.KindBatch, []RPCCall{{
+		ID: req.RPCID, Payload: req.Payload,
+	}})
+}
 
-	rpcReq := []any{
-		[]any{
-			[]any{req.RPCID, req.Payload, nil, "generic"},
-		},
+// PostBatchMulti sends multiple RPCs in one batchexecute request and returns the raw response body.
+func PostBatchMulti(ctx context.Context, req PostBatchMultiRequest) ([]byte, error) {
+	return postBatch(ctx, req.Client, req.URL, req.AccessToken, req.UserAgent, rpclog.KindBatchMulti, req.Calls)
+}
+
+func postBatch(ctx context.Context, client *http.Client, rawURL, accessToken, userAgent, kind string, rpcCalls []RPCCall) ([]byte, error) {
+	start := time.Now()
+	calls := make([]any, 0, len(rpcCalls))
+	rpcIDs := make([]string, 0, len(rpcCalls))
+	for _, call := range rpcCalls {
+		calls = append(calls, []any{call.ID, call.Payload, nil, "generic"})
+		rpcIDs = append(rpcIDs, call.ID)
 	}
-	reqJSON, err := json.Marshal(rpcReq)
+	reqJSON, err := json.Marshal([]any{calls})
 	if err != nil {
 		return nil, fmt.Errorf("marshal batch request: %w", err)
 	}
 
 	form := url.Values{}
-	form.Set("at", req.AccessToken)
+	form.Set("at", accessToken)
 	form.Set("f.req", string(reqJSON))
 	formEncoded := form.Encode()
-
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", req.URL, strings.NewReader(formEncoded))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", rawURL, strings.NewReader(formEncoded))
 	if err != nil {
 		return nil, err
 	}
-	setBatchHeaders(httpReq, req.URL, req.UserAgent)
-
+	setBatchHeaders(httpReq, rawURL, userAgent)
 	entry := rpclog.Entry{
 		Method:     httpReq.Method,
 		URL:        httpReq.URL.String(),
-		Kind:       rpclog.KindBatch,
+		Kind:       kind,
 		ReqHeaders: httpReq.Header.Clone(),
 		ReqBody:    rpclog.StringBody(rpclog.RedactAT(formEncoded)),
-		RPCIDs:     []string{req.RPCID},
+		RPCIDs:     rpcIDs,
 	}
 
-	client := req.Client
 	if client == nil {
 		client = http.DefaultClient
 	}
 	resp, err := client.Do(httpReq)
 	if err != nil {
-		entry.Status = 0
 		entry.Error = err.Error()
 		entry.DurMS = time.Since(start).Milliseconds()
 		rpclog.Log(ctx, entry)
@@ -99,10 +106,7 @@ func PostBatch(ctx context.Context, req PostBatchRequest) ([]byte, error) {
 	} else if resp.StatusCode != http.StatusOK {
 		entry.Error = fmt.Sprintf("batchexecute returned HTTP %d", resp.StatusCode)
 	} else {
-		stripped := protocol.StripResponsePrefix(body)
-		if _, code, _ := protocol.ExtractRPCBody(stripped, req.RPCID); code != 0 {
-			entry.RejectCode = &code
-		}
+		populateBatchRejectCodes(&entry, body, kind, rpcIDs)
 	}
 	rpclog.Log(ctx, entry)
 
@@ -115,88 +119,23 @@ func PostBatch(ctx context.Context, req PostBatchRequest) ([]byte, error) {
 	return body, nil
 }
 
-// PostBatchMulti sends multiple RPCs in one batchexecute request and returns the raw response body.
-func PostBatchMulti(ctx context.Context, req PostBatchMultiRequest) ([]byte, error) {
-	start := time.Now()
-
-	calls := make([]any, 0, len(req.Calls))
-	rpcIDs := make([]string, 0, len(req.Calls))
-	for _, call := range req.Calls {
-		calls = append(calls, []any{call.ID, call.Payload, nil, "generic"})
-		rpcIDs = append(rpcIDs, call.ID)
-	}
-	rpcReq := []any{calls}
-	reqJSON, err := json.Marshal(rpcReq)
-	if err != nil {
-		return nil, fmt.Errorf("marshal batch request: %w", err)
-	}
-
-	form := url.Values{}
-	form.Set("at", req.AccessToken)
-	form.Set("f.req", string(reqJSON))
-	formEncoded := form.Encode()
-
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", req.URL, strings.NewReader(formEncoded))
-	if err != nil {
-		return nil, err
-	}
-	setBatchHeaders(httpReq, req.URL, req.UserAgent)
-
-	entry := rpclog.Entry{
-		Method:     httpReq.Method,
-		URL:        httpReq.URL.String(),
-		Kind:       rpclog.KindBatchMulti,
-		ReqHeaders: httpReq.Header.Clone(),
-		ReqBody:    rpclog.StringBody(rpclog.RedactAT(formEncoded)),
-		RPCIDs:     rpcIDs,
-	}
-
-	client := req.Client
-	if client == nil {
-		client = http.DefaultClient
-	}
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		entry.Status = 0
-		entry.Error = err.Error()
-		entry.DurMS = time.Since(start).Milliseconds()
-		rpclog.Log(ctx, entry)
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, readErr := io.ReadAll(resp.Body)
-	entry.Status = resp.StatusCode
-	entry.RespHeaders = resp.Header.Clone()
-	entry.RespBody = rpclog.BytesBody(body)
-	entry.DurMS = time.Since(start).Milliseconds()
-	if readErr != nil {
-		entry.Error = readErr.Error()
-	} else if resp.StatusCode != http.StatusOK {
-		entry.Error = fmt.Sprintf("batchexecute returned HTTP %d", resp.StatusCode)
-	} else {
-		stripped := protocol.StripResponsePrefix(body)
-		if _, codes, _ := protocol.ExtractRPCBodies(stripped, rpcIDs); len(codes) > 0 {
-			entry.RejectCodes = make(map[string]int, len(codes))
-			for _, id := range rpcIDs {
-				if code, ok := codes[id]; ok && code != 0 {
-					entry.RejectCodes[id] = code
-					if entry.RejectCode == nil {
-						entry.RejectCode = &code
-					}
-				}
+func populateBatchRejectCodes(entry *rpclog.Entry, body []byte, kind string, rpcIDs []string) {
+	_, codes, _ := protocol.ExtractRPCBodies(protocol.StripResponsePrefix(body), rpcIDs)
+	for _, id := range rpcIDs {
+		code := codes[id]
+		if code == 0 {
+			continue
+		}
+		if entry.RejectCode == nil {
+			entry.RejectCode = &code
+		}
+		if kind == rpclog.KindBatchMulti {
+			if entry.RejectCodes == nil {
+				entry.RejectCodes = make(map[string]int, len(codes))
 			}
+			entry.RejectCodes[id] = code
 		}
 	}
-	rpclog.Log(ctx, entry)
-
-	if readErr != nil {
-		return nil, readErr
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("batchexecute returned HTTP %d", resp.StatusCode)
-	}
-	return body, nil
 }
 
 func setBatchHeaders(httpReq *http.Request, rawURL, userAgent string) {
