@@ -212,6 +212,57 @@ func TestPostStreamGenerateLogsStreamBody(t *testing.T) {
 	}
 }
 
+func TestPostStreamGenerateLogsProtocolFailure(t *testing.T) {
+	dir := t.TempDir()
+	orig := rpclog.Default()
+	l := rpclog.New()
+	l.SetDir(dir)
+	l.SetEnabled(true)
+	rpclog.SetDefault(l)
+	defer func() {
+		rpclog.SetDefault(orig)
+		_ = l.Close()
+	}()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("stream chunk"))
+	}))
+	defer srv.Close()
+
+	rc, err := PostStreamGenerate(t.Context(), StreamGenerateRequest{
+		Client:      srv.Client(),
+		URL:         srv.URL,
+		AccessToken: "secret-token",
+		InnerReq:    []byte("[]"),
+		UUID:        "uuid",
+	})
+	if err != nil {
+		t.Fatalf("PostStreamGenerate: %v", err)
+	}
+	if _, err := io.ReadAll(rc); err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	FinalizeStreamLog(rc, &testRejectError{code: 13})
+	if err := rc.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	entry := readLatestEntry(t, dir)
+	if entry.Error != "protocol reject 13" {
+		t.Fatalf("error = %q", entry.Error)
+	}
+	if entry.RejectCode == nil || *entry.RejectCode != 13 {
+		t.Fatalf("reject_code = %v", entry.RejectCode)
+	}
+}
+
+type testRejectError struct {
+	code int
+}
+
+func (e *testRejectError) Error() string   { return fmt.Sprintf("protocol reject %d", e.code) }
+func (e *testRejectError) RejectCode() int { return e.code }
+
 func TestPostUploadLogsStartAndFinalize(t *testing.T) {
 	dir := t.TempDir()
 	orig := rpclog.Default()

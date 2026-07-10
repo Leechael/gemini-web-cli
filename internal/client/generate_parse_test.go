@@ -1,9 +1,11 @@
 package client
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -58,6 +60,118 @@ func TestParseStreamResponse_ReturnsNonEOFReadErrorAfterOutput(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "boom") {
 		t.Fatalf("err = %v, want boom", err)
 	}
+}
+
+func TestStreamGenerateDoesNotRetryCode13AfterOutput(t *testing.T) {
+	c := newTestClient()
+	requests := 0
+	c.httpClient = &http.Client{Transport: streamRoundTripFunc(func(*http.Request) (*http.Response, error) {
+		requests++
+		body := makeStreamBodyWithCode13AfterText(t, "partial")
+		if requests > 1 {
+			body = makeStreamBody(t, "complete", true)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(bytes.NewReader(body))}, nil
+	})}
+
+	callbacks := 0
+	err := c.streamGenerate(t.Context(), "prompt", nil, nil, &types.Models[0], false, func(*types.ModelOutput) {
+		callbacks++
+	})
+	if err == nil || err.Error() != "envelope error code 13" {
+		t.Fatalf("err = %v", err)
+	}
+	if requests != 1 {
+		t.Fatalf("requests = %d, want 1", requests)
+	}
+	if callbacks != 1 {
+		t.Fatalf("callbacks = %d, want 1", callbacks)
+	}
+}
+
+func TestCallStreamGenerateRetriesTransientFailures(t *testing.T) {
+	c := newTestClient()
+	requests := 0
+	c.httpClient = &http.Client{Transport: streamRoundTripFunc(func(*http.Request) (*http.Response, error) {
+		requests++
+		if requests < 3 {
+			return &http.Response{
+				StatusCode: http.StatusBadGateway,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader("bad gateway")),
+			}, nil
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader("stream")),
+		}, nil
+	})}
+
+	body, err := c.CallStreamGenerate(t.Context(), transport.StreamGenerateRequest{InnerReq: []byte("[]")})
+	if err != nil {
+		t.Fatalf("CallStreamGenerate: %v", err)
+	}
+	defer body.Close()
+	if requests != 3 {
+		t.Fatalf("requests = %d, want 3", requests)
+	}
+}
+
+func TestStreamGenerateUsesOneThreeAttemptBudget(t *testing.T) {
+	c := newTestClient()
+	requests := 0
+	c.httpClient = &http.Client{Transport: streamRoundTripFunc(func(*http.Request) (*http.Response, error) {
+		requests++
+		if requests%3 != 0 {
+			return &http.Response{
+				StatusCode: http.StatusBadGateway,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader("bad gateway")),
+			}, nil
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(bytes.NewReader(makeCode13StreamBody(t))),
+		}, nil
+	})}
+
+	err := c.streamGenerate(t.Context(), "prompt", nil, nil, &types.Models[0], false, func(*types.ModelOutput) {})
+	if err == nil || err.Error() != "envelope error code 13" {
+		t.Fatalf("err = %v", err)
+	}
+	if requests != 3 {
+		t.Fatalf("requests = %d, want 3", requests)
+	}
+}
+
+type streamRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f streamRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func makeCode13StreamBody(t *testing.T) []byte {
+	t.Helper()
+	errorFrame, err := json.Marshal([]any{nil, nil, nil, nil, nil, []any{13}})
+	if err != nil {
+		t.Fatalf("Marshal error frame: %v", err)
+	}
+	framed := "\n" + string(errorFrame) + "\n"
+	return []byte(")]}'\n" + strconv.Itoa(utf16Units(framed)) + framed)
+}
+
+func makeStreamBodyWithCode13AfterText(t *testing.T, text string) []byte {
+	t.Helper()
+	body := append([]byte(nil), makeStreamBody(t, text, false)...)
+	errorFrame, err := json.Marshal([]any{nil, nil, nil, nil, nil, []any{13}})
+	if err != nil {
+		t.Fatalf("Marshal error frame: %v", err)
+	}
+	framed := "\n" + string(errorFrame) + "\n"
+	body = append(body, []byte(strconv.Itoa(utf16Units(framed))+framed)...)
+	return body
 }
 
 func TestIsRetryableStreamGenerateError(t *testing.T) {

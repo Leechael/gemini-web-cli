@@ -3,6 +3,7 @@ package transport
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -85,6 +86,13 @@ func (e *StreamRequestError) Unwrap() error {
 	return e.Err
 }
 
+// FinalizeStreamLog records the parser outcome before the response body is closed.
+func FinalizeStreamLog(body io.ReadCloser, err error) {
+	if finalizer, ok := body.(interface{ SetFinalError(error) }); ok {
+		finalizer.SetFinalError(err)
+	}
+}
+
 // PostStreamGenerate sends a StreamGenerate request and returns the response body.
 func PostStreamGenerate(ctx context.Context, req StreamGenerateRequest) (io.ReadCloser, error) {
 	start := time.Now()
@@ -156,6 +164,11 @@ func PostStreamGenerate(ctx context.Context, req StreamGenerateRequest) (io.Read
 		entry.DurMS = time.Since(start).Milliseconds()
 		if readErr != nil && readErr != io.EOF {
 			entry.Error = readErr.Error()
+			var rejectErr interface{ RejectCode() int }
+			if errors.As(readErr, &rejectErr) {
+				code := rejectErr.RejectCode()
+				entry.RejectCode = &code
+			}
 		}
 		rpclog.Log(ctx, entry)
 	})

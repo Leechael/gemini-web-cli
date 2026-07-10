@@ -12,34 +12,19 @@ import (
 	"github.com/Leechael/gemini-web-cli/internal/client/transport"
 )
 
-// CallStreamGenerate sends a StreamGenerate request and returns the response body.
+// CallStreamGenerate sends a StreamGenerate request and retries transient
+// failures before an HTTP response is returned.
 func (c *Client) CallStreamGenerate(ctx context.Context, req transport.StreamGenerateRequest) (io.ReadCloser, error) {
-	return c.callStreamGenerate(ctx, req, c.session())
+	return c.callStreamGenerateWithRetry(ctx, req, c.session())
 }
 
-func (c *Client) callStreamGenerate(ctx context.Context, req transport.StreamGenerateRequest, s sessionSnapshot) (io.ReadCloser, error) {
+func (c *Client) callStreamGenerateWithRetry(ctx context.Context, req transport.StreamGenerateRequest, s sessionSnapshot) (io.ReadCloser, error) {
 	const maxAttempts = 3
-
-	req.Client = c.httpClient
-	req.UserAgent = userAgent
-
 	var lastErr error
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		req.URL = transport.BuildStreamGenerateURL(transport.StreamURLConfig{
-			BaseURL:     baseURL,
-			AccountPath: c.accountPath,
-			ReqID:       c.nextReqID(),
-			Language:    s.language,
-			BuildLabel:  s.buildLabel,
-			SessionID:   s.sessionID,
-		})
-
-		body, err := transport.PostStreamGenerate(ctx, req)
+		body, err := c.callStreamGenerate(ctx, req, s)
 		if err == nil {
 			return body, nil
-		}
-		if statusErr, ok := err.(*transport.HTTPStatusError); ok && statusErr.StatusCode == 429 {
-			return nil, &RateLimitError{StatusCode: statusErr.StatusCode}
 		}
 		lastErr = err
 		if attempt == maxAttempts || !isRetryableStreamGenerateError(err) {
@@ -51,6 +36,25 @@ func (c *Client) callStreamGenerate(ctx context.Context, req transport.StreamGen
 		}
 	}
 	return nil, lastErr
+}
+
+func (c *Client) callStreamGenerate(ctx context.Context, req transport.StreamGenerateRequest, s sessionSnapshot) (io.ReadCloser, error) {
+	req.Client = c.httpClient
+	req.UserAgent = userAgent
+	req.URL = transport.BuildStreamGenerateURL(transport.StreamURLConfig{
+		BaseURL:     baseURL,
+		AccountPath: c.accountPath,
+		ReqID:       c.nextReqID(),
+		Language:    s.language,
+		BuildLabel:  s.buildLabel,
+		SessionID:   s.sessionID,
+	})
+
+	body, err := transport.PostStreamGenerate(ctx, req)
+	if statusErr, ok := err.(*transport.HTTPStatusError); ok && statusErr.StatusCode == 429 {
+		return nil, &RateLimitError{StatusCode: statusErr.StatusCode}
+	}
+	return body, err
 }
 
 func isRetryableStreamGenerateError(err error) bool {

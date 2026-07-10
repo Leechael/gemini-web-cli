@@ -63,17 +63,29 @@ func (c *Client) streamGenerate(ctx context.Context, prompt string, metadata []s
 			ModelHeader: model.Headers,
 		}, s)
 		if err != nil {
-			return err
+			if attempt == maxAttempts || !isRetryableStreamGenerateError(err) {
+				return err
+			}
+			log.Printf("gemini stream: request retry attempt %d/%d: %v", attempt, maxAttempts, err)
+			if err := sleepBeforeStreamRetry(ctx, attempt); err != nil {
+				return err
+			}
+			continue
 		}
 
-		parseErr = c.parseStreamResponse(body, cb)
+		emitted := false
+		parseErr = c.parseStreamResponse(body, func(out *types.ModelOutput) {
+			emitted = true
+			cb(out)
+		})
+		transport.FinalizeStreamLog(body, parseErr)
 		body.Close()
 		if parseErr == nil {
 			return nil
 		}
 
 		var eerr *rpcs.EnvelopeError
-		if !errors.As(parseErr, &eerr) || eerr.Code != 13 {
+		if !errors.As(parseErr, &eerr) || eerr.Code != 13 || emitted {
 			return parseErr
 		}
 

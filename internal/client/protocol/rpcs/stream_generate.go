@@ -82,6 +82,9 @@ func (e *EnvelopeError) Error() string {
 	return fmt.Sprintf("envelope error code %d", e.Code)
 }
 
+// RejectCode exposes the protocol reject code to transport diagnostics.
+func (e *EnvelopeError) RejectCode() int { return e.Code }
+
 // EncodeStreamGenerate constructs the full StreamGenerate inner request.
 func EncodeStreamGenerate(opts EncodeStreamGenerateOpts) []any {
 	req := make([]any, 81)

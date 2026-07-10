@@ -462,9 +462,18 @@ func (r *StreamReadCloser) Read(p []byte) (int, error) {
 			r.err = err
 		}
 		r.mu.Unlock()
-		r.flush()
 	}
 	return n, err
+}
+
+// SetFinalError records a parser or protocol error before Close writes the log entry.
+func (r *StreamReadCloser) SetFinalError(err error) {
+	if err == nil {
+		return
+	}
+	r.mu.Lock()
+	r.err = err
+	r.mu.Unlock()
 }
 
 func (r *StreamReadCloser) Close() error {
