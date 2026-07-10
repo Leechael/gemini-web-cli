@@ -41,18 +41,20 @@ type Body struct {
 
 // Entry is one request/response log record.
 type Entry struct {
-	TS         string      `json:"ts"`
-	Method     string      `json:"method"`
-	URL        string      `json:"url"`
-	Kind       string      `json:"kind"`
-	ReqHeaders http.Header `json:"req_headers"`
-	ReqBody    *Body       `json:"req_body,omitempty"`
-	Status     int         `json:"status"`
-	RespBody   *Body       `json:"resp_body,omitempty"`
-	RejectCode *int        `json:"reject_code"`
-	DurMS      int64       `json:"dur_ms"`
-	Error      string      `json:"error"`
-	RPCIDs     []string    `json:"rpc_ids"`
+	TS          string         `json:"ts"`
+	Method      string         `json:"method"`
+	URL         string         `json:"url"`
+	Kind        string         `json:"kind"`
+	ReqHeaders  http.Header    `json:"req_headers"`
+	ReqBody     *Body          `json:"req_body,omitempty"`
+	Status      int            `json:"status"`
+	RespHeaders http.Header    `json:"resp_headers"`
+	RespBody    *Body          `json:"resp_body,omitempty"`
+	RejectCode  *int           `json:"reject_code"`
+	RejectCodes map[string]int `json:"reject_codes,omitempty"`
+	DurMS       int64          `json:"dur_ms"`
+	Error       string         `json:"error"`
+	RPCIDs      []string       `json:"rpc_ids"`
 }
 
 // Logger writes ndjson request/response logs with daily rotation.
@@ -254,6 +256,7 @@ func (l *Logger) Log(ctx context.Context, e Entry) error {
 	}
 
 	e.ReqHeaders = RedactHeaders(e.ReqHeaders)
+	e.RespHeaders = RedactHeaders(e.RespHeaders)
 	if err := l.materializeBodyLocked(e.ReqBody, "req", today); err != nil {
 		return err
 	}
@@ -316,6 +319,10 @@ func RedactHeaders(h http.Header) http.Header {
 			for i, v := range values {
 				redacted[key][i] = redactAuthorizationValue(v)
 			}
+		case "set-cookie":
+			for i, v := range values {
+				redacted[key][i] = redactSetCookieValue(v)
+			}
 		}
 	}
 	return redacted
@@ -332,6 +339,19 @@ func redactCookieValue(v string) string {
 		pairs[i] = p[:idx+1] + "<redacted>"
 	}
 	return strings.Join(pairs, "; ")
+}
+
+func redactSetCookieValue(v string) string {
+	pair, attrs, hasAttrs := strings.Cut(v, ";")
+	name, _, hasValue := strings.Cut(pair, "=")
+	if !hasValue {
+		return "<redacted>"
+	}
+	redacted := name + "=<redacted>"
+	if hasAttrs {
+		redacted += ";" + attrs
+	}
+	return redacted
 }
 
 func redactAuthorizationValue(v string) string {

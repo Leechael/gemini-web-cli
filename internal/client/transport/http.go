@@ -91,6 +91,7 @@ func PostBatch(ctx context.Context, req PostBatchRequest) ([]byte, error) {
 
 	body, readErr := io.ReadAll(resp.Body)
 	entry.Status = resp.StatusCode
+	entry.RespHeaders = resp.Header.Clone()
 	entry.RespBody = rpclog.BytesBody(body)
 	entry.DurMS = time.Since(start).Milliseconds()
 	if readErr != nil {
@@ -166,6 +167,7 @@ func PostBatchMulti(ctx context.Context, req PostBatchMultiRequest) ([]byte, err
 
 	body, readErr := io.ReadAll(resp.Body)
 	entry.Status = resp.StatusCode
+	entry.RespHeaders = resp.Header.Clone()
 	entry.RespBody = rpclog.BytesBody(body)
 	entry.DurMS = time.Since(start).Milliseconds()
 	if readErr != nil {
@@ -175,10 +177,13 @@ func PostBatchMulti(ctx context.Context, req PostBatchMultiRequest) ([]byte, err
 	} else {
 		stripped := protocol.StripResponsePrefix(body)
 		if _, codes, _ := protocol.ExtractRPCBodies(stripped, rpcIDs); len(codes) > 0 {
+			entry.RejectCodes = make(map[string]int, len(codes))
 			for _, id := range rpcIDs {
 				if code, ok := codes[id]; ok && code != 0 {
-					entry.RejectCode = &code
-					break
+					entry.RejectCodes[id] = code
+					if entry.RejectCode == nil {
+						entry.RejectCode = &code
+					}
 				}
 			}
 		}

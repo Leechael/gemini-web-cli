@@ -130,6 +130,7 @@ func PostStreamGenerate(ctx context.Context, req StreamGenerateRequest) (io.Read
 		rpclog.Log(ctx, entry)
 		return nil, &StreamRequestError{Err: err}
 	}
+	entry.RespHeaders = resp.Header.Clone()
 	if resp.StatusCode != http.StatusOK {
 		defer resp.Body.Close()
 		body, _ := io.ReadAll(resp.Body)

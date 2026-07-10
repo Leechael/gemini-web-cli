@@ -73,6 +73,7 @@ func uploadStart(ctx context.Context, req UploadRequest) (string, error) {
 
 	respBody, readErr := io.ReadAll(resp.Body)
 	entry.Status = resp.StatusCode
+	entry.RespHeaders = resp.Header.Clone()
 	entry.RespBody = rpclog.BytesBody(respBody)
 	entry.DurMS = time.Since(start).Milliseconds()
 	if readErr != nil {
@@ -132,6 +133,7 @@ func uploadFinalize(ctx context.Context, sessionURL string, req UploadRequest) (
 
 	respBody, readErr := io.ReadAll(resp.Body)
 	entry.Status = resp.StatusCode
+	entry.RespHeaders = resp.Header.Clone()
 	entry.RespBody = rpclog.BytesBody(respBody)
 	entry.DurMS = time.Since(start).Milliseconds()
 	if readErr != nil {

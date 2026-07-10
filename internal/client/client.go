@@ -168,6 +168,7 @@ func (c *Client) Init(ctx context.Context) error {
 		return fmt.Errorf("init request failed: %w", err)
 	}
 	defer resp.Body.Close()
+	entry.RespHeaders = resp.Header.Clone()
 
 	finalURL := resp.Request.URL.String()
 	if strings.Contains(finalURL, "accounts.google.com") {

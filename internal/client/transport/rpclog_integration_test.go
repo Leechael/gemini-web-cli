@@ -3,6 +3,7 @@ package transport
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -28,6 +29,8 @@ func TestPostBatchLogsRequestResponse(t *testing.T) {
 	}()
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Set-Cookie", "session=secret; Path=/; HttpOnly")
+		w.Header().Set("X-Debug-Header", "debug-value")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`)]}'
 77
@@ -64,6 +67,61 @@ func TestPostBatchLogsRequestResponse(t *testing.T) {
 	if entry.RejectCode == nil || *entry.RejectCode != 13 {
 		t.Fatalf("reject_code = %v", entry.RejectCode)
 	}
+	if entry.RespHeaders.Get("Set-Cookie") != "session=<redacted>; Path=/; HttpOnly" {
+		t.Fatalf("set-cookie = %q", entry.RespHeaders.Get("Set-Cookie"))
+	}
+	if entry.RespHeaders.Get("X-Debug-Header") != "debug-value" {
+		t.Fatalf("x-debug-header = %q", entry.RespHeaders.Get("X-Debug-Header"))
+	}
+}
+
+func TestPostBatchMultiLogsEveryRejectCode(t *testing.T) {
+	dir := t.TempDir()
+	orig := rpclog.Default()
+	l := rpclog.New()
+	l.SetDir(dir)
+	l.SetEnabled(true)
+	rpclog.SetDefault(l)
+	defer func() {
+		rpclog.SetDefault(orig)
+		_ = l.Close()
+	}()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(framedRPCResponse(
+			`[["wrb.fr","rpc1","[]",null,null,[7]]]`,
+			`[["wrb.fr","rpc2","[]",null,null,[13]]]`,
+		))
+	}))
+	defer srv.Close()
+
+	_, err := PostBatchMulti(t.Context(), PostBatchMultiRequest{
+		Client:      srv.Client(),
+		URL:         srv.URL,
+		AccessToken: "secret-token",
+		Calls: []RPCCall{
+			{ID: "rpc1", Payload: "[1]"},
+			{ID: "rpc2", Payload: "[2]"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("PostBatchMulti: %v", err)
+	}
+
+	entry := readLatestEntry(t, dir)
+	if len(entry.RejectCodes) != 2 || entry.RejectCodes["rpc1"] != 7 || entry.RejectCodes["rpc2"] != 13 {
+		t.Fatalf("reject_codes = %#v", entry.RejectCodes)
+	}
+}
+
+func framedRPCResponse(frames ...string) []byte {
+	var response strings.Builder
+	response.WriteString(")]}'\n")
+	for _, frame := range frames {
+		content := "\n" + frame + "\n"
+		fmt.Fprintf(&response, "%d%s", len(content), content)
+	}
+	return []byte(response.String())
 }
 
 func TestPostStreamGenerateDoesNotWrapBodyWhenLoggingDisabled(t *testing.T) {
