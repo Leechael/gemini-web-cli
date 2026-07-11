@@ -53,50 +53,43 @@ func (c *Client) streamGenerate(ctx context.Context, prompt string, metadata []s
 	// fresh reqID but the same inner request/metadata so the server sees a new
 	// protocol attempt. If protocol behavior changes, this block is the central
 	// place to adjust code 13 handling.
-	const maxAttempts = 3
-	var parseErr error
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		body, err := c.callStreamGenerate(ctx, transport.StreamGenerateRequest{
+	retryableProtocolError := false
+	err = runStreamGenerateAttempts(ctx, func() (bool, error) {
+		body, requestErr := c.callStreamGenerate(ctx, transport.StreamGenerateRequest{
 			AccessToken: s.accessToken,
 			InnerReq:    innerJSON,
 			UUID:        uuid,
 			ModelHeader: model.Headers,
 		}, s)
-		if err != nil {
-			if attempt == maxAttempts || !isRetryableStreamGenerateError(err) {
-				return err
-			}
-			log.Printf("gemini stream: request retry attempt %d/%d: %v", attempt, maxAttempts, err)
-			if err := sleepBeforeStreamRetry(ctx, attempt); err != nil {
-				return err
-			}
-			continue
+		if requestErr != nil {
+			retryableProtocolError = false
+			return isRetryableStreamGenerateError(requestErr), requestErr
 		}
 
 		emitted := false
-		parseErr = c.parseStreamResponse(body, func(out *types.ModelOutput) {
+		parseErr := c.parseStreamResponse(body, func(out *types.ModelOutput) {
 			emitted = true
 			cb(out)
 		})
 		transport.FinalizeStreamLog(body, parseErr)
 		body.Close()
 		if parseErr == nil {
-			return nil
+			return false, nil
 		}
 
 		var eerr *rpcs.EnvelopeError
-		if !errors.As(parseErr, &eerr) || eerr.Code != 13 || emitted {
-			return parseErr
-		}
-
-		if attempt < maxAttempts {
+		retryableProtocolError = errors.As(parseErr, &eerr) && eerr.Code == 13 && !emitted
+		return retryableProtocolError, parseErr
+	}, func(attempt, maxAttempts int, retryErr error) {
+		var eerr *rpcs.EnvelopeError
+		if errors.As(retryErr, &eerr) && eerr.Code == 13 {
 			log.Printf("gemini stream: code 13 (BardErrorInfo 1155) retry attempt %d/%d", attempt, maxAttempts)
-			if err := sleepBeforeStreamRetry(ctx, attempt); err != nil {
-				return err
-			}
+			return
 		}
+		log.Printf("gemini stream: request retry attempt %d/%d: %v", attempt, maxAttempts, retryErr)
+	})
+	if err != nil && retryableProtocolError {
+		log.Printf("gemini stream: code 13 retries exhausted after %d attempts", maxStreamGenerateAttempts)
 	}
-
-	log.Printf("gemini stream: code 13 retries exhausted after %d attempts", maxAttempts)
-	return parseErr
+	return err
 }

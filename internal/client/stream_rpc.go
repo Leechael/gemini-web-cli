@@ -19,23 +19,44 @@ func (c *Client) CallStreamGenerate(ctx context.Context, req transport.StreamGen
 }
 
 func (c *Client) callStreamGenerateWithRetry(ctx context.Context, req transport.StreamGenerateRequest, s sessionSnapshot) (io.ReadCloser, error) {
-	const maxAttempts = 3
+	var body io.ReadCloser
+	err := runStreamGenerateAttempts(ctx, func() (bool, error) {
+		attemptBody, attemptErr := c.callStreamGenerate(ctx, req, s)
+		if attemptErr != nil {
+			body = nil
+			return isRetryableStreamGenerateError(attemptErr), attemptErr
+		}
+		body = attemptBody
+		return false, nil
+	}, func(attempt, maxAttempts int, err error) {
+		fmt.Fprintf(logWriter, "stream request failed (attempt %d/%d), retrying: %v\n", attempt, maxAttempts, err)
+	})
+	return body, err
+}
+
+const maxStreamGenerateAttempts = 3
+
+func runStreamGenerateAttempts(
+	ctx context.Context,
+	attemptFn func() (bool, error),
+	logRetry func(attempt, maxAttempts int, err error),
+) error {
 	var lastErr error
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		body, err := c.callStreamGenerate(ctx, req, s)
+	for attempt := 1; attempt <= maxStreamGenerateAttempts; attempt++ {
+		retry, err := attemptFn()
 		if err == nil {
-			return body, nil
+			return nil
 		}
 		lastErr = err
-		if attempt == maxAttempts || !isRetryableStreamGenerateError(err) {
-			break
+		if attempt == maxStreamGenerateAttempts || !retry {
+			return err
 		}
-		fmt.Fprintf(logWriter, "stream request failed (attempt %d/%d), retrying: %v\n", attempt, maxAttempts, err)
+		logRetry(attempt, maxStreamGenerateAttempts, err)
 		if err := sleepBeforeStreamRetry(ctx, attempt); err != nil {
-			return nil, err
+			return err
 		}
 	}
-	return nil, lastErr
+	return lastErr
 }
 
 func (c *Client) callStreamGenerate(ctx context.Context, req transport.StreamGenerateRequest, s sessionSnapshot) (io.ReadCloser, error) {

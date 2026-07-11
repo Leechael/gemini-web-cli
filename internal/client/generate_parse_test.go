@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Leechael/gemini-web-cli/internal/client/protocol/rpcs"
 	"github.com/Leechael/gemini-web-cli/internal/client/transport"
 	"github.com/Leechael/gemini-web-cli/internal/types"
 )
@@ -62,6 +63,33 @@ func TestParseStreamResponse_ReturnsNonEOFReadErrorAfterOutput(t *testing.T) {
 	}
 }
 
+func TestStreamGenerateRetriesCode13BeforeOutput(t *testing.T) {
+	c := newTestClient()
+	requests := 0
+	c.httpClient = &http.Client{Transport: streamRoundTripFunc(func(*http.Request) (*http.Response, error) {
+		requests++
+		body := makeCode13StreamBody(t)
+		if requests > 1 {
+			body = makeStreamBody(t, "complete", true)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(bytes.NewReader(body))}, nil
+	})}
+
+	callbacks := 0
+	err := c.streamGenerate(t.Context(), "prompt", nil, nil, &types.Models[0], false, func(*types.ModelOutput) {
+		callbacks++
+	})
+	if err != nil {
+		t.Fatalf("streamGenerate: %v", err)
+	}
+	if requests != 2 {
+		t.Fatalf("requests = %d, want 2", requests)
+	}
+	if callbacks != 1 {
+		t.Fatalf("callbacks = %d, want 1", callbacks)
+	}
+}
+
 func TestStreamGenerateDoesNotRetryCode13AfterOutput(t *testing.T) {
 	c := newTestClient()
 	requests := 0
@@ -78,9 +106,7 @@ func TestStreamGenerateDoesNotRetryCode13AfterOutput(t *testing.T) {
 	err := c.streamGenerate(t.Context(), "prompt", nil, nil, &types.Models[0], false, func(*types.ModelOutput) {
 		callbacks++
 	})
-	if err == nil || err.Error() != "envelope error code 13" {
-		t.Fatalf("err = %v", err)
-	}
+	assertEnvelopeErrorCode(t, err, 13)
 	if requests != 1 {
 		t.Fatalf("requests = %d, want 1", requests)
 	}
@@ -138,11 +164,17 @@ func TestStreamGenerateUsesOneThreeAttemptBudget(t *testing.T) {
 	})}
 
 	err := c.streamGenerate(t.Context(), "prompt", nil, nil, &types.Models[0], false, func(*types.ModelOutput) {})
-	if err == nil || err.Error() != "envelope error code 13" {
-		t.Fatalf("err = %v", err)
-	}
+	assertEnvelopeErrorCode(t, err, 13)
 	if requests != 3 {
 		t.Fatalf("requests = %d, want 3", requests)
+	}
+}
+
+func assertEnvelopeErrorCode(t *testing.T, err error, code int) {
+	t.Helper()
+	var envelopeErr *rpcs.EnvelopeError
+	if !errors.As(err, &envelopeErr) || envelopeErr.Code != code {
+		t.Fatalf("err = %v, want EnvelopeError code %d", err, code)
 	}
 }
 
