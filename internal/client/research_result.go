@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -12,34 +13,52 @@ import (
 func (c *Client) GetDeepResearchResult(ctx context.Context, cid string) (string, map[int]types.GroundingSource, error) {
 	rawTurns, rawErr := c.ReadChatRaw(ctx, cid, 5)
 	if rawErr == nil && len(rawTurns) > 0 {
-		text, sources := extractResearchResultFromRaw(rawTurns)
-		if text != "" {
-			return text, sources, nil
-		}
-		if status := inspectResearchStatusFromRaw(rawTurns); status != nil {
-			return "", nil, fmt.Errorf("research result is not ready for chat %s: state=%s", cid, status.State)
-		}
-		if text := latestAssistantTextFromRaw(rawTurns); text != "" && classifyResearchText(text).State == "done" {
-			return text, nil, nil
+		for _, rawTurn := range rawTurns {
+			state := inspectResearchRawTurn(rawTurn)
+			switch state.state {
+			case "done":
+				return state.text, state.sources, nil
+			case "running", "pending_confirm":
+				return "", nil, fmt.Errorf("research result is not ready for chat %s: state=%s", cid, state.state)
+			}
+			if text := assistantTextFromRawTurn(rawTurn); text != "" && classifyResearchText(text).State == "done" {
+				return text, nil, nil
+			}
 		}
 	}
 
 	turns, err := c.ReadChat(ctx, cid, 5)
 	if err != nil {
-		return "", nil, err
+		return "", nil, researchFallbackError(rawErr, err)
 	}
-	var bestText string
-	for _, turn := range turns {
-		text := turn.AssistantResponse
-		if strings.HasPrefix(text, "http://googleusercontent.com/") {
+	var latestText string
+	for i := len(turns) - 1; i >= 0; i-- {
+		text := turns[i].AssistantResponse
+		if text == "" || strings.HasPrefix(text, "http://googleusercontent.com/") {
 			continue
 		}
-		if len(text) > len(bestText) {
-			bestText = text
-		}
+		latestText = text
+		break
 	}
-	if bestText == "" {
-		return "", nil, fmt.Errorf("no research result found for chat %s", cid)
+	if latestText == "" {
+		return "", nil, researchFallbackError(rawErr, fmt.Errorf("no research result found for chat %s", cid))
 	}
-	return bestText, nil, nil
+	status := classifyResearchText(latestText)
+	if status.State == "running" || status.State == "pending_confirm" {
+		return "", nil, fmt.Errorf("research result is not ready for chat %s: state=%s", cid, status.State)
+	}
+	if status.State != "done" {
+		return "", nil, researchFallbackError(rawErr, fmt.Errorf("no research result found for chat %s", cid))
+	}
+	return latestText, nil, nil
+}
+
+func researchFallbackError(rawErr, fallbackErr error) error {
+	if rawErr == nil {
+		return fallbackErr
+	}
+	return errors.Join(
+		fmt.Errorf("read raw chat: %w", rawErr),
+		fmt.Errorf("decoded fallback: %w", fallbackErr),
+	)
 }

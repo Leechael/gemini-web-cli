@@ -55,11 +55,127 @@ func TestClassifyResearchTextRecognizesCompletedReports(t *testing.T) {
 		"我已经完成了研究，结果如下。",
 		"I have completed the research. Here is the result.",
 		longMarkdown,
+		"\r\n" + longMarkdown,
+		"\ufeff\n" + longMarkdown,
 	} {
 		status := classifyResearchText(text)
 		if status.State != "done" || status.TextLen != len(text) {
 			t.Fatalf("classifyResearchText() = %+v, want done", status)
 		}
+	}
+}
+
+func TestGetDeepResearchResultPrefersNewestPlainTextReportOverOlderRunningTurn(t *testing.T) {
+	report := "# Report\n\n" + strings.Repeat("completed research result ", 100)
+	body, err := json.Marshal([]any{[]json.RawMessage{
+		testResearchTextTurn(report),
+		testResearchRunningTurn(),
+	}})
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(makeTestBatchResponse("hNvQHb", string(body), 0))
+	}))
+	defer srv.Close()
+	origBase := baseURL
+	baseURL = srv.URL
+	defer func() { baseURL = origBase }()
+
+	c := newTestClient()
+	c.accessToken = "token"
+	c.httpClient = srv.Client()
+	text, sources, err := c.GetDeepResearchResult(t.Context(), "c_research")
+	if err != nil {
+		t.Fatalf("GetDeepResearchResult: %v", err)
+	}
+	if text != report || sources != nil {
+		t.Fatalf("text len=%d sources=%+v", len(text), sources)
+	}
+}
+
+func TestGetDeepResearchResultDoesNotReturnOlderReportWhileNewestTurnIsRunning(t *testing.T) {
+	report := "# Report\n\n" + strings.Repeat("completed research result ", 100)
+	body, err := json.Marshal([]any{[]json.RawMessage{
+		testResearchRunningTurn(),
+		testResearchTextTurn(report),
+	}})
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(makeTestBatchResponse("hNvQHb", string(body), 0))
+	}))
+	defer srv.Close()
+	origBase := baseURL
+	baseURL = srv.URL
+	defer func() { baseURL = origBase }()
+
+	c := newTestClient()
+	c.accessToken = "token"
+	c.httpClient = srv.Client()
+	text, sources, err := c.GetDeepResearchResult(t.Context(), "c_research")
+	if err == nil || !strings.Contains(err.Error(), "state=running") {
+		t.Fatalf("text = %q, sources = %+v, err = %v; want running error", text, sources, err)
+	}
+}
+
+func TestGetDeepResearchResultDecodedFallbackDoesNotReturnOlderReportWhileLatestTurnIsRunning(t *testing.T) {
+	report := "# Report\n\n" + strings.Repeat("completed research result ", 100)
+	body, err := json.Marshal([]any{[]json.RawMessage{
+		testResearchRunningTurn(),
+		testResearchTextTurn(report),
+	}})
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if requests == 1 {
+			_, _ = w.Write(makeTestBatchResponse("hNvQHb", "", 7))
+			return
+		}
+		_, _ = w.Write(makeTestBatchResponse("hNvQHb", string(body), 0))
+	}))
+	defer srv.Close()
+	origBase := baseURL
+	baseURL = srv.URL
+	defer func() { baseURL = origBase }()
+
+	c := newTestClient()
+	c.accessToken = "token"
+	c.httpClient = srv.Client()
+	text, sources, err := c.GetDeepResearchResult(t.Context(), "c_research")
+	if err == nil || !strings.Contains(err.Error(), "state=running") {
+		t.Fatalf("text = %q, sources = %+v, err = %v; want running error", text, sources, err)
+	}
+}
+
+func TestGetDeepResearchResultPreservesRawReadErrorWhenFallbackHasNoResult(t *testing.T) {
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if requests == 1 {
+			_, _ = w.Write(makeTestBatchResponse("hNvQHb", "", 7))
+			return
+		}
+		_, _ = w.Write(makeTestBatchResponse("hNvQHb", "", 0))
+	}))
+	defer srv.Close()
+	origBase := baseURL
+	baseURL = srv.URL
+	defer func() { baseURL = origBase }()
+
+	c := newTestClient()
+	c.accessToken = "token"
+	c.httpClient = srv.Client()
+	_, _, err := c.GetDeepResearchResult(t.Context(), "c_research")
+	if err == nil || !strings.Contains(err.Error(), "read_chat rejected with code=7") {
+		t.Fatalf("err = %v, want raw read error", err)
 	}
 }
 

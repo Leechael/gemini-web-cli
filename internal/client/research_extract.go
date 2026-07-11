@@ -69,21 +69,24 @@ func inspectResearchRawTurn(rawTurn json.RawMessage) researchRawState {
 
 func latestAssistantTextFromRaw(rawTurns []json.RawMessage) string {
 	for _, rawTurn := range rawTurns {
-		var turn []any
-		if err := json.Unmarshal(rawTurn, &turn); err != nil {
-			continue
-		}
-		cand, _ := protocol.ArrayAt(turn, 3, 0, 0)
-		if cand == nil {
-			continue
-		}
-		text := protocol.FirstString(protocol.StringAt(cand, 1, 0), protocol.StringAt(cand, 22, 0))
-		text = protocol.StripCardURLLines(text)
-		if text != "" {
+		if text := assistantTextFromRawTurn(rawTurn); text != "" {
 			return text
 		}
 	}
 	return ""
+}
+
+func assistantTextFromRawTurn(rawTurn json.RawMessage) string {
+	var turn []any
+	if err := json.Unmarshal(rawTurn, &turn); err != nil {
+		return ""
+	}
+	cand, _ := protocol.ArrayAt(turn, 3, 0, 0)
+	if cand == nil {
+		return ""
+	}
+	text := protocol.FirstString(protocol.StringAt(cand, 1, 0), protocol.StringAt(cand, 22, 0))
+	return protocol.StripCardURLLines(text)
 }
 
 func extractResearchResultFromCandidate(cand []any) (string, map[int]types.GroundingSource) {
