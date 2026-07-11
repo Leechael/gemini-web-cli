@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Leechael/gemini-web-cli/internal/client"
+	"github.com/Leechael/gemini-web-cli/internal/client/transport/rpclog"
 )
 
 var (
@@ -16,6 +17,7 @@ var (
 	hasAccountIdx  bool
 	modelName      string
 	verbose        bool
+	rpcLog         bool
 	noPersist      bool
 	requestTimeout float64
 )
@@ -39,6 +41,9 @@ var rootCmd = &cobra.Command{
 		if verbose {
 			client.SetVerbose(os.Stderr)
 		}
+		if rpcLog {
+			rpclog.SetEnabled(true)
+		}
 	},
 }
 
@@ -57,6 +62,7 @@ func init() {
 	pf.IntVar(&accountIndex, "account-index", 0, "Google account index (e.g. 2 => /u/2)")
 	pf.StringVar(&modelName, "model", "unspecified", "Model name")
 	pf.BoolVar(&verbose, "verbose", false, "Enable debug logging")
+	pf.BoolVar(&rpcLog, "rpc-log", false, "Enable RPC request/response logging to data/rpc_logs (overridable via $GEMINI_WEB_CLI_RPC_LOG_DIR)")
 	pf.BoolVar(&noPersist, "no-persist", false, "Do not write updated cookies back")
 	pf.Float64Var(&requestTimeout, "request-timeout", 300, "Per-request HTTP timeout in seconds")
 

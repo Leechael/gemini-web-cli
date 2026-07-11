@@ -3,11 +3,15 @@ package transport
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
+
+	"github.com/Leechael/gemini-web-cli/internal/client/transport/rpclog"
 )
 
 // StreamURLConfig contains the query and path inputs for a StreamGenerate URL.
@@ -69,8 +73,30 @@ func (e *HTTPStatusError) Error() string {
 	return fmt.Sprintf("stream returned HTTP %d: %s", e.StatusCode, e.BodySnippet)
 }
 
+// StreamRequestError wraps failures that happen before Gemini returns an HTTP response.
+type StreamRequestError struct {
+	Err error
+}
+
+func (e *StreamRequestError) Error() string {
+	return fmt.Sprintf("stream request failed: %v", e.Err)
+}
+
+func (e *StreamRequestError) Unwrap() error {
+	return e.Err
+}
+
+// FinalizeStreamLog records the parser outcome before the response body is closed.
+func FinalizeStreamLog(body io.ReadCloser, err error) {
+	if finalizer, ok := body.(interface{ SetFinalError(error) }); ok {
+		finalizer.SetFinalError(err)
+	}
+}
+
 // PostStreamGenerate sends a StreamGenerate request and returns the response body.
 func PostStreamGenerate(ctx context.Context, req StreamGenerateRequest) (io.ReadCloser, error) {
+	start := time.Now()
+
 	outerReq := []any{nil, string(req.InnerReq)}
 	outerJSON, err := json.Marshal(outerReq)
 	if err != nil {
@@ -80,8 +106,9 @@ func PostStreamGenerate(ctx context.Context, req StreamGenerateRequest) (io.Read
 	form := url.Values{}
 	form.Set("at", req.AccessToken)
 	form.Set("f.req", string(outerJSON))
+	formEncoded := form.Encode()
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", req.URL, strings.NewReader(form.Encode()))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", req.URL, strings.NewReader(formEncoded))
 	if err != nil {
 		return nil, err
 	}
@@ -91,22 +118,59 @@ func PostStreamGenerate(ctx context.Context, req StreamGenerateRequest) (io.Read
 	}
 	httpReq.Header.Set("x-goog-ext-525005358-jspb", fmt.Sprintf(`["%s",1]`, req.UUID))
 
+	entry := rpclog.Entry{
+		Method:     httpReq.Method,
+		URL:        httpReq.URL.String(),
+		Kind:       rpclog.KindStream,
+		ReqHeaders: httpReq.Header.Clone(),
+		ReqBody:    rpclog.StringBody(rpclog.RedactAT(formEncoded)),
+	}
+
 	client := req.Client
 	if client == nil {
 		client = http.DefaultClient
 	}
 	resp, err := client.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("stream request failed: %w", err)
+		entry.Status = 0
+		entry.Error = err.Error()
+		entry.DurMS = time.Since(start).Milliseconds()
+		rpclog.Log(ctx, entry)
+		return nil, &StreamRequestError{Err: err}
 	}
+	entry.RespHeaders = resp.Header.Clone()
 	if resp.StatusCode != http.StatusOK {
 		defer resp.Body.Close()
 		body, _ := io.ReadAll(resp.Body)
+		entry.Status = resp.StatusCode
+		entry.RespBody = rpclog.BytesBody(body)
+		entry.Error = fmt.Sprintf("stream returned HTTP %d", resp.StatusCode)
+		entry.DurMS = time.Since(start).Milliseconds()
+		rpclog.Log(ctx, entry)
 		snippet := string(body)
 		if len(snippet) > 200 {
 			snippet = snippet[:200]
 		}
 		return nil, &HTTPStatusError{StatusCode: resp.StatusCode, BodySnippet: snippet}
 	}
-	return resp.Body, nil
+
+	entry.Status = http.StatusOK
+	if !rpclog.Enabled() {
+		return resp.Body, nil
+	}
+	capture := rpclog.StartBodyCapture("stream-response")
+	wrapped := rpclog.WrapStreamReadCloser(resp.Body, capture, func(body *rpclog.Body, readErr error) {
+		entry.RespBody = body
+		entry.DurMS = time.Since(start).Milliseconds()
+		if readErr != nil && readErr != io.EOF {
+			entry.Error = readErr.Error()
+			var rejectErr interface{ RejectCode() int }
+			if errors.As(readErr, &rejectErr) {
+				code := rejectErr.RejectCode()
+				entry.RejectCode = &code
+			}
+		}
+		rpclog.Log(ctx, entry)
+	})
+	return wrapped, nil
 }

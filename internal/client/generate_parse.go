@@ -44,7 +44,9 @@ func (c *Client) parseStreamResponse(body io.Reader, cb StreamCallback) error {
 						if eerr.Code == 1052 {
 							return &ModelUnavailableError{Code: eerr.Code}
 						}
-						return fmt.Errorf("server returned error code %d", eerr.Code)
+						// Return the typed EnvelopeError directly so callers can use
+						// errors.As to inspect eerr.Code (e.g. code 13 retries).
+						return eerr
 					}
 					return err
 				}

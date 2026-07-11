@@ -7,6 +7,9 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
+
+	"github.com/Leechael/gemini-web-cli/internal/client/transport/rpclog"
 )
 
 // UploadRequest contains the inputs for Google's resumable upload flow.
@@ -38,6 +41,7 @@ func PostUpload(ctx context.Context, req UploadRequest) (string, error) {
 }
 
 func uploadStart(ctx context.Context, req UploadRequest) (string, error) {
+	start := time.Now()
 	body := "File name: " + req.FileName
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", req.PushURL, strings.NewReader(body))
 	if err != nil {
@@ -49,15 +53,41 @@ func uploadStart(ctx context.Context, req UploadRequest) (string, error) {
 	httpReq.Header.Set("X-Goog-Upload-Header-Content-Length", strconv.FormatInt(req.Size, 10))
 	httpReq.Header.Set("X-Goog-Upload-Protocol", "resumable")
 
+	entry := rpclog.Entry{
+		Method:     httpReq.Method,
+		URL:        httpReq.URL.String(),
+		Kind:       rpclog.KindUploadStart,
+		ReqHeaders: httpReq.Header.Clone(),
+		ReqBody:    rpclog.StringBody(body),
+	}
+
 	resp, err := uploadHTTPClient(req).Do(httpReq)
 	if err != nil {
+		entry.Status = 0
+		entry.Error = err.Error()
+		entry.DurMS = time.Since(start).Milliseconds()
+		rpclog.Log(ctx, entry)
 		return "", fmt.Errorf("upload start request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
+	respBody, readErr := io.ReadAll(resp.Body)
+	entry.Status = resp.StatusCode
+	entry.RespHeaders = resp.Header.Clone()
+	entry.RespBody = rpclog.BytesBody(respBody)
+	entry.DurMS = time.Since(start).Milliseconds()
+	if readErr != nil {
+		entry.Error = readErr.Error()
+	} else if resp.StatusCode != http.StatusOK {
+		entry.Error = fmt.Sprintf("upload start returned HTTP %d: %s", resp.StatusCode, snippet(respBody, 200))
+	}
+	rpclog.Log(ctx, entry)
+
+	if readErr != nil {
+		return "", fmt.Errorf("reading upload start response: %w", readErr)
+	}
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("upload start returned HTTP %d: %s", resp.StatusCode, snippet(body, 200))
+		return "", fmt.Errorf("upload start returned HTTP %d: %s", resp.StatusCode, snippet(respBody, 200))
 	}
 	sessionURL := resp.Header.Get("X-Goog-Upload-Url")
 	if sessionURL == "" {
@@ -67,6 +97,7 @@ func uploadStart(ctx context.Context, req UploadRequest) (string, error) {
 }
 
 func uploadFinalize(ctx context.Context, sessionURL string, req UploadRequest) (string, error) {
+	start := time.Now()
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", sessionURL, req.Body)
 	if err != nil {
 		return "", err
@@ -77,21 +108,48 @@ func uploadFinalize(ctx context.Context, sessionURL string, req UploadRequest) (
 	httpReq.Header.Set("X-Goog-Upload-Offset", "0")
 	httpReq.ContentLength = req.Size
 
+	capture := rpclog.StartBodyCapture("upload-request")
+	if capture != nil {
+		httpReq.Body = rpclog.CaptureReadCloser(httpReq.Body, capture)
+	}
+
+	entry := rpclog.Entry{
+		Method:     httpReq.Method,
+		URL:        httpReq.URL.String(),
+		Kind:       rpclog.KindUploadFinalize,
+		ReqHeaders: httpReq.Header.Clone(),
+	}
+
 	resp, err := uploadHTTPClient(req).Do(httpReq)
+	entry.ReqBody = capture.Body()
 	if err != nil {
+		entry.Status = 0
+		entry.Error = err.Error()
+		entry.DurMS = time.Since(start).Milliseconds()
+		rpclog.Log(ctx, entry)
 		return "", fmt.Errorf("upload finalize request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
+	respBody, readErr := io.ReadAll(resp.Body)
+	entry.Status = resp.StatusCode
+	entry.RespHeaders = resp.Header.Clone()
+	entry.RespBody = rpclog.BytesBody(respBody)
+	entry.DurMS = time.Since(start).Milliseconds()
+	if readErr != nil {
+		entry.Error = readErr.Error()
+	} else if resp.StatusCode != http.StatusOK {
+		entry.Error = fmt.Sprintf("upload finalize returned HTTP %d: %s", resp.StatusCode, snippet(respBody, 200))
+	}
+	rpclog.Log(ctx, entry)
+
+	if readErr != nil {
+		return "", fmt.Errorf("reading upload response: %w", readErr)
+	}
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("upload finalize returned HTTP %d: %s", resp.StatusCode, snippet(body, 200))
+		return "", fmt.Errorf("upload finalize returned HTTP %d: %s", resp.StatusCode, snippet(respBody, 200))
 	}
-	uploadID, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("reading upload response: %w", err)
-	}
-	return strings.TrimSpace(string(uploadID)), nil
+	return strings.TrimSpace(string(respBody)), nil
 }
 
 func setUploadCommonHeaders(httpReq *http.Request, req UploadRequest) {

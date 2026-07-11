@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -10,30 +11,46 @@ import (
 
 // GetDeepResearchResult fetches the full research result text.
 func (c *Client) GetDeepResearchResult(ctx context.Context, cid string) (string, map[int]types.GroundingSource, error) {
-	rawTurns, err := c.ReadChatRaw(ctx, cid, 5)
-	if err == nil && len(rawTurns) > 0 {
-		text, sources := extractResearchResultFromRaw(rawTurns)
-		if text != "" {
-			return text, sources, nil
+	rawTurns, rawErr := c.ReadChatRaw(ctx, cid, 5)
+	if rawErr == nil && len(rawTurns) > 0 {
+		state := inspectResearchStateFromRaw(rawTurns)
+		switch state.state {
+		case "done":
+			return state.text, state.sources, nil
+		case "running", "pending_confirm":
+			return "", nil, fmt.Errorf("research result is not ready for chat %s: state=%s", cid, state.state)
 		}
 	}
 
 	turns, err := c.ReadChat(ctx, cid, 5)
 	if err != nil {
-		return "", nil, err
+		return "", nil, researchFallbackError(rawErr, err)
 	}
-	var bestText string
-	for _, turn := range turns {
-		resp := turn.AssistantResponse
-		if strings.HasPrefix(resp, "http://googleusercontent.com/") {
+	var latestText string
+	for i := len(turns) - 1; i >= 0; i-- {
+		text := turns[i].AssistantResponse
+		if text == "" || strings.HasPrefix(text, "http://googleusercontent.com/") {
 			continue
 		}
-		if len(resp) > len(bestText) {
-			bestText = resp
-		}
+		latestText = text
+		break
 	}
-	if bestText == "" {
-		return "", nil, fmt.Errorf("no research result found for chat %s — research may still be running", cid)
+	if latestText == "" {
+		return "", nil, researchFallbackError(rawErr, fmt.Errorf("no research result found for chat %s", cid))
 	}
-	return bestText, nil, nil
+	status := classifyResearchText(latestText)
+	if status.State == "running" || status.State == "pending_confirm" {
+		return "", nil, fmt.Errorf("research result is not ready for chat %s: state=%s", cid, status.State)
+	}
+	return latestText, nil, nil
+}
+
+func researchFallbackError(rawErr, fallbackErr error) error {
+	if rawErr == nil {
+		return fallbackErr
+	}
+	return errors.Join(
+		fmt.Errorf("read raw chat: %w", rawErr),
+		fmt.Errorf("decoded fallback: %w", fallbackErr),
+	)
 }
