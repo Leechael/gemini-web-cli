@@ -18,8 +18,8 @@ func (c *Client) CheckDeepResearch(ctx context.Context, cid string) (*ResearchSt
 		if len(rawTurns) == 0 {
 			return &ResearchStatus{State: "empty"}, nil
 		}
-		if status := inspectResearchStatusFromRaw(rawTurns); status != nil {
-			return status, nil
+		if state := inspectResearchStateFromRaw(rawTurns); state.state != "" {
+			return &ResearchStatus{State: state.state, TextLen: len(state.text)}, nil
 		}
 		if text := latestAssistantTextFromRaw(rawTurns); text != "" {
 			return classifyResearchText(text), nil
@@ -39,7 +39,7 @@ func (c *Client) CheckDeepResearch(ctx context.Context, cid string) (*ResearchSt
 
 func classifyResearchText(text string) *ResearchStatus {
 	lower := strings.ToLower(text)
-	completionPending := strings.Contains(text, "研究完成后")
+	completionPending := strings.Contains(text, "研究完成后，我会告诉你")
 	done := strings.Contains(text, "我已经完成了研究") ||
 		(strings.Contains(text, "研究完成") && !completionPending) ||
 		strings.Contains(lower, "i have completed the research") ||

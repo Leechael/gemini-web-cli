@@ -13,17 +13,12 @@ import (
 func (c *Client) GetDeepResearchResult(ctx context.Context, cid string) (string, map[int]types.GroundingSource, error) {
 	rawTurns, rawErr := c.ReadChatRaw(ctx, cid, 5)
 	if rawErr == nil && len(rawTurns) > 0 {
-		for _, rawTurn := range rawTurns {
-			state := inspectResearchRawTurn(rawTurn)
-			switch state.state {
-			case "done":
-				return state.text, state.sources, nil
-			case "running", "pending_confirm":
-				return "", nil, fmt.Errorf("research result is not ready for chat %s: state=%s", cid, state.state)
-			}
-			if text := assistantTextFromRawTurn(rawTurn); text != "" && classifyResearchText(text).State == "done" {
-				return text, nil, nil
-			}
+		state := inspectResearchStateFromRaw(rawTurns)
+		switch state.state {
+		case "done":
+			return state.text, state.sources, nil
+		case "running", "pending_confirm":
+			return "", nil, fmt.Errorf("research result is not ready for chat %s: state=%s", cid, state.state)
 		}
 	}
 
@@ -46,9 +41,6 @@ func (c *Client) GetDeepResearchResult(ctx context.Context, cid string) (string,
 	status := classifyResearchText(latestText)
 	if status.State == "running" || status.State == "pending_confirm" {
 		return "", nil, fmt.Errorf("research result is not ready for chat %s: state=%s", cid, status.State)
-	}
-	if status.State != "done" {
-		return "", nil, researchFallbackError(rawErr, fmt.Errorf("no research result found for chat %s", cid))
 	}
 	return latestText, nil, nil
 }

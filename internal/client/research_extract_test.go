@@ -12,12 +12,12 @@ func TestExtractResearchResultFromRaw(t *testing.T) {
 	report := testResearchReport()
 	rawTurns := []json.RawMessage{testResearchDoneTurn(report)}
 
-	text, sources := extractResearchResultFromRaw(rawTurns)
-	if text != report {
-		t.Errorf("text = %q, want %q", text, report)
+	state := inspectResearchStateFromRaw(rawTurns)
+	if state.state != "done" || state.text != report {
+		t.Errorf("state = %+v, want completed report", state)
 	}
-	if sources[1].URL != "https://example.com/source" || sources[1].Title != "Sample source" {
-		t.Fatalf("sources = %+v", sources)
+	if state.sources[1].URL != "https://example.com/source" || state.sources[1].Title != "Sample source" {
+		t.Fatalf("sources = %+v", state.sources)
 	}
 }
 
@@ -27,23 +27,18 @@ func TestExtractResearchResultFromRawStopsAtNewerRunningTurn(t *testing.T) {
 		testResearchDoneTurn(testResearchReport()),
 	}
 
-	text, sources := extractResearchResultFromRaw(rawTurns)
-	if text != "" || sources != nil {
-		t.Fatalf("got text len=%d sources=%+v, want no result while latest research turn is running", len(text), sources)
-	}
-
-	status := inspectResearchStatusFromRaw(rawTurns)
-	if status == nil || status.State != "running" {
-		t.Fatalf("status = %+v, want running", status)
+	state := inspectResearchStateFromRaw(rawTurns)
+	if state.state != "running" || state.text != "" || state.sources != nil {
+		t.Fatalf("state = %+v, want running", state)
 	}
 }
 
 func TestInspectResearchStatusFromRawPendingConfirm(t *testing.T) {
 	for _, key := range []string{"56", "57"} {
 		t.Run("key "+key, func(t *testing.T) {
-			status := inspectResearchStatusFromRaw([]json.RawMessage{testResearchPendingTurn(key)})
-			if status == nil || status.State != "pending_confirm" {
-				t.Fatalf("status = %+v, want pending_confirm", status)
+			state := inspectResearchStateFromRaw([]json.RawMessage{testResearchPendingTurn(key)})
+			if state.state != "pending_confirm" {
+				t.Fatalf("state = %+v, want pending_confirm", state)
 			}
 		})
 	}
@@ -54,6 +49,7 @@ func TestClassifyResearchTextRecognizesCompletedReports(t *testing.T) {
 	for _, text := range []string{
 		"我已经完成了研究，结果如下。",
 		"I have completed the research. Here is the result.",
+		"研究完成后，我们发现该方案可行。",
 		longMarkdown,
 		"\r\n" + longMarkdown,
 		"\ufeff\n" + longMarkdown,
@@ -176,6 +172,39 @@ func TestGetDeepResearchResultPreservesRawReadErrorWhenFallbackHasNoResult(t *te
 	_, _, err := c.GetDeepResearchResult(t.Context(), "c_research")
 	if err == nil || !strings.Contains(err.Error(), "read_chat rejected with code=7") {
 		t.Fatalf("err = %v, want raw read error", err)
+	}
+}
+
+func TestGetDeepResearchResultDecodedFallbackReturnsShortPlainReport(t *testing.T) {
+	report := "简短研究结论：该方案可行。"
+	body, err := json.Marshal([]any{[]json.RawMessage{testResearchTextTurn(report)}})
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if requests == 1 {
+			_, _ = w.Write(makeTestBatchResponse("hNvQHb", "", 7))
+			return
+		}
+		_, _ = w.Write(makeTestBatchResponse("hNvQHb", string(body), 0))
+	}))
+	defer srv.Close()
+	origBase := baseURL
+	baseURL = srv.URL
+	defer func() { baseURL = origBase }()
+
+	c := newTestClient()
+	c.accessToken = "token"
+	c.httpClient = srv.Client()
+	text, sources, err := c.GetDeepResearchResult(t.Context(), "c_research")
+	if err != nil {
+		t.Fatalf("GetDeepResearchResult: %v", err)
+	}
+	if text != report || sources != nil {
+		t.Fatalf("text = %q, sources = %+v", text, sources)
 	}
 }
 

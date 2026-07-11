@@ -14,33 +14,20 @@ type researchRawState struct {
 	sources map[int]types.GroundingSource
 }
 
-// extractResearchResultFromRaw extracts the latest completed deep research report
-// from raw turn data. If a newer raw turn says the task is still running or
-// waiting for confirmation, older completed reports in the same chat are ignored.
-func extractResearchResultFromRaw(rawTurns []json.RawMessage) (string, map[int]types.GroundingSource) {
+// inspectResearchStateFromRaw returns the newest conclusive research state.
+// Newer running or confirmation states prevent older completed reports from
+// being returned, while plain-text completed reports are also recognized.
+func inspectResearchStateFromRaw(rawTurns []json.RawMessage) researchRawState {
 	for _, rawTurn := range rawTurns {
 		state := inspectResearchRawTurn(rawTurn)
-		switch state.state {
-		case "done":
-			return state.text, state.sources
-		case "running", "pending_confirm":
-			return "", nil
+		if state.state != "" {
+			return state
+		}
+		if text := assistantTextFromRawTurn(rawTurn); text != "" && classifyResearchText(text).State == "done" {
+			return researchRawState{state: "done", text: text}
 		}
 	}
-	return "", nil
-}
-
-func inspectResearchStatusFromRaw(rawTurns []json.RawMessage) *ResearchStatus {
-	for _, rawTurn := range rawTurns {
-		state := inspectResearchRawTurn(rawTurn)
-		switch state.state {
-		case "done":
-			return &ResearchStatus{State: "done", TextLen: len(state.text)}
-		case "running", "pending_confirm":
-			return &ResearchStatus{State: state.state}
-		}
-	}
-	return nil
+	return researchRawState{}
 }
 
 func inspectResearchRawTurn(rawTurn json.RawMessage) researchRawState {
