@@ -431,6 +431,29 @@ func TestLoggerRedactsHeaders(t *testing.T) {
 	}
 }
 
+func TestCaptureReadCloserIgnoresCaptureWriteFailure(t *testing.T) {
+	_, _, capture := newStreamCapture(t)
+	if _, _, err := capture.finish(); err != nil {
+		t.Fatalf("finish capture: %v", err)
+	}
+
+	inner := &trackingReadCloser{Reader: strings.NewReader("upload payload")}
+	wrapped := CaptureReadCloser(inner, capture)
+	got, err := io.ReadAll(wrapped)
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	if string(got) != "upload payload" {
+		t.Fatalf("body = %q, want %q", got, "upload payload")
+	}
+	if err := wrapped.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if !inner.closed {
+		t.Fatal("original request body was not closed")
+	}
+}
+
 func TestStreamReadCloserLogsOnEOF(t *testing.T) {
 	dir, logger, capture := newStreamCapture(t)
 	inner := io.NopCloser(strings.NewReader("stream data"))
@@ -504,6 +527,16 @@ func newStreamCapture(t *testing.T) (string, *Logger, *BodyCapture) {
 		t.Fatalf("NewBodyCapture: %v", err)
 	}
 	return dir, logger, capture
+}
+
+type trackingReadCloser struct {
+	io.Reader
+	closed bool
+}
+
+func (r *trackingReadCloser) Close() error {
+	r.closed = true
+	return nil
 }
 
 type errorReadCloser struct {

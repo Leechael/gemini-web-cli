@@ -509,13 +509,23 @@ func CaptureReadCloser(rc io.ReadCloser, capture *BodyCapture) io.ReadCloser {
 	if rc == nil || capture == nil {
 		return rc
 	}
-	return &capturingReadCloser{Reader: io.TeeReader(rc, capture), Closer: rc}
+	return &capturingReadCloser{rc: rc, capture: capture}
 }
 
 type capturingReadCloser struct {
-	io.Reader
-	io.Closer
+	rc      io.ReadCloser
+	capture *BodyCapture
 }
+
+func (r *capturingReadCloser) Read(p []byte) (int, error) {
+	n, err := r.rc.Read(p)
+	if n > 0 {
+		_, _ = r.capture.Write(p[:n])
+	}
+	return n, err
+}
+
+func (r *capturingReadCloser) Close() error { return r.rc.Close() }
 
 func (l *Logger) cleanupOldFilesLocked() {
 	if l.dir == "" {
