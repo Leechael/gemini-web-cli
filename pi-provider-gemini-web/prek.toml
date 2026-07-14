@@ -1,0 +1,34 @@
+[[repos]]
+repo = "local"
+
+[[repos.hooks]]
+id = "format"
+name = "format"
+entry = "npm run format:check"
+language = "system"
+pass_filenames = false
+always_run = true
+
+[[repos.hooks]]
+id = "lint"
+name = "lint"
+entry = "npm run lint"
+language = "system"
+pass_filenames = false
+always_run = true
+
+[[repos.hooks]]
+id = "check"
+name = "check"
+entry = "npm run check"
+language = "system"
+pass_filenames = false
+always_run = true
+
+[[repos.hooks]]
+id = "test"
+name = "test"
+entry = "npm test"
+language = "system"
+pass_filenames = false
+always_run = true
