@@ -1,13 +1,19 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import test from "node:test";
+import test, { after } from "node:test";
 
 import { ConfigError, loadGeminiWebConfig } from "../src/config.ts";
 
+const fixtureRoots: string[] = [];
+after(() => {
+  for (const root of fixtureRoots) rmSync(root, { recursive: true, force: true });
+});
+
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), "gemini-web-config-"));
+  fixtureRoots.push(root);
   const agentDir = join(root, "agent");
   const cwd = join(root, "project");
   mkdirSync(join(agentDir, "extensions"), { recursive: true });
@@ -81,5 +87,16 @@ test("rejects invalid URLs and unknown fields", () => {
   assert.throws(
     () => loadGeminiWebConfig({ agentDir, cwd, projectTrusted: false }),
     (error: unknown) => error instanceof ConfigError && error.configPath === path,
+  );
+});
+
+test("rejects a base URL that already includes the API prefix", () => {
+  const { agentDir, cwd } = fixture();
+  const path = join(agentDir, "extensions", "pi-provider-gemini-web.json");
+  writeJson(path, { baseUrl: "http://gemini.internal:8080/v1" });
+
+  assert.throws(
+    () => loadGeminiWebConfig({ agentDir, cwd, projectTrusted: false }),
+    /baseUrl must not include \/v1/,
   );
 });

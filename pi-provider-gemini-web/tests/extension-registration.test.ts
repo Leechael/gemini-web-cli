@@ -54,6 +54,27 @@ test("registers discovered models and research tools from global configuration",
   ]);
 });
 
+test("malformed global configuration does not disable tools or session recovery", async () => {
+  const agentDir = mkdtempSync(join(tmpdir(), "gemini-web-extension-"));
+  mkdirSync(join(agentDir, "extensions"), { recursive: true });
+  writeFileSync(join(agentDir, "extensions", "pi-provider-gemini-web.json"), "not json");
+  const h = harness();
+  const originalError = console.error;
+  console.error = () => {};
+  try {
+    await GeminiWeb({ agentDir, fetch: async () => modelResponse() })(h.api);
+  } finally {
+    console.error = originalError;
+  }
+
+  assert.deepEqual(h.tools, [
+    "gemini_research_create",
+    "gemini_research_status",
+    "gemini_research_result",
+  ]);
+  assert.equal(h.handlers.has("session_start"), true);
+});
+
 test("trusted project-only configuration registers during session start", async () => {
   const root = mkdtempSync(join(tmpdir(), "gemini-web-extension-"));
   const agentDir = join(root, "agent");

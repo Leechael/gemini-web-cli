@@ -61,6 +61,9 @@ function parseConfig(path: string, source: GeminiWebConfig["source"]): GeminiWeb
   if (url.username || url.password) {
     throw new ConfigError("baseUrl must not contain credentials", path);
   }
+  if (/\/v1\/?$/.test(url.pathname)) {
+    throw new ConfigError("baseUrl must not include /v1", path);
+  }
 
   return { baseUrl: url.toString().replace(/\/$/, ""), source };
 }

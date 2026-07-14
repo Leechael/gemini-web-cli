@@ -59,12 +59,17 @@ export function GeminiWeb(options: GeminiWebExtensionOptions = {}): ExtensionFac
       });
     };
 
-    const globalConfig = loadGeminiWebConfig({
-      agentDir,
-      cwd: initialCwd,
-      projectTrusted: false,
-      configDirName: CONFIG_DIR_NAME,
-    });
+    let globalConfig: GeminiWebConfig | undefined;
+    try {
+      globalConfig = loadGeminiWebConfig({
+        agentDir,
+        cwd: initialCwd,
+        projectTrusted: false,
+        configDirName: CONFIG_DIR_NAME,
+      });
+    } catch (error) {
+      console.error(`[gemini-web] ${error instanceof Error ? error.message : String(error)}`);
+    }
     if (globalConfig) {
       try {
         await registerProvider(globalConfig);

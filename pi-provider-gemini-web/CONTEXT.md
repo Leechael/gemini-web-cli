@@ -25,14 +25,14 @@ _Avoid_: Gemini chat
 
 ## Configuration transitions
 
-| State        | Trigger                                          | Source       | Next state             | Invariant                                    |
-| ------------ | ------------------------------------------------ | ------------ | ---------------------- | -------------------------------------------- |
-| unconfigured | session starts with valid global config          | Pi lifecycle | global                 | Provider and tools use the global URL        |
-| unconfigured | trusted session starts with valid project config | Pi lifecycle | project                | Provider and tools use the project URL       |
-| global       | trusted session starts with project config       | Pi lifecycle | project                | Project URL replaces global URL              |
-| project      | session switches to cwd without project config   | Pi lifecycle | global or unconfigured | Previous project URL is not retained         |
-| any          | reload                                           | user         | resolved again         | Filesystem configuration is re-read          |
-| any          | invalid effective config                         | filesystem   | unconfigured           | Provider is unavailable and error is visible |
+| State        | Trigger                                          | Source       | Next state                       | Invariant                                    |
+| ------------ | ------------------------------------------------ | ------------ | -------------------------------- | -------------------------------------------- |
+| unconfigured | session starts with valid global config          | Pi lifecycle | global                           | Provider and tools use the global URL        |
+| unconfigured | trusted session starts with valid project config | Pi lifecycle | project                          | Provider and tools use the project URL       |
+| global       | trusted session starts with project config       | Pi lifecycle | project                          | Project URL replaces global URL              |
+| project      | session switches to cwd without project config   | Pi lifecycle | global or unconfigured           | Previous project URL is not retained         |
+| any          | reload                                           | user         | unconfigured, global, or project | Filesystem configuration is re-read          |
+| any          | invalid effective config                         | filesystem   | unconfigured                     | Provider is unavailable and error is visible |
 
 ## Chat transitions
 
