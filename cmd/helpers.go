@@ -189,16 +189,29 @@ func resolveModel() *types.Model {
 
 func setGenerationMode(c *client.Client, mode string) error {
 	switch mode {
-	case "", "auto", "text", "video", "image-to-video", "music":
+	case "", "auto", "text", "image", "video", "image-to-video", "music":
 		c.SetGenerationMode(mode)
 		return nil
 	default:
-		return fmt.Errorf("invalid generation mode %q — use auto, text, video, image-to-video, or music", mode)
+		return fmt.Errorf("invalid generation mode %q — use auto, text, image, video, image-to-video, or music", mode)
 	}
 }
 
 func resolveModelForClient(ctx context.Context, c *client.Client, preferred ...string) *types.Model {
 	if modelName == "" || modelName == "unspecified" {
+		if c != nil && len(preferred) > 0 {
+			for _, name := range preferred {
+				if model := c.ResolveModel(name); model != nil {
+					return model
+				}
+			}
+			_ = c.FetchAndCacheModels(ctx)
+			for _, name := range preferred {
+				if model := c.ResolveModel(name); model != nil {
+					return model
+				}
+			}
+		}
 		for _, name := range preferred {
 			if name == "" {
 				continue
@@ -222,7 +235,13 @@ func resolveModelForClient(ctx context.Context, c *client.Client, preferred ...s
 	return types.FindModel("unspecified")
 }
 
-func preferredModelForGenerationMode(mode string, prompt string, hasUploads bool) string {
+var flashGenerationModelPreferences = []string{
+	"gemini-3.6-flash",
+	"gemini-3.5-flash",
+	"gemini-3-flash",
+}
+
+func preferredModelsForGenerationMode(mode string, prompt string, hasUploads bool) []string {
 	mode = strings.ToLower(strings.TrimSpace(mode))
 	if mode == "auto" || mode == "" {
 		lower := strings.ToLower(prompt)
@@ -233,12 +252,14 @@ func preferredModelForGenerationMode(mode string, prompt string, hasUploads bool
 			mode = "music"
 		case strings.Contains(lower, "video") || strings.Contains(lower, "视频"):
 			mode = "video"
+		case strings.Contains(lower, "image") || strings.Contains(lower, "photo") || strings.Contains(lower, "picture") || strings.Contains(lower, "draw") || strings.Contains(lower, "illustration") || strings.Contains(lower, "图片") || strings.Contains(lower, "图像") || strings.Contains(lower, "照片"):
+			mode = "image"
 		}
 	}
 	switch mode {
-	case "video", "image-to-video", "music":
-		return "gemini-3.5-flash"
+	case "image", "video", "image-to-video", "music":
+		return flashGenerationModelPreferences
 	default:
-		return ""
+		return nil
 	}
 }
