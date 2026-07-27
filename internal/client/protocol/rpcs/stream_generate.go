@@ -152,10 +152,11 @@ func EncodeStreamGenerate(opts EncodeStreamGenerateOpts) []any {
 	req[80] = 1
 
 	if opts.DeepResearch {
+		req[6] = []any{1}
 		req[49] = 1
 		req[54] = []any{[]any{[]any{[]any{[]any{1}}}}}
 		req[55] = []any{[]any{1}}
-		req[68] = 2
+		req[68] = 1
 	} else {
 		switch opts.Mode {
 		case "video":

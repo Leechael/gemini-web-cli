@@ -2,6 +2,7 @@ package client
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -307,14 +308,19 @@ func TestBuildInnerRequest_DeepResearch(t *testing.T) {
 	c := &Client{}
 	req := c.buildInnerRequest("research topic", nil, nil, nil, true, "UUID", "en", "")
 
+	deepResearchFlag, ok := req[6].([]any)
+	if !ok || len(deepResearchFlag) != 1 || deepResearchFlag[0] != 1 {
+		t.Errorf("[6] = %#v, want [1]", req[6])
+	}
+
 	if req[49] != 1 {
 		t.Errorf("[49] = %v, want 1", req[49])
 	}
-	if req[68] != 2 {
-		t.Errorf("[68] = %v, want 2", req[68])
+	if req[68] != 1 {
+		t.Errorf("[68] = %v, want 1", req[68])
 	}
-	if s, ok := req[3].(string); !ok || s[0] != '!' {
-		t.Errorf("[3] should start with !, got %v", req[3])
+	if s, ok := req[3].(string); !ok || len(s) != 2601 || s[0] != '!' || strings.Contains(s, "=") {
+		t.Errorf("[3] should be a 2601-character unpadded ! token, got %v", req[3])
 	}
 	if s, ok := req[4].(string); !ok || len(s) != 32 {
 		t.Errorf("[4] should be 32-char hex, got %v", req[4])

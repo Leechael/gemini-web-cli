@@ -40,6 +40,9 @@ var researchListCmd = &cobra.Command{
 }
 
 func runResearchRun(cmd *cobra.Command, args []string) error {
+	if modelName != "" && modelName != "auto" && modelName != "unspecified" {
+		return fmt.Errorf("deep research only supports model auto/unspecified")
+	}
 	ctx := context.Background()
 	c, jsonCookies, err := initClient(ctx)
 	if err != nil {
