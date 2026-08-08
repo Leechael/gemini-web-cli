@@ -194,14 +194,9 @@ func downloadFile(fileURL string, defaultExt string, poll206 bool) error {
 	}
 	cookieJar.SetCookies(u, httpCookies)
 
-	// Append size param for full-size images
-	dlURL := fileURL
-	if defaultExt == "" && isGoogleusercontentURL(fileURL) {
-		parts := strings.Split(fileURL, "/")
-		if !strings.Contains(parts[len(parts)-1], "=") {
-			dlURL = fileURL + "=s2048"
-		}
-	}
+	// Generated-image URLs resolve to a 512px preview unless the image transform
+	// requests the full generation size.
+	dlURL := fullResolutionDownloadURL(fileURL, defaultExt)
 
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	if proxy != "" {
@@ -288,6 +283,55 @@ func isGoogleusercontentURL(raw string) bool {
 	}
 	host := strings.ToLower(u.Hostname())
 	return host == "googleusercontent.com" || strings.HasSuffix(host, ".googleusercontent.com")
+}
+
+func fullResolutionDownloadURL(raw string, defaultExt string) string {
+	// Chat image downloads pass .png. Empty means a direct URL, where the
+	// existing behavior already assumes Googleusercontent URLs are images.
+	if defaultExt != "" && defaultExt != ".png" {
+		return raw
+	}
+	if !isGoogleusercontentURL(raw) {
+		return raw
+	}
+
+	u, err := url.Parse(raw)
+	if err != nil {
+		return raw
+	}
+
+	// Replace a preview transform such as =s512-c rather than stacking another
+	// transform. Query parameters (including signed tokens) remain untouched.
+	if slash, equal := strings.LastIndex(u.Path, "/"), strings.LastIndex(u.Path, "="); equal > slash {
+		if !isGoogleImageTransform(u.Path[equal+1:]) {
+			return raw
+		}
+		u.Path = u.Path[:equal]
+		u.RawPath = ""
+	}
+	u.Path += "=s0"
+	return u.String()
+}
+
+func isGoogleImageTransform(value string) bool {
+	if len(value) < 2 || (value[0] != 's' && value[0] != 'w' && value[0] != 'h') {
+		return false
+	}
+
+	hasDigit := false
+	for i := range len(value) {
+		char := value[i]
+		switch {
+		case char >= '0' && char <= '9':
+			hasDigit = true
+		case char >= 'a' && char <= 'z':
+		case char >= 'A' && char <= 'Z':
+		case char == '-' || char == '_' || char == ',':
+		default:
+			return false
+		}
+	}
+	return hasDigit
 }
 
 // extFromContentType returns a file extension (e.g. ".mp3") from a Content-Type header.
