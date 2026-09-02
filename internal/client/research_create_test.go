@@ -178,6 +178,27 @@ func TestCreateAndStartDeepResearchConfirmationErrorIsFatal(t *testing.T) {
 	}
 }
 
+func TestCreateAndStartDeepResearchDoesNotFallbackOnUnavailableModel(t *testing.T) {
+	streamRequests := 0
+	c, srv := newResearchCreateTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "StreamGenerate") {
+			streamRequests++
+			_, _ = w.Write(makeUnavailableModelStreamBody(t))
+			return
+		}
+		writeEmptyResearchBatch(w, r)
+	}))
+	defer srv.Close()
+
+	_, err := c.CreateAndStartDeepResearch(t.Context(), "research prompt", nil)
+	if err == nil || !strings.Contains(err.Error(), "model unavailable (error code 1052)") {
+		t.Fatalf("err = %v, want model unavailable", err)
+	}
+	if streamRequests != 1 {
+		t.Fatalf("StreamGenerate requests = %d, want 1 (no flash fallback)", streamRequests)
+	}
+}
+
 func TestWaitForDeepResearchStartEventuallyRuns(t *testing.T) {
 	checks := 0
 	c, srv := newResearchCreateTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -305,6 +326,16 @@ func makeResearchPlanStreamBody(t *testing.T, text, cid, confirmPrompt string, i
 		t.Fatal(err)
 	}
 	frameJSON, err := json.Marshal([]any{[]any{"wrb.fr", nil, string(contentJSON)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	framed := "\n" + string(frameJSON) + "\n"
+	return []byte(")]}'\n" + fmt.Sprintf("%d", utf16Units(framed)) + framed)
+}
+
+func makeUnavailableModelStreamBody(t *testing.T) []byte {
+	t.Helper()
+	frameJSON, err := json.Marshal([]any{[]any{"wrb.fr", nil, "", nil, nil, []any{1052}}})
 	if err != nil {
 		t.Fatal(err)
 	}

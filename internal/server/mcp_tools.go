@@ -116,6 +116,9 @@ func (s *Server) handleMCPResearchCreate(ctx context.Context, req mcp.CallToolRe
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	modelName := req.GetString("model", "")
+	if modelName != "" && modelName != "auto" && modelName != "unspecified" {
+		return mcp.NewToolResultError("deep research only supports model auto/unspecified"), nil
+	}
 	var model *types.Model
 	if modelName == "" {
 		model = types.FindModel("unspecified")
