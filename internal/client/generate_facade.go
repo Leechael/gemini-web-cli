@@ -66,11 +66,13 @@ func (c *Client) SendMessageDeepResearch(ctx context.Context, prompt string, met
 func (c *Client) collectStreamResult(ctx context.Context, prompt string, metadata []string, uploads []*UploadResult, model *types.Model, deepResearch bool, cb StreamCallback) (*types.ModelOutput, []types.Image, error) {
 	best, allImages, err := c.doCollectStream(ctx, prompt, metadata, uploads, model, deepResearch, cb)
 	if err != nil {
-		if mErr, ok := err.(*ModelUnavailableError); ok {
-			fallback := types.FindModel(types.FallbackModelName)
-			if fallback != nil && (model == nil || model.Name != fallback.Name) {
-				fmt.Fprintf(os.Stderr, "Model unavailable (code %d), retrying with %s...\n", mErr.Code, fallback.DisplayName)
-				return c.doCollectStream(ctx, prompt, metadata, uploads, fallback, deepResearch, cb)
+		if !deepResearch {
+			if mErr, ok := err.(*ModelUnavailableError); ok {
+				fallback := types.FindModel(types.FallbackModelName)
+				if fallback != nil && (model == nil || model.Name != fallback.Name) {
+					fmt.Fprintf(os.Stderr, "Model unavailable (code %d), retrying with %s...\n", mErr.Code, fallback.DisplayName)
+					return c.doCollectStream(ctx, prompt, metadata, uploads, fallback, deepResearch, cb)
+				}
 			}
 		}
 		return nil, nil, err

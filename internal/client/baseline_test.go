@@ -29,6 +29,19 @@ func loadStringFixture(t *testing.T, name string) string {
 	return s
 }
 
+func TestGenerateDeepResearchEntropyToken(t *testing.T) {
+	token := generateDeepResearchEntropyToken()
+	if len(token) != 2601 {
+		t.Fatalf("token length = %d, want 2601", len(token))
+	}
+	if token[0] != '!' {
+		t.Fatalf("token prefix = %q, want !", token[0])
+	}
+	if strings.Contains(token, "=") {
+		t.Fatal("token contains base64 padding")
+	}
+}
+
 func TestBaseline_StreamResearchStep1(t *testing.T) {
 	raw := loadStringFixture(t, "stream_research_step1_response")
 	if len(raw) < 100 {
@@ -229,6 +242,11 @@ func TestBaseline_InnerRequestResearchStep1(t *testing.T) {
 		return ok && len(s) >= 10
 	}, "should be hex UUID or redacted")
 
+	assertIndex(6, func(v any) bool {
+		arr, ok := v.([]any)
+		return ok && len(arr) == 1 && arr[0] == float64(1)
+	}, "should be [1] (deep research)")
+
 	assertIndex(7, func(v any) bool {
 		f, ok := v.(float64)
 		return ok && f == 1
@@ -254,8 +272,8 @@ func TestBaseline_InnerRequestResearchStep1(t *testing.T) {
 
 	assertIndex(68, func(v any) bool {
 		f, ok := v.(float64)
-		return ok && f == 2
-	}, "should be 2 (deep research)")
+		return ok && f == 1
+	}, "should be 1 (deep research)")
 }
 
 func TestBaseline_InnerRequestResearchStep2(t *testing.T) {
@@ -274,8 +292,8 @@ func TestBaseline_InnerRequestResearchStep2(t *testing.T) {
 		t.Fatal("[0] not a message array")
 	}
 	prompt, _ := msg[0].(string)
-	if prompt != "开始研究" {
-		t.Errorf("[0][0] = %q, want 开始研究", prompt)
+	if prompt != "Start research" {
+		t.Errorf("[0][0] = %q, want Start research", prompt)
 	}
 
 	meta, ok := real[2].([]any)
@@ -298,6 +316,10 @@ func TestBaseline_InnerRequestResearchStep2(t *testing.T) {
 	if ctx == "" {
 		t.Error("metadata[9] (context string) is empty")
 	}
+	deepResearchFlag, ok := real[6].([]any)
+	if !ok || len(deepResearchFlag) != 1 || deepResearchFlag[0] != float64(1) {
+		t.Errorf("[6] = %#v, want [1]", real[6])
+	}
 
 	outer, ok := real[17].([]any)
 	if !ok || len(outer) != 1 {
@@ -313,7 +335,7 @@ func TestBaseline_InnerRequestResearchStep2(t *testing.T) {
 	}
 
 	mode, _ := real[68].(float64)
-	if mode != 2 {
-		t.Errorf("[68] = %v, want 2", mode)
+	if mode != 1 {
+		t.Errorf("[68] = %v, want 1", mode)
 	}
 }

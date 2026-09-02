@@ -17,6 +17,10 @@ func (c *Client) buildInnerRequest(prompt string, metadata []string, uploads []*
 	if model == nil {
 		model = &types.Models[0]
 	}
+	entropyToken := "!" + generateURLSafeToken(2600)
+	if deepResearch {
+		entropyToken = generateDeepResearchEntropyToken()
+	}
 	return rpcs.EncodeStreamGenerate(rpcs.EncodeStreamGenerateOpts{
 		Prompt:        prompt,
 		Language:      language,
@@ -26,7 +30,7 @@ func (c *Client) buildInnerRequest(prompt string, metadata []string, uploads []*
 		DeepResearch:  deepResearch,
 		ModelSelector: modelSelector(model),
 		UUID:          uuid,
-		EntropyToken:  "!" + generateURLSafeToken(2600),
+		EntropyToken:  entropyToken,
 		HexUUID:       generateHexUUID(),
 	})
 }

@@ -343,6 +343,11 @@ func TestMCPToolsList(t *testing.T) {
 			Tools []struct {
 				Name        string `json:"name"`
 				Description string `json:"description"`
+				InputSchema struct {
+					Properties map[string]struct {
+						Description string `json:"description"`
+					} `json:"properties"`
+				} `json:"inputSchema"`
 			} `json:"tools"`
 		} `json:"result"`
 	}
@@ -364,6 +369,12 @@ func TestMCPToolsList(t *testing.T) {
 			t.Fatalf("unexpected tool %q", tool.Name)
 		}
 		want[tool.Name] = true
+		if tool.Name == "gemini_research_create" {
+			modelDescription := tool.InputSchema.Properties["model"].Description
+			if !strings.Contains(modelDescription, "auto/unspecified") || !strings.Contains(modelDescription, "explicit model names are rejected") {
+				t.Fatalf("research model description = %q", modelDescription)
+			}
+		}
 	}
 	for name, seen := range want {
 		if !seen {

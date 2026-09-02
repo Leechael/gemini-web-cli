@@ -83,6 +83,17 @@ func TestEncodeStreamGenerate_WireParity_DeepResearch(t *testing.T) {
 	if !bytes.Equal(got, want) {
 		t.Fatalf("wire mismatch\ngot:  %s\nwant: %s", got, want)
 	}
+	var req []any
+	if err := json.Unmarshal(got, &req); err != nil {
+		t.Fatal(err)
+	}
+	deepResearchFlag, ok := req[6].([]any)
+	if !ok || len(deepResearchFlag) != 1 || deepResearchFlag[0] != float64(1) {
+		t.Fatalf("slot 6 = %#v, want [1]", req[6])
+	}
+	if req[68] != float64(1) {
+		t.Fatalf("slot 68 = %#v, want 1", req[68])
+	}
 }
 
 func TestDecodeStreamGenerateFrame_Basic(t *testing.T) {

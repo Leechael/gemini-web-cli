@@ -10,7 +10,8 @@ import (
 
 type researchRequest struct {
 	Prompt string `json:"prompt"`
-	Model  string `json:"model,omitempty"`
+	// Model is restricted to Gemini auto-selection; omit it or use auto/unspecified.
+	Model string `json:"model,omitempty"`
 }
 
 type researchCreateResponse struct {
@@ -60,6 +61,10 @@ func (s *Server) handleResearchCreate(w http.ResponseWriter, r *http.Request) {
 
 	if req.Prompt == "" {
 		writeError(w, http.StatusBadRequest, "prompt is required")
+		return
+	}
+	if req.Model != "" && req.Model != "auto" && req.Model != "unspecified" {
+		writeError(w, http.StatusBadRequest, "deep research only supports model auto/unspecified")
 		return
 	}
 

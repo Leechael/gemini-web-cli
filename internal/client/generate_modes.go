@@ -33,6 +33,12 @@ func generateURLSafeToken(nbytes int) string {
 	return base64.URLEncoding.EncodeToString(b)
 }
 
+func generateDeepResearchEntropyToken() string {
+	b := make([]byte, 1950)
+	_, _ = rand.Read(b)
+	return "!" + base64.RawURLEncoding.EncodeToString(b)
+}
+
 func generateHexUUID() string {
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)

@@ -42,7 +42,7 @@ func (s *Server) registerMCPTools(srv *mcpserver.MCPServer) {
 			mcp.Description("Research topic or prompt."),
 		),
 		mcp.WithString("model",
-			mcp.Description("Model name override. Omit to use the server's --mcp-default-model."),
+			mcp.Description("Deep Research uses Gemini auto-selection. Omit this field or use auto/unspecified; explicit model names are rejected."),
 		),
 	)
 	srv.AddTool(researchCreateTool, s.handleMCPResearchCreate)
@@ -116,11 +116,21 @@ func (s *Server) handleMCPResearchCreate(ctx context.Context, req mcp.CallToolRe
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	modelName := req.GetString("model", "")
-	model, err := s.resolveMCPModel(modelName)
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+	if modelName != "" && modelName != "auto" && modelName != "unspecified" {
+		return mcp.NewToolResultError("deep research only supports model auto/unspecified"), nil
 	}
-
+	var model *types.Model
+	if modelName == "" {
+		model = types.FindModel("unspecified")
+		if model == nil {
+			return mcp.NewToolResultError("model \"unspecified\" not found"), nil
+		}
+	} else {
+		model, err = s.resolveMCPModel(modelName)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+	}
 	plan, err := s.client.CreateAndStartDeepResearch(ctx, prompt, model)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil

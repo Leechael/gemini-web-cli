@@ -15,7 +15,7 @@
 //	     continuation: [cid, rid, rcid, null, null, null, null, null, null, context]
 //	[3]: "!" + base64(2600 random bytes) — request entropy
 //	[4]: hex(16 random bytes) — request UUID
-//	[6]: [0]
+//	[6]: [0] (normal) / [1] (deep research)
 //	[7]: 1 — enable snapshot streaming
 //	[10]: 1
 //	[11]: 0
@@ -30,7 +30,7 @@
 //	[55]: [[16]] (video) / [[1]] (deep research)
 //	[59]: UUID
 //	[61]: []
-//	[68]: 2 (deep research) / 1 (normal)
+//	[68]: 1
 //	[79]: modelSelector(model) — 1/2/3/4 by tier
 //	[80]: 1
 //
@@ -152,10 +152,11 @@ func EncodeStreamGenerate(opts EncodeStreamGenerateOpts) []any {
 	req[80] = 1
 
 	if opts.DeepResearch {
+		req[6] = []any{1}
 		req[49] = 1
 		req[54] = []any{[]any{[]any{[]any{[]any{1}}}}}
 		req[55] = []any{[]any{1}}
-		req[68] = 2
+		req[68] = 1
 	} else {
 		switch opts.Mode {
 		case "video":
