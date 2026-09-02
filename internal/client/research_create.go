@@ -127,6 +127,6 @@ func deepResearchStartState(state string) (started bool, retry bool, err error) 
 }
 
 func (c *Client) deepResearchGenerate(ctx context.Context, prompt string, metadata []string, model *types.Model) (*types.ModelOutput, error) {
-	best, _, err := c.collectStreamResult(ctx, prompt, metadata, nil, model, true, nil)
+	best, _, err := c.doCollectStream(ctx, prompt, metadata, nil, model, true, nil)
 	return best, err
 }
