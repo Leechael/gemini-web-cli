@@ -48,6 +48,12 @@ func TestPreferredModelsForTextGeneration(t *testing.T) {
 	}
 }
 
+func TestPreferredModelsIgnoresDrawSubstring(t *testing.T) {
+	if got := preferredModelsForGenerationMode("auto", "withdraw cash", false); got != nil {
+		t.Fatalf("preferredModelsForGenerationMode(auto, withdraw cash) = %v, want nil", got)
+	}
+}
+
 func TestResolveModelForClientFallsBackToKnownFlash(t *testing.T) {
 	previousModel := modelName
 	modelName = "unspecified"

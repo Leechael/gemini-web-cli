@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -241,6 +242,8 @@ var flashGenerationModelPreferences = []string{
 	"gemini-3-flash",
 }
 
+var imageGenerationTerm = regexp.MustCompile(`\b(?:images?|photos?|pictures?|draw(?:s|ing|n)?|illustrations?)\b`)
+
 func preferredModelsForGenerationMode(mode string, prompt string, hasUploads bool) []string {
 	mode = strings.ToLower(strings.TrimSpace(mode))
 	if mode == "auto" || mode == "" {
@@ -252,7 +255,7 @@ func preferredModelsForGenerationMode(mode string, prompt string, hasUploads boo
 			mode = "music"
 		case strings.Contains(lower, "video") || strings.Contains(lower, "视频"):
 			mode = "video"
-		case strings.Contains(lower, "image") || strings.Contains(lower, "photo") || strings.Contains(lower, "picture") || strings.Contains(lower, "draw") || strings.Contains(lower, "illustration") || strings.Contains(lower, "图片") || strings.Contains(lower, "图像") || strings.Contains(lower, "照片"):
+		case containsImageGenerationTerm(lower):
 			mode = "image"
 		}
 	}
@@ -262,4 +265,11 @@ func preferredModelsForGenerationMode(mode string, prompt string, hasUploads boo
 	default:
 		return nil
 	}
+}
+
+func containsImageGenerationTerm(lower string) bool {
+	if strings.Contains(lower, "图片") || strings.Contains(lower, "图像") || strings.Contains(lower, "照片") {
+		return true
+	}
+	return imageGenerationTerm.MatchString(lower)
 }
