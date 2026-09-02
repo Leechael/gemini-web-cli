@@ -27,10 +27,11 @@ var (
 
 // downloadable is a unified item that can be downloaded from a chat.
 type downloadable struct {
-	URL     string
-	Label   string // e.g. "image", "video", "mp3", "mp4"
-	DefExt  string // default extension
-	Poll206 bool   // whether to poll on HTTP 206
+	URL       string
+	Label     string // e.g. "image", "video", "mp3", "mp4"
+	DefExt    string // default extension
+	Poll206   bool   // whether to poll on HTTP 206
+	Generated bool   // rewrite Google-hosted previews only for generated images
 }
 
 var downloadCmd = &cobra.Command{
@@ -64,7 +65,7 @@ Examples:
 		if strings.HasPrefix(target, "c_") {
 			return downloadFromChat(target, itemIndex, hasIndex)
 		} else if strings.HasPrefix(target, "http") {
-			return downloadFile(target, "", downloadPoll)
+			return downloadFile(target, "", downloadPoll, false)
 		}
 		return fmt.Errorf("expected a URL or chat ID (c_...), got %q", target)
 	},
@@ -75,9 +76,10 @@ func collectDownloadables(turns []types.ChatTurn) []downloadable {
 	for _, turn := range turns {
 		for _, img := range turn.Images {
 			items = append(items, downloadable{
-				URL:    img.URL,
-				Label:  "image",
-				DefExt: ".png",
+				URL:       img.URL,
+				Label:     "image",
+				DefExt:    ".png",
+				Generated: img.Generated,
 			})
 		}
 		for _, vid := range turn.Videos {
@@ -143,7 +145,7 @@ func downloadFromChat(chatID string, index int, singleMode bool) error {
 		}
 		item := items[index]
 		fmt.Fprintf(os.Stderr, "Found %d item(s) in chat, downloading #%d (%s)\n", len(items), index+1, item.Label)
-		return downloadFile(item.URL, item.DefExt, item.Poll206)
+		return downloadFile(item.URL, item.DefExt, item.Poll206, item.Generated)
 	}
 
 	// Download all items
@@ -164,7 +166,7 @@ func downloadFromChat(chatID string, index int, singleMode bool) error {
 		}
 		old := downloadOutput
 		downloadOutput = saved
-		if err := downloadFile(item.URL, item.DefExt, item.Poll206); err != nil {
+		if err := downloadFile(item.URL, item.DefExt, item.Poll206, item.Generated); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to download #%d (%s): %v\n", i+1, item.Label, err)
 		}
 		downloadOutput = old
@@ -175,7 +177,7 @@ func downloadFromChat(chatID string, index int, singleMode bool) error {
 // downloadFile downloads a file from a URL. If defaultExt is non-empty, it's used as the
 // default extension when generating filenames. If poll206 is true, retries on HTTP 206
 // (used for in-progress video/media generation).
-func downloadFile(fileURL string, defaultExt string, poll206 bool) error {
+func downloadFile(fileURL string, defaultExt string, poll206 bool, generated bool) error {
 	var jsonCookies map[string]string
 	effectiveCookies := resolveCookiesJSON()
 	if effectiveCookies != "" {
@@ -196,7 +198,7 @@ func downloadFile(fileURL string, defaultExt string, poll206 bool) error {
 
 	// Generated-image URLs resolve to a 512px preview unless the image transform
 	// requests the full generation size.
-	dlURL := fullResolutionDownloadURL(fileURL, defaultExt)
+	dlURL := fullResolutionDownloadURL(fileURL, defaultExt, generated)
 
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	if proxy != "" {
@@ -285,10 +287,14 @@ func isGoogleusercontentURL(raw string) bool {
 	return host == "googleusercontent.com" || strings.HasSuffix(host, ".googleusercontent.com")
 }
 
-func fullResolutionDownloadURL(raw string, defaultExt string) string {
+func fullResolutionDownloadURL(raw string, defaultExt string, generated bool) string {
 	// Chat image downloads pass .png. Empty means a direct URL, where the
 	// existing behavior already assumes Googleusercontent URLs are images.
 	if defaultExt != "" && defaultExt != ".png" {
+		return raw
+	}
+	// Linked/search images should keep the size Gemini supplied.
+	if defaultExt == ".png" && !generated {
 		return raw
 	}
 	if !isGoogleusercontentURL(raw) {
