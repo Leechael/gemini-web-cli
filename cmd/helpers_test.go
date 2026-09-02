@@ -30,6 +30,9 @@ func TestPreferredModelsForImageGeneration(t *testing.T) {
 		{name: "explicit mode", mode: "image", prompt: "Draw a sunset"},
 		{name: "auto generation", mode: "auto", prompt: "Draw a sunset"},
 		{name: "auto edit", mode: "auto", prompt: "Make this image photorealistic", hasUploads: true},
+		{name: "photograph", mode: "auto", prompt: "make this photograph photorealistic"},
+		{name: "photography", mode: "auto", prompt: "photography of a mountain"},
+		{name: "drawings", mode: "auto", prompt: "create drawings of a cat"},
 		{name: "case insensitive", mode: "AUTO", prompt: "Create an ILLUSTRATION"},
 	}
 	for _, tc := range cases {

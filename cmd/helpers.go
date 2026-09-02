@@ -242,7 +242,7 @@ var flashGenerationModelPreferences = []string{
 	"gemini-3-flash",
 }
 
-var imageGenerationTerm = regexp.MustCompile(`\b(?:images?|photos?|pictures?|draw(?:s|ing|n)?|illustrations?)\b`)
+var imageGenerationTerm = regexp.MustCompile(`\b(?:images?|photos?|photographs?|photography|pictures?|draw(?:ings?|s|ing|n)?|illustrations?)\b`)
 
 func preferredModelsForGenerationMode(mode string, prompt string, hasUploads bool) []string {
 	mode = strings.ToLower(strings.TrimSpace(mode))
