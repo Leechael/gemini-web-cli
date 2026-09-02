@@ -79,7 +79,7 @@ var askCmd = &cobra.Command{
 			}
 		}
 
-		model := resolveModelForClient(ctx, c, preferredModelForGenerationMode(askGenerationMode, prompt, len(uploads) > 0))
+		model := resolveModelForClient(ctx, c, preferredModelsForGenerationMode(askGenerationMode, prompt, len(uploads) > 0)...)
 
 		if askNoStream {
 			var output *types.ModelOutput
@@ -144,7 +144,7 @@ var askCmd = &cobra.Command{
 func init() {
 	askCmd.Flags().BoolVar(&askNoStream, "no-stream", false, "Wait for complete response")
 	askCmd.Flags().StringArrayVarP(&askFiles, "file", "f", nil, "Attach file(s) (can be specified multiple times)")
-	askCmd.Flags().StringVar(&askGenerationMode, "mode", "auto", "Generation mode: auto, text, video, image-to-video, music")
+	askCmd.Flags().StringVar(&askGenerationMode, "mode", "auto", "Generation mode: auto, text, image, video, image-to-video, music")
 	askCmd.Flags().BoolVar(&askShowThoughts, "show-thoughts", false, "Print model thoughts/reasoning to stderr")
 }
 

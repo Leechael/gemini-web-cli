@@ -75,9 +75,10 @@ Single-turn question with streaming output. Supports text, image generation, vid
 ```bash
 gemini-web-cli ask "Explain quantum computing"
 gemini-web-cli ask --no-stream "What is 2+2?"
-gemini-web-cli --model gemini-3-flash ask "Draw a sunset"
+gemini-web-cli ask --mode image "Draw a sunset"
 
-# Generate video/music (explicit mode)
+# Generate image/video/music (explicit mode)
+gemini-web-cli ask --mode image -f photo.jpg "Make this image photorealistic"
 gemini-web-cli ask --mode video "A cat walking in slow motion"
 gemini-web-cli ask --mode music "A short jazz melody"
 gemini-web-cli ask --mode image-to-video -f photo.jpg "Animate this photo"
@@ -87,7 +88,7 @@ gemini-web-cli ask -f image.png "What's in this image?"
 gemini-web-cli ask -f a.pdf -f b.pdf "Compare these documents"
 ```
 
-The `--mode` flag controls generation type: `auto` (default), `text`, `video`, `image-to-video`, `music`.
+The `--mode` flag controls generation type: `auto` (default), `text`, `image`, `video`, `image-to-video`, `music`. Image mode selects the current Flash model advertised by Gemini, with older Flash models as fallbacks.
 
 Output includes the response text, any generated images/videos/media, and the chat ID for follow-up.
 

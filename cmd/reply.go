@@ -30,7 +30,7 @@ var replyCmd = &cobra.Command{
 
 		chatID := args[0]
 		prompt := args[1]
-		model := resolveModelForClient(ctx, c, preferredModelForGenerationMode(replyGenerationMode, prompt, false))
+		model := resolveModelForClient(ctx, c, preferredModelsForGenerationMode(replyGenerationMode, prompt, false)...)
 
 		// Fetch latest turn to get rid/rcid for proper conversation continuation
 		// (matching Python's cmd_reply: metadata=[cid, rid, rcid])
@@ -80,5 +80,5 @@ var replyCmd = &cobra.Command{
 
 func init() {
 	replyCmd.Flags().BoolVar(&replyNoStream, "no-stream", false, "Wait for complete response")
-	replyCmd.Flags().StringVar(&replyGenerationMode, "mode", "auto", "Generation mode: auto, text, video, image-to-video, music")
+	replyCmd.Flags().StringVar(&replyGenerationMode, "mode", "auto", "Generation mode: auto, text, image, video, image-to-video, music")
 }
