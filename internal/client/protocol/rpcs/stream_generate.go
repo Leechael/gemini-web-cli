@@ -15,7 +15,9 @@
 //	     continuation: [cid, rid, rcid, null, null, null, null, null, null, context]
 //	[3]: "!" + base64(2600 random bytes) — request entropy
 //	[4]: hex(16 random bytes) — request UUID
-//	[6]: [0] (normal) / [1] (deep research)
+//	[6]: [0] — always 0 in the 20260910.05_p2 build, including deep research
+//	     plan-generation requests (the old [1] deep-research marker is stale;
+//	     no [1] sample exists in current captures).
 //	[7]: 1 — enable snapshot streaming
 //	[10]: 1
 //	[11]: 0
@@ -47,14 +49,22 @@
 //
 // Verified slot rules (5 captures across text/image/notebook surfaces):
 //
-//	[17]: [[1]] when a response id (metadata[1]) is present, else [[0]] — even
-//	      when only the chat id is set (image-chat continuation capture).
+//	[17]: [[N]] where N is the number of prior turns the request builds on —
+//	      [[0]] for a new chat or a parentless continuation, [[1]] after one
+//	      prior turn, [[11]] observed in a live session with eleven prior turns.
+//	      This client cannot recover the true count from a bare cid/rid/rcid
+//	      triple, so it sends [[1]] for any continuation (an approximation the
+//	      server has always tolerated).
 //	[19]: notebook resource name ("notebooks/<uuid>") for notebook-scoped chats.
 //	[40]: notebook scope — 14-element array, [13]=[2] on the first turn and
 //	      [13]=[2,null,null,null,1] on continuation turns.
-//	[67]: null in 4 of 5 captures; a single text continuation (with Google
-//	      Search) had 0 — the trigger is unknown, so the default stays null.
-//	[96]: 1 on the first turn of a chat, 0 on continuation turns.
+//	[67]: 0 for plain text-chat continuation turns (verified: round-1 capture,
+//	      a live 12-turn session, and a plain message in a completed research
+//	      chat); null for first turns, /images, notebooks, and while a deep
+//	      research is still running.
+//	[96]: 1 only for first turns initiated from a dedicated surface landing
+//	      page (/images, /notebook); 0 for /app text chats (new or
+//	      continuation) and for deep research plan requests.
 //
 // Mode-dependent slots:
 //
@@ -190,8 +200,11 @@ func EncodeStreamGenerate(opts EncodeStreamGenerateOpts) []any {
 	req[53] = 0
 	req[59] = opts.UUID
 	req[61] = []any{}
+	if !isNewChat && opts.Mode != "image" && opts.NotebookResource == "" {
+		req[67] = 0
+	}
 	req[91] = 0
-	if isNewChat {
+	if isNewChat && (opts.Mode == "image" || opts.NotebookResource != "") {
 		req[96] = 1
 	} else {
 		req[96] = 0
@@ -201,7 +214,6 @@ func EncodeStreamGenerate(opts EncodeStreamGenerateOpts) []any {
 	req[80] = 1
 
 	if opts.DeepResearch {
-		req[6] = []any{1}
 		req[49] = 1
 		req[54] = []any{[]any{[]any{[]any{[]any{1}}}}}
 		req[55] = []any{[]any{1}}

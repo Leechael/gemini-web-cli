@@ -275,13 +275,13 @@ func TestBuildInnerRequest_NewChat(t *testing.T) {
 		t.Errorf("[80] = %v, want 1", req[80])
 	}
 	if req[67] != nil {
-		t.Errorf("[67] = %v, want nil", req[67])
+		t.Errorf("[67] = %v, want nil (first turn)", req[67])
 	}
 	if req[91] != 0 {
 		t.Errorf("[91] = %v, want 0", req[91])
 	}
-	if req[96] != 1 {
-		t.Errorf("[96] = %v, want 1 (first turn)", req[96])
+	if req[96] != 0 {
+		t.Errorf("[96] = %v, want 0 (/app text new chat)", req[96])
 	}
 	if req[98] != 1 {
 		t.Errorf("[98] = %v, want 1", req[98])
@@ -294,6 +294,9 @@ func TestBuildInnerRequest_Continuation(t *testing.T) {
 	req := c.buildInnerRequest("follow up", metadata, nil, nil, false, "UUID", "en", "")
 	if req[96] != 0 {
 		t.Errorf("[96] = %v, want 0 (continuation)", req[96])
+	}
+	if req[67] != 0 {
+		t.Errorf("[67] = %v, want 0 (text continuation)", req[67])
 	}
 	r17, ok := req[17].([]any)
 	if !ok || len(r17) != 1 {
@@ -326,6 +329,9 @@ func TestBuildInnerRequest_NotebookScope(t *testing.T) {
 	last, _ = scope[13].([]any)
 	if len(last) != 5 || last[0] != 2 || last[4] != 1 {
 		t.Errorf("[40][13] = %v, want [2,null,null,null,1] on continuation", scope[13])
+	}
+	if req[67] != nil {
+		t.Errorf("[67] = %v, want nil (notebook surface)", req[67])
 	}
 }
 
@@ -371,7 +377,7 @@ func TestBuildInnerRequest_ImageMode(t *testing.T) {
 		t.Errorf("[80] = %v, want 2", req[80])
 	}
 	if req[96] != 1 {
-		t.Errorf("[96] = %v, want 1", req[96])
+		t.Errorf("[96] = %v, want 1 (surface first turn)", req[96])
 	}
 	if req[98] != 1 {
 		t.Errorf("[98] = %v, want 1", req[98])
@@ -383,8 +389,8 @@ func TestBuildInnerRequest_DeepResearch(t *testing.T) {
 	req := c.buildInnerRequest("research topic", nil, nil, nil, true, "UUID", "en", "")
 
 	deepResearchFlag, ok := req[6].([]any)
-	if !ok || len(deepResearchFlag) != 1 || deepResearchFlag[0] != 1 {
-		t.Errorf("[6] = %#v, want [1]", req[6])
+	if !ok || len(deepResearchFlag) != 1 || deepResearchFlag[0] != 0 {
+		t.Errorf("[6] = %#v, want [0] (verified in live plan-generation capture)", req[6])
 	}
 
 	if req[49] != 1 {

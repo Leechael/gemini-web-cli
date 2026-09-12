@@ -88,8 +88,8 @@ func TestEncodeStreamGenerate_WireParity_DeepResearch(t *testing.T) {
 		t.Fatal(err)
 	}
 	deepResearchFlag, ok := req[6].([]any)
-	if !ok || len(deepResearchFlag) != 1 || deepResearchFlag[0] != float64(1) {
-		t.Fatalf("slot 6 = %#v, want [1]", req[6])
+	if !ok || len(deepResearchFlag) != 1 || deepResearchFlag[0] != float64(0) {
+		t.Fatalf("slot 6 = %#v, want [0]", req[6])
 	}
 	if req[68] != float64(1) {
 		t.Fatalf("slot 68 = %#v, want 1", req[68])
