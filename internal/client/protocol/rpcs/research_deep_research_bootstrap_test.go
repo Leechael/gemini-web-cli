@@ -10,7 +10,7 @@ func TestEncodeDeepResearchBootstrap_PayloadShape(t *testing.T) {
 	if rpcID != "ku4Jyf" {
 		t.Fatalf("rpcID = %q", rpcID)
 	}
-	if payload != `["en",null,null,null,4,null,null,[2,4,7,15],null,[[5]]]` {
+	if payload != `["en",null,null,null,14,null,null,[32],null,[]]` {
 		t.Fatalf("payload = %s", payload)
 	}
 	var got []any
@@ -28,7 +28,7 @@ func TestEncodeDeepResearchBootstrap_DefaultLang(t *testing.T) {
 
 func TestEncodeDeepResearchBootstrap_WireParity(t *testing.T) {
 	_, got := EncodeDeepResearchBootstrap("en")
-	wantBytes, _ := json.Marshal([]any{"en", nil, nil, nil, 4, nil, nil, []any{2, 4, 7, 15}, nil, []any{[]any{5}}})
+	wantBytes, _ := json.Marshal([]any{"en", nil, nil, nil, 14, nil, nil, []any{32}, nil, []any{}})
 	if got != string(wantBytes) {
 		t.Fatalf("payload = %s, want %s", got, string(wantBytes))
 	}

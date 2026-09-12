@@ -2,10 +2,10 @@
 // Source-path: any Gemini page (defaults to /app)
 // Reject codes: none observed in sample fixtures
 //
-// Payload shape:
+// Payload shape (verified against boq_assistant-bard-web-server_20260910.05_p2):
 //
-//	["<lang>", null, null, null, 4, null, null, [2,4,7,15], null, [[5]]]
-//	  language                               capability ids      flags
+//	["<lang>", null, null, null, 14, null, null, [32], null, []]
+//	  language                                capability ids     flags
 //
 // Response shape (after StripResponsePrefix + ExtractRPCBody):
 //
@@ -31,7 +31,7 @@ func EncodeDeepResearchBootstrap(lang string) (rpcID, payload string) {
 	if lang == "" {
 		lang = "en"
 	}
-	payloadBytes, _ := json.Marshal([]any{lang, nil, nil, nil, 4, nil, nil, []any{2, 4, 7, 15}, nil, []any{[]any{5}}})
+	payloadBytes, _ := json.Marshal([]any{lang, nil, nil, nil, 14, nil, nil, []any{32}, nil, []any{}})
 	return deepResearchBootstrapRPCID, string(payloadBytes)
 }
 

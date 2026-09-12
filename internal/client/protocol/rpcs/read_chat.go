@@ -2,9 +2,13 @@
 // Source-path: any Gemini chat page (defaults to /app/<chat_id>)
 // Reject codes: none observed in sample fixtures
 //
-// Payload shape:
+// Payload shape (verified against boq_assistant-bard-web-server_20260910.05_p2):
 //
-//	["<chat_id>", <max_turns>, null, 1, [1], [4], null, 1]
+//	["<chat_id>", <max_turns>, null, 1, [0], [4], null, 1]
+//
+// Slot 2 is null in all captures so far and is the likely pagination cursor
+// position, but pagination has not been observed yet (needs a chat with more
+// turns than max_turns to confirm).
 //
 // Response shape (after StripResponsePrefix + ExtractRPCBody):
 //
@@ -40,7 +44,7 @@ const readChatRPCID = "hNvQHb"
 
 // EncodeReadChat returns the ReadChat payload.
 func EncodeReadChat(chatID string, maxTurns int) (rpcID, payload string) {
-	payloadBytes, _ := json.Marshal([]any{chatID, maxTurns, nil, 1, []any{1}, []any{4}, nil, 1})
+	payloadBytes, _ := json.Marshal([]any{chatID, maxTurns, nil, 1, []any{0}, []any{4}, nil, 1})
 	return readChatRPCID, string(payloadBytes)
 }
 
