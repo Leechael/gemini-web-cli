@@ -4,11 +4,14 @@
 //
 // Payload shape: []
 //
-// Response shape (after StripResponsePrefix + ExtractRPCBody):
+// Response shape (verified against boq_assistant-bard-web-server_20260910.05_p2):
 //
 //	[<global flags>, <account info>, <14>: status_code int,
 //	 <15>: models_list [[modelID, displayName, description, ..., selector_at_17], ...],
 //	 <16>: tier_flags [int...], <17>: cap_flags [int...]]
+//
+// Verified model entry layout: [0]=modelID, [1]=short name ("Flash"),
+// [10]=short name, [11]=full name ("3.8 Flash"), [17]=selector, [19]=full name.
 //
 // Account status code semantics: 1000 = available, 1016 = unauthenticated;
 // see types.AccountStatusFromCode for the full local mapping.

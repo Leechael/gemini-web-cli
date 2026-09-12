@@ -14,6 +14,9 @@
 //
 // Notes:
 //   - Empty bodies are accepted because this write RPC only needs reject-code validation.
+//   - Zero occurrences across seven captures of boq_assistant-bard-web-server_20260910.05_p2;
+//     the browser now calls kOWVAe [cid, rid, rcid] after each generation, which
+//     may have superseded this RPC (unverified, kOWVAe itself is not implemented).
 package rpcs
 
 import (

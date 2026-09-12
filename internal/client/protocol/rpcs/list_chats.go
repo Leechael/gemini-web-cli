@@ -2,11 +2,18 @@
 // Source-path: any Gemini page (defaults to /app)
 // Reject codes: none observed in sample fixtures
 //
-// Payload shape:
+// Payload shape (pagination verified against boq_assistant-bard-web-server_20260910.05_p2):
 //
 //	[<page_size>, <cursor or null>, [<flag1>, null, <flag2>]]
 //	↑            ↑                   ↑
 //	13 typical   pagination cursor   browser variant flags
+//
+// Pagination (verified): first page uses [1,null,1] (browser page size 34,
+// this client uses 13); subsequent pages use page size 20 with flags
+// [0,null,1] and the opaque next_cursor from the previous response.
+//
+// Notebook-scoped variant (observed, not implemented): the flags array grows
+// to 5 elements — [<10>, null, [null, null, 1, "notebooks/<uuid>", 1]].
 //
 // Response shape (after StripResponsePrefix + ExtractRPCBody):
 //

@@ -15,6 +15,9 @@ const (
 
 // Payloads for CheckGeminiQuota that target specific tiers. Mirror the
 // upstream Python constants GEMINI_FLASH_QUOTA_PAYLOAD / GEMINI_ADVANCED_QUOTA_PAYLOAD.
+// The flash payload is verified against boq_assistant-bard-web-server_20260910.05_p2
+// (the browser sends exactly [[[1,11],[2,11],[6,11]]]); the advanced payload has
+// no capture evidence yet.
 const (
 	geminiFlashQuotaPayload    = `[[[1,11],[2,11],[6,11]]]`
 	geminiAdvancedQuotaPayload = `[[[1,4],[6,6],[1,15]]]`
