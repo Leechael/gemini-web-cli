@@ -400,17 +400,17 @@ func (m *Model) ModelID() string {
 // Known models matching the Python library constants.
 var Models = []Model{
 	{Name: "unspecified", DisplayName: "Auto-select", Headers: map[string]string{}},
-	{Name: "gemini-3.1-flash-lite", DisplayName: "Gemini 3.1 Flash-Lite", Headers: BuildModelHeader("8c46e95b1a07cecc", 6)},
-	{Name: "gemini-3.5-flash", DisplayName: "Gemini 3.5 Flash", Headers: BuildModelHeader("56fdd199312815e2", 1)},
+	{Name: "gemini-3.5-flash-lite", DisplayName: "Gemini 3.5 Flash-Lite", Headers: BuildModelHeader("8c46e95b1a07cecc", 6)},
+	{Name: "gemini-3.8-flash", DisplayName: "Gemini 3.8 Flash", Headers: BuildModelHeader("56fdd199312815e2", 1)},
 	{Name: "gemini-3.1-pro", DisplayName: "Gemini 3.1 Pro", AdvancedOnly: true, Headers: BuildModelHeader("e6fa609c3fa255c0", 3)},
 	{Name: "gemini-3-pro", DisplayName: "Gemini 3 Pro", Headers: BuildModelHeader("9d8ca3786ebdfbea", 3)},
 	{Name: "gemini-3-flash", DisplayName: "Gemini 3 Flash", Headers: BuildModelHeader("fbb127bbb056c959", 1)},
 	{Name: "gemini-3-flash-thinking", DisplayName: "Gemini 3 Flash Thinking", Headers: BuildModelHeader("5bf011840784117a", 2)},
 	{Name: "gemini-3-pro-plus", DisplayName: "Gemini 3 Pro Plus", AdvancedOnly: true, Headers: BuildModelHeader("e6fa609c3fa255c0", 3)},
-	{Name: "gemini-3-flash-plus", DisplayName: "Gemini 3 Flash Plus", AdvancedOnly: true, Headers: BuildModelHeader("56fdd199312815e2", 1)},
+	{Name: "gemini-3.8-flash-plus", DisplayName: "Gemini 3.8 Flash Plus", AdvancedOnly: true, Headers: BuildModelHeader("56fdd199312815e2", 1)},
 	{Name: "gemini-3-flash-thinking-plus", DisplayName: "Gemini 3 Flash Thinking Plus", AdvancedOnly: true, Headers: BuildModelHeader("e051ce1aa80aa576", 2)},
 	{Name: "gemini-3-pro-advanced", DisplayName: "Gemini 3 Pro Advanced", AdvancedOnly: true, Headers: BuildModelHeader("e6fa609c3fa255c0", 3)},
-	{Name: "gemini-3-flash-advanced", DisplayName: "Gemini 3 Flash Advanced", AdvancedOnly: true, Headers: BuildModelHeader("56fdd199312815e2", 1)},
+	{Name: "gemini-3.8-flash-advanced", DisplayName: "Gemini 3.8 Flash Advanced", AdvancedOnly: true, Headers: BuildModelHeader("56fdd199312815e2", 1)},
 	{Name: "gemini-3-flash-thinking-advanced", DisplayName: "Gemini 3 Flash Thinking Advanced", AdvancedOnly: true, Headers: BuildModelHeader("e051ce1aa80aa576", 2)},
 }
 

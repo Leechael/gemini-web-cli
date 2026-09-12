@@ -173,7 +173,7 @@ const openapiSpec = `{
         "type": "object",
         "required": ["messages"],
         "properties": {
-          "model": { "type": "string", "description": "Model name (e.g. gemini-3.5-flash). Defaults to auto-select." },
+          "model": { "type": "string", "description": "Model name (e.g. gemini-3.8-flash). Defaults to auto-select." },
           "messages": {
             "type": "array",
             "items": { "$ref": "#/components/schemas/ChatMessage" }

@@ -386,11 +386,11 @@ func TestMCPToolsList(t *testing.T) {
 func TestResolveMCPModel(t *testing.T) {
 	c := mustTestClient(t)
 
-	s := &Server{client: c, mcpDefaultModel: "gemini-3.5-flash"}
+	s := &Server{client: c, mcpDefaultModel: "gemini-3.8-flash"}
 	if m, err := s.resolveMCPModel("unspecified"); err != nil || m == nil || m.Name != "unspecified" {
 		t.Fatalf("override should take precedence, got model=%v err=%v", m, err)
 	}
-	if m, err := s.resolveMCPModel(""); err != nil || m == nil || m.Name != "gemini-3.5-flash" {
+	if m, err := s.resolveMCPModel(""); err != nil || m == nil || m.Name != "gemini-3.8-flash" {
 		t.Fatalf("default model not applied, got model=%v err=%v", m, err)
 	}
 	if _, err := s.resolveMCPModel("missing-model-name"); err == nil {

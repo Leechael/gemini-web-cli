@@ -275,17 +275,17 @@ gemini-web-cli models
 ```
 Available models for --model:
   unspecified (default)
-  gemini-3.1-flash-lite (Gemini 3.1 Flash-Lite)
-  gemini-3.5-flash (Gemini 3.5 Flash)
+  gemini-3.5-flash-lite (Gemini 3.5 Flash-Lite)
+  gemini-3.8-flash (Gemini 3.8 Flash)
   gemini-3.1-pro [advanced] (Gemini 3.1 Pro)
   gemini-3-pro (Gemini 3 Pro)
   gemini-3-flash (Gemini 3 Flash)
   gemini-3-flash-thinking (Gemini 3 Flash Thinking)
   gemini-3-pro-plus [advanced] (Gemini 3 Pro Plus)
-  gemini-3-flash-plus [advanced] (Gemini 3 Flash Plus)
+  gemini-3.8-flash-plus [advanced] (Gemini 3.8 Flash Plus)
   gemini-3-flash-thinking-plus [advanced] (Gemini 3 Flash Thinking Plus)
   gemini-3-pro-advanced [advanced] (Gemini 3 Pro Advanced)
-  gemini-3-flash-advanced [advanced] (Gemini 3 Flash Advanced)
+  gemini-3.8-flash-advanced [advanced] (Gemini 3.8 Flash Advanced)
   gemini-3-flash-thinking-advanced [advanced] (Gemini 3 Flash Thinking Advanced)
 
 Note: dynamic models come from the current Gemini account when cookies are available.

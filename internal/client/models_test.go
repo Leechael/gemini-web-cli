@@ -32,7 +32,7 @@ func TestBuildModelIDNameMapping_Basic(t *testing.T) {
 		modelID(t, "gemini-3-flash"):               "gemini-3-flash",
 		modelID(t, "gemini-3-flash-thinking"):      "gemini-3-flash-thinking",
 		modelID(t, "gemini-3-pro-plus"):            "gemini-3.1-pro",
-		modelID(t, "gemini-3-flash-plus"):          "gemini-3.5-flash",
+		modelID(t, "gemini-3.8-flash-plus"):        "gemini-3.8-flash",
 		modelID(t, "gemini-3-flash-thinking-plus"): "gemini-3-flash-thinking",
 	}
 	for id, want := range cases {
@@ -48,7 +48,7 @@ func TestBuildModelIDNameMapping_Plus(t *testing.T) {
 	// IDs shared by Plus/Advanced should resolve to the -plus variant.
 	cases := map[string]string{
 		modelID(t, "gemini-3-pro-plus"):            "gemini-3-pro-plus",
-		modelID(t, "gemini-3-flash-plus"):          "gemini-3-flash-plus",
+		modelID(t, "gemini-3.8-flash-plus"):        "gemini-3.8-flash-plus",
 		modelID(t, "gemini-3-flash-thinking-plus"): "gemini-3-flash-thinking-plus",
 		// BASIC-only IDs remain the bare name even on Plus tier (Plus doesn't
 		// re-register `gemini-3-pro` etc., so the second pass fills them).
@@ -68,7 +68,7 @@ func TestBuildModelIDNameMapping_Advanced(t *testing.T) {
 
 	cases := map[string]string{
 		modelID(t, "gemini-3-pro-advanced"):            "gemini-3-pro-advanced",
-		modelID(t, "gemini-3-flash-advanced"):          "gemini-3-flash-advanced",
+		modelID(t, "gemini-3.8-flash-advanced"):        "gemini-3.8-flash-advanced",
 		modelID(t, "gemini-3-flash-thinking-advanced"): "gemini-3-flash-thinking-advanced",
 		modelID(t, "gemini-3-pro"):                     "gemini-3-pro",
 		modelID(t, "gemini-3-flash"):                   "gemini-3-flash",

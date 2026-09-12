@@ -20,7 +20,7 @@ func TestSetGenerationModeAcceptsImage(t *testing.T) {
 }
 
 func TestPreferredModelsForImageGeneration(t *testing.T) {
-	want := []string{"gemini-3.6-flash", "gemini-3.5-flash", "gemini-3-flash"}
+	want := []string{"gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3-flash"}
 	cases := []struct {
 		name       string
 		mode       string
@@ -63,7 +63,7 @@ func TestResolveModelForClientFallsBackToKnownFlash(t *testing.T) {
 	t.Cleanup(func() { modelName = previousModel })
 
 	got := resolveModelForClient(context.Background(), nil, flashGenerationModelPreferences...)
-	if got == nil || got.Name != "gemini-3.5-flash" {
-		t.Fatalf("resolveModelForClient() = %v, want gemini-3.5-flash fallback", got)
+	if got == nil || got.Name != "gemini-3.8-flash" {
+		t.Fatalf("resolveModelForClient() = %v, want gemini-3.8-flash fallback", got)
 	}
 }
