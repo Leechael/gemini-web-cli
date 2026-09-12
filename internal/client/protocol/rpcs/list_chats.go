@@ -47,6 +47,12 @@ type ListChatsPayload struct {
 	Cursor   string
 	Flag1    int
 	Flag2    int
+	// NotebookResource scopes the list to a notebook ("notebooks/<uuid>").
+	// When set, the flags array becomes [null, null, 1, <resource>, 1] and
+	// the browser page size is 10 (verified in a live session where the
+	// response listed the notebook's chats with the notebook resource name
+	// at item index 7).
+	NotebookResource string
 }
 
 // ChatListItem is the protocol-level representation of one listed chat.
@@ -67,6 +73,10 @@ func EncodeListChats(pageSize int, cursor string) (rpcID, payload string) {
 
 // EncodeListChatsRaw returns a specific ListChats browser payload variant.
 func EncodeListChatsRaw(p ListChatsPayload) (rpcID, payload string) {
+	if p.NotebookResource != "" {
+		payloadBytes, _ := json.Marshal([]any{p.PageSize, nil, []any{nil, nil, 1, p.NotebookResource, 1}})
+		return listChatsRPCID, string(payloadBytes)
+	}
 	payloadArr := []any{p.PageSize, nil, []any{p.Flag1, nil, p.Flag2}}
 	if p.Cursor != "" {
 		payloadArr[1] = p.Cursor
