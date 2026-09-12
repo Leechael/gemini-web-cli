@@ -241,8 +241,8 @@ func TestBuildInnerRequest_NewChat(t *testing.T) {
 	c := &Client{}
 	req := c.buildInnerRequest("hello", nil, nil, nil, false, "TEST-UUID", "en", "")
 
-	if len(req) != 81 {
-		t.Fatalf("len = %d, want 81", len(req))
+	if len(req) != 99 {
+		t.Fatalf("len = %d, want 99", len(req))
 	}
 
 	meta, ok := req[2].([]any)
@@ -274,6 +274,59 @@ func TestBuildInnerRequest_NewChat(t *testing.T) {
 	if req[80] != 1 {
 		t.Errorf("[80] = %v, want 1", req[80])
 	}
+	if req[67] != nil {
+		t.Errorf("[67] = %v, want nil", req[67])
+	}
+	if req[91] != 0 {
+		t.Errorf("[91] = %v, want 0", req[91])
+	}
+	if req[96] != 1 {
+		t.Errorf("[96] = %v, want 1 (first turn)", req[96])
+	}
+	if req[98] != 1 {
+		t.Errorf("[98] = %v, want 1", req[98])
+	}
+}
+
+func TestBuildInnerRequest_Continuation(t *testing.T) {
+	c := &Client{}
+	metadata := []string{"c_abc", "r_def", "rc_ghi"}
+	req := c.buildInnerRequest("follow up", metadata, nil, nil, false, "UUID", "en", "")
+	if req[96] != 0 {
+		t.Errorf("[96] = %v, want 0 (continuation)", req[96])
+	}
+	r17, ok := req[17].([]any)
+	if !ok || len(r17) != 1 {
+		t.Fatalf("[17] = %v", req[17])
+	}
+	inner, ok := r17[0].([]any)
+	if !ok || len(inner) != 1 || inner[0] != 1 {
+		t.Errorf("[17] = %v, want [[1]] with rid present", req[17])
+	}
+}
+
+func TestBuildInnerRequest_NotebookScope(t *testing.T) {
+	c := &Client{}
+	req := c.buildInnerRequest("hello", nil, nil, nil, false, "UUID", "en", "", "notebooks/nb-1")
+	if req[19] != "notebooks/nb-1" {
+		t.Errorf("[19] = %v, want notebooks/nb-1", req[19])
+	}
+	scope, ok := req[40].([]any)
+	if !ok || len(scope) != 14 {
+		t.Fatalf("[40] = %v, want 14-element array", req[40])
+	}
+	last, ok := scope[13].([]any)
+	if !ok || len(last) != 1 || last[0] != 2 {
+		t.Errorf("[40][13] = %v, want [2] on first turn", scope[13])
+	}
+
+	metadata := []string{"c_abc", "r_def", "rc_ghi"}
+	req = c.buildInnerRequest("again", metadata, nil, nil, false, "UUID", "en", "", "notebooks/nb-1")
+	scope, _ = req[40].([]any)
+	last, _ = scope[13].([]any)
+	if len(last) != 5 || last[0] != 2 || last[4] != 1 {
+		t.Errorf("[40][13] = %v, want [2,null,null,null,1] on continuation", scope[13])
+	}
 }
 
 func TestBuildInnerRequest_GenerationModes(t *testing.T) {
@@ -281,6 +334,7 @@ func TestBuildInnerRequest_GenerationModes(t *testing.T) {
 		mode string
 		want any
 	}{
+		{"image", 14},
 		{"video", 11},
 		{"image-to-video", 14},
 		{"music", 21},
@@ -301,6 +355,26 @@ func TestBuildInnerRequest_GenerationModes(t *testing.T) {
 	}
 	if req[54] == nil || req[55] == nil {
 		t.Fatalf("video mode slots missing: [54]=%v [55]=%v", req[54], req[55])
+	}
+}
+
+func TestBuildInnerRequest_ImageMode(t *testing.T) {
+	c := &Client{}
+	req := c.buildInnerRequest("draw a sunset", nil, nil, nil, false, "UUID", "en", "image")
+	if req[49] != 14 {
+		t.Errorf("[49] = %v, want 14", req[49])
+	}
+	if req[67] != nil {
+		t.Errorf("[67] = %v, want nil", req[67])
+	}
+	if req[80] != 2 {
+		t.Errorf("[80] = %v, want 2", req[80])
+	}
+	if req[96] != 1 {
+		t.Errorf("[96] = %v, want 1", req[96])
+	}
+	if req[98] != 1 {
+		t.Errorf("[98] = %v, want 1", req[98])
 	}
 }
 

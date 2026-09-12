@@ -67,6 +67,8 @@ type Client struct {
 	// generationMode is per-request in server mode; CLI sets it before each call.
 	generationMu   sync.RWMutex
 	generationMode string
+	// notebookResource scopes generation to a notebook ("notebooks/<uuid>").
+	notebookResource string
 
 	// Cookies for persistence tracking
 	cookieMu     sync.RWMutex
@@ -276,6 +278,24 @@ func (c *Client) generationModeSnapshot() string {
 	c.generationMu.RLock()
 	defer c.generationMu.RUnlock()
 	return c.generationMode
+}
+
+// SetNotebookResource scopes subsequent StreamGenerate requests to a notebook.
+// Pass an empty string to clear the scope. Accepts ids with or without the
+// "notebooks/" prefix.
+func (c *Client) SetNotebookResource(resource string) {
+	c.generationMu.Lock()
+	defer c.generationMu.Unlock()
+	if resource != "" && !strings.HasPrefix(resource, "notebooks/") {
+		resource = "notebooks/" + resource
+	}
+	c.notebookResource = resource
+}
+
+func (c *Client) notebookResourceSnapshot() string {
+	c.generationMu.RLock()
+	defer c.generationMu.RUnlock()
+	return c.notebookResource
 }
 
 // sessionSnapshot holds a consistent copy of session fields for a single request.

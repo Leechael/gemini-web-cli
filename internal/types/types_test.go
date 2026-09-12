@@ -1,6 +1,9 @@
 package types
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
 
 func TestExtractImages_ImageToImagePath(t *testing.T) {
 	t.Skip("waiting for real image-to-image fixture verification")
@@ -35,5 +38,28 @@ func TestExtractImages_PathPreservation(t *testing.T) {
 	}
 	if !images[0].Generated {
 		t.Fatal("Generated = false, want true")
+	}
+}
+
+func TestBuildModelHeaderForSurface(t *testing.T) {
+	chat := BuildModelHeader("56fdd199312815e2", 1)
+	var chatArr []any
+	if err := json.Unmarshal([]byte(chat[ModelHeaderKey]), &chatArr); err != nil {
+		t.Fatal(err)
+	}
+	if chatArr[15] != float64(1) {
+		t.Errorf("chat header [15] = %v, want 1", chatArr[15])
+	}
+
+	img := BuildModelHeaderForSurface("56fdd199312815e2", 1, 2)
+	var imgArr []any
+	if err := json.Unmarshal([]byte(img[ModelHeaderKey]), &imgArr); err != nil {
+		t.Fatal(err)
+	}
+	if imgArr[15] != float64(2) {
+		t.Errorf("image header [15] = %v, want 2", imgArr[15])
+	}
+	if imgArr[14] != float64(1) {
+		t.Errorf("image header [14] = %v, want selector 1", imgArr[14])
 	}
 }

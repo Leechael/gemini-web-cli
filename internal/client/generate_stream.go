@@ -21,7 +21,12 @@ func (c *Client) streamGenerate(ctx context.Context, prompt string, metadata []s
 	mode := resolveGenerationMode(c.generationModeSnapshot(), prompt, uploads)
 	s := c.session()
 
-	innerReq := c.buildInnerRequest(prompt, metadata, uploads, model, deepResearch, uuid, s.language, mode)
+	modelHeaders := model.Headers
+	if mode == "image" {
+		modelHeaders = types.BuildModelHeaderForSurface(model.ModelID(), modelSelector(model), 2)
+	}
+
+	innerReq := c.buildInnerRequest(prompt, metadata, uploads, model, deepResearch, uuid, s.language, mode, c.notebookResourceSnapshot())
 	innerJSON, err := json.Marshal(innerReq)
 	if err != nil {
 		return fmt.Errorf("marshaling inner request: %w", err)
@@ -59,7 +64,7 @@ func (c *Client) streamGenerate(ctx context.Context, prompt string, metadata []s
 			AccessToken: s.accessToken,
 			InnerReq:    innerJSON,
 			UUID:        uuid,
-			ModelHeader: model.Headers,
+			ModelHeader: modelHeaders,
 		}, s)
 		if requestErr != nil {
 			retryableProtocolError = false
