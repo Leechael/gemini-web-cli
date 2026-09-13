@@ -417,8 +417,19 @@ var Models = []Model{
 // FallbackModelName is the model to use when error 1052 (model unavailable) is encountered.
 const FallbackModelName = "gemini-3-flash"
 
+// modelAliases maps previous public model IDs onto the current catalog names.
+var modelAliases = map[string]string{
+	"gemini-3.1-flash-lite":   "gemini-3.5-flash-lite",
+	"gemini-3.5-flash":        "gemini-3.8-flash",
+	"gemini-3-flash-plus":     "gemini-3.8-flash-plus",
+	"gemini-3-flash-advanced": "gemini-3.8-flash-advanced",
+}
+
 // FindModel looks up a model by name, returns nil if not found.
 func FindModel(name string) *Model {
+	if aliased, ok := modelAliases[name]; ok {
+		name = aliased
+	}
 	for i := range Models {
 		if Models[i].Name == name {
 			return &Models[i]

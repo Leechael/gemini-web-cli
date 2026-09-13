@@ -62,4 +62,39 @@ func TestBuildModelHeaderForSurface(t *testing.T) {
 	if imgArr[14] != float64(1) {
 		t.Errorf("image header [14] = %v, want selector 1", imgArr[14])
 	}
+	if imgArr[4] != "56fdd199312815e2" {
+		t.Errorf("image header [4] = %v, want model id", imgArr[4])
+	}
+	run, ok := imgArr[8].([]any)
+	if !ok {
+		t.Fatalf("image header [8] type %T, want array", imgArr[8])
+	}
+	wantRun := []float64{4, 5, 6, 8, 4, 5, 6, 8}
+	if len(run) != len(wantRun) {
+		t.Fatalf("image header [8] len = %d, want %d", len(run), len(wantRun))
+	}
+	for i, v := range wantRun {
+		if run[i] != v {
+			t.Errorf("image header [8][%d] = %v, want %v", i, run[i], v)
+		}
+	}
+}
+
+func TestFindModelAliases(t *testing.T) {
+	cases := map[string]string{
+		"gemini-3.1-flash-lite":   "gemini-3.5-flash-lite",
+		"gemini-3.5-flash":        "gemini-3.8-flash",
+		"gemini-3-flash-plus":     "gemini-3.8-flash-plus",
+		"gemini-3-flash-advanced": "gemini-3.8-flash-advanced",
+	}
+	for oldName, current := range cases {
+		alias := FindModel(oldName)
+		canonical := FindModel(current)
+		if alias == nil || canonical == nil {
+			t.Fatalf("FindModel(%q)=%v FindModel(%q)=%v", oldName, alias, current, canonical)
+		}
+		if alias.Name != canonical.Name || alias.ModelID() != canonical.ModelID() {
+			t.Errorf("alias %q resolved to %+v, want %+v", oldName, alias, canonical)
+		}
+	}
 }
