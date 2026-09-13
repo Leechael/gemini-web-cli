@@ -410,6 +410,15 @@ func TestBuildInnerRequest_DeepResearch(t *testing.T) {
 	}
 }
 
+func TestBuildInnerRequest_DeepResearchContinuationSlot67(t *testing.T) {
+	c := &Client{}
+	meta := []string{"c_abc", "r_def", "rc_ghi"}
+	req := c.buildInnerRequest("research topic", meta, nil, nil, true, "UUID", "en", "")
+	if req[67] != nil {
+		t.Errorf("[67] = %v, want nil (active deep research continuation)", req[67])
+	}
+}
+
 func TestBuildInnerRequest_ContinuationMetadata(t *testing.T) {
 	c := &Client{}
 	meta := []string{"c_abc", "r_def", "rc_ghi", "", "", "", "", "", "", "ctx"}

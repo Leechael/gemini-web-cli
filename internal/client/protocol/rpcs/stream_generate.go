@@ -200,7 +200,7 @@ func EncodeStreamGenerate(opts EncodeStreamGenerateOpts) []any {
 	req[53] = 0
 	req[59] = opts.UUID
 	req[61] = []any{}
-	if !isNewChat && opts.Mode != "image" && opts.NotebookResource == "" {
+	if !isNewChat && opts.Mode != "image" && opts.NotebookResource == "" && !opts.DeepResearch {
 		req[67] = 0
 	}
 	req[91] = 0

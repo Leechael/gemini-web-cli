@@ -31,6 +31,15 @@ func TestDecodeCreateNotebook_FromSampleFixture(t *testing.T) {
 	}
 }
 
+func TestDecodeCreateNotebook_EmptyOrInvalidResource(t *testing.T) {
+	cases := []string{"", "[]", `[""]`, `["not-a-notebook"]`, `[null]`}
+	for _, body := range cases {
+		if _, err := DecodeCreateNotebook([]byte(body)); err == nil {
+			t.Errorf("DecodeCreateNotebook(%q) = nil error, want error", body)
+		}
+	}
+}
+
 func TestEncodeAddNotebookSource_PayloadShape(t *testing.T) {
 	rpcID, payload := EncodeAddNotebookSource(
 		"73830cf9-85d5-4fb8-993b-7469753a7c28",

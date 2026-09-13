@@ -149,3 +149,17 @@ func TestDecodeReadChatPage_NextCursor(t *testing.T) {
 		t.Fatalf("next = %q, want tCoMnextcursor", next)
 	}
 }
+
+func TestDecodeReadChatPage_CursorWithoutTurnArray(t *testing.T) {
+	body := []byte(`[null,"tCoMnextcursor"]`)
+	turns, next, err := DecodeReadChatPage(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(turns) != 0 {
+		t.Fatalf("turns = %d, want 0", len(turns))
+	}
+	if next != "tCoMnextcursor" {
+		t.Fatalf("next = %q, want tCoMnextcursor", next)
+	}
+}

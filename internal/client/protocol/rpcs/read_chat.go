@@ -12,7 +12,7 @@
 //
 // Response shape (after StripResponsePrefix + ExtractRPCBody):
 //
-//	[[turn_arr, ...]]
+//	[[turn_arr, ...], <cursor or null>, ...]
 //
 //	turn_arr structure:
 //	  [0]: metadata; request id is [0][1]
@@ -80,11 +80,11 @@ func DecodeReadChatPage(body []byte) ([]types.ChatTurn, string, error) {
 		return nil, "", fmt.Errorf("decode ReadChat JSON: %w", err)
 	}
 
+	nextCursor := protocol.StringAt(data, 1)
 	turnList, ok := protocol.ArrayAt(data, 0)
 	if !ok {
-		return nil, "", nil
+		return nil, nextCursor, nil
 	}
-	nextCursor := protocol.StringAt(data, 1)
 
 	turns := make([]types.ChatTurn, 0, len(turnList))
 	for _, turn := range turnList {

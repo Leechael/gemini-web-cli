@@ -20,8 +20,10 @@
 //   - Slot mapping is per-namespace. Verified against boq_assistant-bard-web-server_20260910.05_p2:
 //     86=popup_zs_visits_cooldown, 95=last_selected_mode_id_on_web,
 //     103=last_two_up_activation_timestamp_sec,
-//     176=mode_switcher_soft_badge_seen_count, 177=mode_switcher_soft_badge_disabled_ids,
-//     264=last_selected_thinking_level_on_web.
+//     176=mode_switcher_soft_badge_seen_count, 177=mode_switcher_soft_badge_disabled_ids.
+//     264=last_selected_thinking_level_on_web belongs to a larger web-prefs
+//     array not used by these encoders; it is not a feature-state (0-192) or
+//     popup-state (0-86) slot.
 //     The hardcoded slot 192 for tool_menu_soft_badge_disabled_ids has NOT been
 //     observed in any capture and remains unverified.
 package rpcs

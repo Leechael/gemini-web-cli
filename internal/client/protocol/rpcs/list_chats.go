@@ -12,8 +12,10 @@
 // this client uses 13); subsequent pages use page size 20 with flags
 // [0,null,1] and the opaque next_cursor from the previous response.
 //
-// Notebook-scoped variant (observed, not implemented): the flags array grows
-// to 5 elements — [<10>, null, [null, null, 1, "notebooks/<uuid>", 1]].
+// Notebook-scoped variant (implemented; first page verified): the flags array
+// grows to 5 elements — [<10>, <cursor or null>, [null, null, 1, "notebooks/<uuid>", 1]].
+// This client lists only the first page (PageSize 10). Later pages can be
+// requested by passing the previous response cursor in slot 1.
 //
 // Response shape (after StripResponsePrefix + ExtractRPCBody):
 //
@@ -74,7 +76,11 @@ func EncodeListChats(pageSize int, cursor string) (rpcID, payload string) {
 // EncodeListChatsRaw returns a specific ListChats browser payload variant.
 func EncodeListChatsRaw(p ListChatsPayload) (rpcID, payload string) {
 	if p.NotebookResource != "" {
-		payloadBytes, _ := json.Marshal([]any{p.PageSize, nil, []any{nil, nil, 1, p.NotebookResource, 1}})
+		var cursor any
+		if p.Cursor != "" {
+			cursor = p.Cursor
+		}
+		payloadBytes, _ := json.Marshal([]any{p.PageSize, cursor, []any{nil, nil, 1, p.NotebookResource, 1}})
 		return listChatsRPCID, string(payloadBytes)
 	}
 	payloadArr := []any{p.PageSize, nil, []any{p.Flag1, nil, p.Flag2}}
