@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/Leechael/gemini-web-cli/internal/client/protocol/rpcs"
@@ -34,6 +35,15 @@ type notebookJSON struct {
 	UpdatedUnix int64                `json:"updated_unix,omitempty"`
 }
 
+func isHTTPURL(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	scheme := strings.ToLower(u.Scheme)
+	return (scheme == "http" || scheme == "https") && u.Host != ""
+}
+
 func notebookToJSON(nb *rpcs.Notebook) notebookJSON {
 	sources := make([]notebookSourceJSON, 0, len(nb.Sources))
 	for _, src := range nb.Sources {
@@ -57,6 +67,7 @@ func notebookToJSON(nb *rpcs.Notebook) notebookJSON {
 
 // handleNotebookCreate handles POST /v1/notebooks.
 func (s *Server) handleNotebookCreate(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 	var req notebookCreateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON body")
@@ -69,6 +80,10 @@ func (s *Server) handleNotebookCreate(w http.ResponseWriter, r *http.Request) {
 	resource, err := s.client.CreateNotebook(r.Context(), req.Title)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	if resource == "" {
+		writeError(w, http.StatusBadGateway, "create notebook returned empty resource")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"resource": resource, "title": req.Title})
@@ -109,6 +124,7 @@ func (s *Server) handleNotebookChats(w http.ResponseWriter, r *http.Request) {
 
 // handleNotebookAddSource handles POST /v1/notebooks/{id}/sources.
 func (s *Server) handleNotebookAddSource(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 	var req notebookSourceRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON body")
@@ -121,7 +137,7 @@ func (s *Server) handleNotebookAddSource(w http.ResponseWriter, r *http.Request)
 	var err error
 	switch {
 	case req.URL != "":
-		if !strings.HasPrefix(req.URL, "http://") && !strings.HasPrefix(req.URL, "https://") {
+		if !isHTTPURL(req.URL) {
 			writeError(w, http.StatusBadRequest, "url must start with http:// or https://")
 			return
 		}
@@ -139,6 +155,10 @@ func (s *Server) handleNotebookAddSource(w http.ResponseWriter, r *http.Request)
 	}
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	if nb == nil {
+		writeError(w, http.StatusBadGateway, "empty notebook response")
 		return
 	}
 	writeJSON(w, http.StatusOK, notebookToJSON(nb))
