@@ -55,10 +55,6 @@ var askCmd = &cobra.Command{
 		if err := setGenerationMode(c, askGenerationMode); err != nil {
 			return err
 		}
-		if askNotebook != "" {
-			c.SetNotebookResource(askNotebook)
-		}
-
 		prompt := args[0]
 
 		// Process --file: text files inlined, binary files uploaded via resumable protocol
@@ -88,9 +84,9 @@ var askCmd = &cobra.Command{
 		if askNoStream {
 			var output *types.ModelOutput
 			if len(uploads) > 0 {
-				output, err = c.GenerateContentWithFiles(ctx, prompt, uploads, model)
+				output, err = c.GenerateContentWithFiles(ctx, prompt, uploads, model, askNotebook)
 			} else {
-				output, err = c.GenerateContent(ctx, prompt, model)
+				output, err = c.GenerateContent(ctx, prompt, model, askNotebook)
 			}
 			if err != nil {
 				return err
@@ -123,9 +119,9 @@ var askCmd = &cobra.Command{
 				}
 			}
 			if len(uploads) > 0 {
-				output, err = c.GenerateContentStreamWithFiles(ctx, prompt, uploads, model, streamCb)
+				output, err = c.GenerateContentStreamWithFiles(ctx, prompt, uploads, model, askNotebook, streamCb)
 			} else {
-				output, err = c.GenerateContentStream(ctx, prompt, model, streamCb)
+				output, err = c.GenerateContentStream(ctx, prompt, model, askNotebook, streamCb)
 			}
 			if err != nil {
 				return err

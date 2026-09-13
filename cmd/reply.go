@@ -28,10 +28,6 @@ var replyCmd = &cobra.Command{
 		if err := setGenerationMode(c, replyGenerationMode); err != nil {
 			return err
 		}
-		if replyNotebook != "" {
-			c.SetNotebookResource(replyNotebook)
-		}
-
 		chatID := args[0]
 		prompt := args[1]
 		model := resolveModelForClient(ctx, c, preferredModelsForGenerationMode(replyGenerationMode, prompt, false)...)
@@ -52,7 +48,7 @@ var replyCmd = &cobra.Command{
 		}
 
 		if replyNoStream {
-			output, err := c.SendMessage(ctx, prompt, metadata, model)
+			output, err := c.SendMessage(ctx, prompt, metadata, model, replyNotebook)
 			if err != nil {
 				return err
 			}
@@ -61,7 +57,7 @@ var replyCmd = &cobra.Command{
 			printVideos(output)
 			printMedia(output)
 		} else {
-			output, err := c.SendMessageStream(ctx, prompt, metadata, model, func(out *types.ModelOutput) {
+			output, err := c.SendMessageStream(ctx, prompt, metadata, model, replyNotebook, func(out *types.ModelOutput) {
 				if out.TextDelta != "" {
 					fmt.Print(out.TextDelta)
 				}

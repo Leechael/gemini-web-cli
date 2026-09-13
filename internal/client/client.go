@@ -33,7 +33,7 @@ type AbuseCheckError struct {
 }
 
 func (e *AbuseCheckError) Error() string {
-	return "Google abuse check triggered (landed on /sorry/ page) — cookies are NOT expired, do not re-import. Wait a few minutes and retry, or switch network/IP"
+	return "Google abuse check triggered — cookies are NOT expired, do not re-import. Wait a few minutes and retry, or switch network/IP"
 }
 
 // RateLimitError is returned when the server responds with HTTP 429.
@@ -67,8 +67,6 @@ type Client struct {
 	// generationMode is per-request in server mode; CLI sets it before each call.
 	generationMu   sync.RWMutex
 	generationMode string
-	// notebookResource scopes generation to a notebook ("notebooks/<uuid>").
-	notebookResource string
 
 	// Cookies for persistence tracking
 	cookieMu     sync.RWMutex
@@ -280,22 +278,23 @@ func (c *Client) generationModeSnapshot() string {
 	return c.generationMode
 }
 
-// SetNotebookResource scopes subsequent StreamGenerate requests to a notebook.
-// Pass an empty string to clear the scope. Accepts ids with or without the
-// "notebooks/" prefix.
-func (c *Client) SetNotebookResource(resource string) {
-	c.generationMu.Lock()
-	defer c.generationMu.Unlock()
-	if resource != "" && !strings.HasPrefix(resource, "notebooks/") {
-		resource = "notebooks/" + resource
+func normalizeNotebookResource(resource string) string {
+	resource = strings.TrimSpace(resource)
+	if resource == "" {
+		return ""
 	}
-	c.notebookResource = resource
+	if !strings.HasPrefix(resource, "notebooks/") {
+		return "notebooks/" + resource
+	}
+	return resource
 }
 
-func (c *Client) notebookResourceSnapshot() string {
-	c.generationMu.RLock()
-	defer c.generationMu.RUnlock()
-	return c.notebookResource
+func notebookPagePath(notebookID string) string {
+	id := strings.TrimPrefix(normalizeNotebookResource(notebookID), "notebooks/")
+	if i := strings.Index(id, "/"); i >= 0 {
+		id = id[:i]
+	}
+	return "/notebook/" + id
 }
 
 // sessionSnapshot holds a consistent copy of session fields for a single request.

@@ -12,7 +12,7 @@ import (
 	"github.com/Leechael/gemini-web-cli/internal/types"
 )
 
-func (c *Client) streamGenerate(ctx context.Context, prompt string, metadata []string, uploads []*UploadResult, model *types.Model, deepResearch bool, cb StreamCallback) error {
+func (c *Client) streamGenerate(ctx context.Context, prompt string, metadata []string, uploads []*UploadResult, model *types.Model, deepResearch bool, notebook string, cb StreamCallback) error {
 	if model == nil {
 		model = &types.Models[0]
 	}
@@ -26,7 +26,7 @@ func (c *Client) streamGenerate(ctx context.Context, prompt string, metadata []s
 		modelHeaders = types.BuildModelHeaderForSurface(model.ModelID(), modelSelector(model), 2)
 	}
 
-	innerReq := c.buildInnerRequest(prompt, metadata, uploads, model, deepResearch, uuid, s.language, mode, c.notebookResourceSnapshot())
+	innerReq := c.buildInnerRequest(prompt, metadata, uploads, model, deepResearch, uuid, s.language, mode, normalizeNotebookResource(notebook))
 	innerJSON, err := json.Marshal(innerReq)
 	if err != nil {
 		return fmt.Errorf("marshaling inner request: %w", err)

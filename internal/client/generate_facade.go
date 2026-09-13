@@ -18,14 +18,15 @@ func (e *ModelUnavailableError) Error() string {
 }
 
 // GenerateContent sends a prompt and returns the full response (non-streaming).
-func (c *Client) GenerateContent(ctx context.Context, prompt string, model *types.Model) (*types.ModelOutput, error) {
-	best, _, err := c.collectStreamResult(ctx, prompt, nil, nil, model, false, nil)
+// notebook is optional ("notebooks/<uuid>" or a bare id) and scopes the chat.
+func (c *Client) GenerateContent(ctx context.Context, prompt string, model *types.Model, notebook string) (*types.ModelOutput, error) {
+	best, _, err := c.collectStreamResult(ctx, prompt, nil, nil, model, false, notebook, nil)
 	return best, err
 }
 
 // GenerateContentWithFiles sends a prompt with file attachments.
-func (c *Client) GenerateContentWithFiles(ctx context.Context, prompt string, uploads []*UploadResult, model *types.Model) (*types.ModelOutput, error) {
-	best, _, err := c.collectStreamResult(ctx, prompt, nil, uploads, model, false, nil)
+func (c *Client) GenerateContentWithFiles(ctx context.Context, prompt string, uploads []*UploadResult, model *types.Model, notebook string) (*types.ModelOutput, error) {
+	best, _, err := c.collectStreamResult(ctx, prompt, nil, uploads, model, false, notebook, nil)
 	return best, err
 }
 
@@ -33,45 +34,45 @@ func (c *Client) GenerateContentWithFiles(ctx context.Context, prompt string, up
 type StreamCallback func(output *types.ModelOutput)
 
 // GenerateContentStream sends a prompt and calls cb for each streaming chunk.
-func (c *Client) GenerateContentStream(ctx context.Context, prompt string, model *types.Model, cb StreamCallback) (*types.ModelOutput, error) {
-	best, _, err := c.collectStreamResult(ctx, prompt, nil, nil, model, false, cb)
+func (c *Client) GenerateContentStream(ctx context.Context, prompt string, model *types.Model, notebook string, cb StreamCallback) (*types.ModelOutput, error) {
+	best, _, err := c.collectStreamResult(ctx, prompt, nil, nil, model, false, notebook, cb)
 	return best, err
 }
 
 // GenerateContentStreamWithFiles sends a prompt with files and calls cb for each chunk.
-func (c *Client) GenerateContentStreamWithFiles(ctx context.Context, prompt string, uploads []*UploadResult, model *types.Model, cb StreamCallback) (*types.ModelOutput, error) {
-	best, _, err := c.collectStreamResult(ctx, prompt, nil, uploads, model, false, cb)
+func (c *Client) GenerateContentStreamWithFiles(ctx context.Context, prompt string, uploads []*UploadResult, model *types.Model, notebook string, cb StreamCallback) (*types.ModelOutput, error) {
+	best, _, err := c.collectStreamResult(ctx, prompt, nil, uploads, model, false, notebook, cb)
 	return best, err
 }
 
 // SendMessage sends a message in an existing chat.
-func (c *Client) SendMessage(ctx context.Context, prompt string, metadata []string, model *types.Model) (*types.ModelOutput, error) {
-	best, _, err := c.collectStreamResult(ctx, prompt, metadata, nil, model, false, nil)
+func (c *Client) SendMessage(ctx context.Context, prompt string, metadata []string, model *types.Model, notebook string) (*types.ModelOutput, error) {
+	best, _, err := c.collectStreamResult(ctx, prompt, metadata, nil, model, false, notebook, nil)
 	return best, err
 }
 
 // SendMessageStream sends a message in a chat with streaming.
-func (c *Client) SendMessageStream(ctx context.Context, prompt string, metadata []string, model *types.Model, cb StreamCallback) (*types.ModelOutput, error) {
-	best, _, err := c.collectStreamResult(ctx, prompt, metadata, nil, model, false, cb)
+func (c *Client) SendMessageStream(ctx context.Context, prompt string, metadata []string, model *types.Model, notebook string, cb StreamCallback) (*types.ModelOutput, error) {
+	best, _, err := c.collectStreamResult(ctx, prompt, metadata, nil, model, false, notebook, cb)
 	return best, err
 }
 
 // SendMessageDeepResearch sends a message with deep research flags.
 func (c *Client) SendMessageDeepResearch(ctx context.Context, prompt string, metadata []string, model *types.Model) (*types.ModelOutput, error) {
-	best, _, err := c.collectStreamResult(ctx, prompt, metadata, nil, model, true, nil)
+	best, _, err := c.collectStreamResult(ctx, prompt, metadata, nil, model, true, "", nil)
 	return best, err
 }
 
 // collectStreamResult is the shared implementation for all generate/send methods.
-func (c *Client) collectStreamResult(ctx context.Context, prompt string, metadata []string, uploads []*UploadResult, model *types.Model, deepResearch bool, cb StreamCallback) (*types.ModelOutput, []types.Image, error) {
-	best, allImages, err := c.doCollectStream(ctx, prompt, metadata, uploads, model, deepResearch, cb)
+func (c *Client) collectStreamResult(ctx context.Context, prompt string, metadata []string, uploads []*UploadResult, model *types.Model, deepResearch bool, notebook string, cb StreamCallback) (*types.ModelOutput, []types.Image, error) {
+	best, allImages, err := c.doCollectStream(ctx, prompt, metadata, uploads, model, deepResearch, notebook, cb)
 	if err != nil {
 		if !deepResearch {
 			if mErr, ok := err.(*ModelUnavailableError); ok {
 				fallback := types.FindModel(types.FallbackModelName)
 				if fallback != nil && (model == nil || model.Name != fallback.Name) {
 					fmt.Fprintf(os.Stderr, "Model unavailable (code %d), retrying with %s...\n", mErr.Code, fallback.DisplayName)
-					return c.doCollectStream(ctx, prompt, metadata, uploads, fallback, deepResearch, cb)
+					return c.doCollectStream(ctx, prompt, metadata, uploads, fallback, deepResearch, notebook, cb)
 				}
 			}
 		}
@@ -80,7 +81,7 @@ func (c *Client) collectStreamResult(ctx context.Context, prompt string, metadat
 	return best, allImages, nil
 }
 
-func (c *Client) doCollectStream(ctx context.Context, prompt string, metadata []string, uploads []*UploadResult, model *types.Model, deepResearch bool, cb StreamCallback) (*types.ModelOutput, []types.Image, error) {
+func (c *Client) doCollectStream(ctx context.Context, prompt string, metadata []string, uploads []*UploadResult, model *types.Model, deepResearch bool, notebook string, cb StreamCallback) (*types.ModelOutput, []types.Image, error) {
 	var best *types.ModelOutput
 	var allImages []types.Image
 	var allVideos []types.Video
@@ -90,7 +91,7 @@ func (c *Client) doCollectStream(ctx context.Context, prompt string, metadata []
 	seenImg := map[string]bool{}
 	seenVid := map[string]bool{}
 	seenMedia := map[string]bool{}
-	err := c.streamGenerate(ctx, prompt, metadata, uploads, model, deepResearch, func(out *types.ModelOutput) {
+	err := c.streamGenerate(ctx, prompt, metadata, uploads, model, deepResearch, notebook, func(out *types.ModelOutput) {
 		for _, img := range out.Images {
 			if !seenImg[img.URL] {
 				seenImg[img.URL] = true

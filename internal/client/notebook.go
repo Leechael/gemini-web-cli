@@ -29,7 +29,7 @@ func (c *Client) CreateNotebook(ctx context.Context, title string) (string, erro
 // "/contrib_service/..." string returned by UploadFile.
 func (c *Client) AddNotebookSource(ctx context.Context, notebookID string, fileName string, mimeType string, uploadToken string) (*rpcs.Notebook, error) {
 	rpcID, payload := rpcs.EncodeAddNotebookSource(notebookID, fileName, mimeType, uploadToken)
-	body, rejectCode, err := c.CallRPC(ctx, rpcID, payload, WithSourcePath("/notebooks/view"))
+	body, rejectCode, err := c.CallRPC(ctx, rpcID, payload, WithSourcePath(notebookPagePath(notebookID)))
 	if err != nil {
 		return nil, err
 	}
@@ -43,7 +43,7 @@ func (c *Client) AddNotebookSource(ctx context.Context, notebookID string, fileN
 // returns the refreshed notebook.
 func (c *Client) AddNotebookURLSource(ctx context.Context, notebookID string, url string) (*rpcs.Notebook, error) {
 	rpcID, payload := rpcs.EncodeAddNotebookURLSource(notebookID, url)
-	body, rejectCode, err := c.CallRPC(ctx, rpcID, payload, WithSourcePath("/notebooks/view"))
+	body, rejectCode, err := c.CallRPC(ctx, rpcID, payload, WithSourcePath(notebookPagePath(notebookID)))
 	if err != nil {
 		return nil, err
 	}
@@ -57,7 +57,7 @@ func (c *Client) AddNotebookURLSource(ctx context.Context, notebookID string, ur
 // full resource name ("notebooks/<uuid>/sources/<sid>").
 func (c *Client) RemoveNotebookSource(ctx context.Context, sourceResource string) error {
 	rpcID, payload := rpcs.EncodeRemoveNotebookSource(sourceResource)
-	body, rejectCode, err := c.CallRPC(ctx, rpcID, payload, WithSourcePath("/notebooks/view"))
+	body, rejectCode, err := c.CallRPC(ctx, rpcID, payload, WithSourcePath(notebookPagePath(sourceResource)))
 	if err != nil {
 		return err
 	}
@@ -67,8 +67,10 @@ func (c *Client) RemoveNotebookSource(ctx context.Context, sourceResource string
 	return rpcs.DecodeRemoveNotebookSource(body)
 }
 
-// ListNotebookChats returns the chats belonging to a notebook, newest first.
-// The id may be passed with or without the "notebooks/" prefix.
+// ListNotebookChats returns the first page of chats belonging to a notebook
+// (page size 10), newest first. Later pages are not requested; a notebook
+// with more than 10 chats is truncated. The id may be passed with or without
+// the "notebooks/" prefix.
 func (c *Client) ListNotebookChats(ctx context.Context, notebookID string) ([]types.ChatItem, error) {
 	resource := notebookID
 	if !strings.HasPrefix(resource, "notebooks/") {

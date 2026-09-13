@@ -365,12 +365,8 @@ func (s *Server) handleMCPAsk(ctx context.Context, req mcp.CallToolRequest) (*mc
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	if notebook := req.GetString("notebook", ""); notebook != "" {
-		s.client.SetNotebookResource(notebook)
-		defer s.client.SetNotebookResource("")
-	}
-
-	output, err := s.client.GenerateContent(ctx, prompt, model)
+	notebook := req.GetString("notebook", "")
+	output, err := s.client.GenerateContent(ctx, prompt, model, notebook)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}

@@ -76,7 +76,7 @@ func TestStreamGenerateRetriesCode13BeforeOutput(t *testing.T) {
 	})}
 
 	callbacks := 0
-	err := c.streamGenerate(t.Context(), "prompt", nil, nil, &types.Models[0], false, func(*types.ModelOutput) {
+	err := c.streamGenerate(t.Context(), "prompt", nil, nil, &types.Models[0], false, "", func(*types.ModelOutput) {
 		callbacks++
 	})
 	if err != nil {
@@ -103,7 +103,7 @@ func TestStreamGenerateDoesNotRetryCode13AfterOutput(t *testing.T) {
 	})}
 
 	callbacks := 0
-	err := c.streamGenerate(t.Context(), "prompt", nil, nil, &types.Models[0], false, func(*types.ModelOutput) {
+	err := c.streamGenerate(t.Context(), "prompt", nil, nil, &types.Models[0], false, "", func(*types.ModelOutput) {
 		callbacks++
 	})
 	assertEnvelopeErrorCode(t, err, 13)
@@ -163,7 +163,7 @@ func TestStreamGenerateUsesOneThreeAttemptBudget(t *testing.T) {
 		}, nil
 	})}
 
-	err := c.streamGenerate(t.Context(), "prompt", nil, nil, &types.Models[0], false, func(*types.ModelOutput) {})
+	err := c.streamGenerate(t.Context(), "prompt", nil, nil, &types.Models[0], false, "", func(*types.ModelOutput) {})
 	assertEnvelopeErrorCode(t, err, 13)
 	if requests != 3 {
 		t.Fatalf("requests = %d, want 3", requests)

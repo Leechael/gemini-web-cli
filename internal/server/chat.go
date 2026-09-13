@@ -141,10 +141,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	if req.Notebook != "" {
-		s.client.SetNotebookResource(req.Notebook)
-		defer s.client.SetNotebookResource("")
-	}
+	notebook := req.Notebook
 
 	if req.ChatID != "" {
 		latest, err := s.client.FetchLatestChatResponse(ctx, req.ChatID)
@@ -168,7 +165,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 			defer cancel()
 			var emitErr error
 			s.writeSSE(w, req.ChatID, model.Name, func(emit func(chatID, delta, reasoning string) error) error {
-				output, err := s.client.SendMessageStream(streamCtx, prompt, metadata, model, func(out *types.ModelOutput) {
+				output, err := s.client.SendMessageStream(streamCtx, prompt, metadata, model, notebook, func(out *types.ModelOutput) {
 					if emitErr != nil {
 						return
 					}
@@ -190,7 +187,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 				return nil
 			})
 		} else {
-			output, err := s.client.SendMessage(ctx, prompt, metadata, model)
+			output, err := s.client.SendMessage(ctx, prompt, metadata, model, notebook)
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, err.Error())
 				return
@@ -221,7 +218,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 			var err error
 			if len(plan.Metadata) > 0 {
 				chatID = plan.Metadata[0]
-				output, err = s.client.SendMessageStream(streamCtx, prompt, plan.Metadata, model, func(out *types.ModelOutput) {
+				output, err = s.client.SendMessageStream(streamCtx, prompt, plan.Metadata, model, notebook, func(out *types.ModelOutput) {
 					if chatID == "" && len(out.Metadata) > 0 {
 						chatID = out.Metadata[0]
 					}
@@ -234,7 +231,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 					}
 				})
 			} else {
-				output, err = s.client.GenerateContentStream(streamCtx, prompt, model, func(out *types.ModelOutput) {
+				output, err = s.client.GenerateContentStream(streamCtx, prompt, model, notebook, func(out *types.ModelOutput) {
 					if chatID == "" && len(out.Metadata) > 0 {
 						chatID = out.Metadata[0]
 					}
@@ -262,9 +259,9 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	} else {
 		var output *types.ModelOutput
 		if len(plan.Metadata) > 0 {
-			output, err = s.client.SendMessage(ctx, prompt, plan.Metadata, model)
+			output, err = s.client.SendMessage(ctx, prompt, plan.Metadata, model, notebook)
 		} else {
-			output, err = s.client.GenerateContent(ctx, prompt, model)
+			output, err = s.client.GenerateContent(ctx, prompt, model, notebook)
 		}
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
