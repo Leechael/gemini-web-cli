@@ -11,6 +11,7 @@ import (
 var (
 	replyNoStream       bool
 	replyGenerationMode string
+	replyNotebook       string
 )
 
 var replyCmd = &cobra.Command{
@@ -26,6 +27,9 @@ var replyCmd = &cobra.Command{
 		defer cleanup(c, jsonCookies)
 		if err := setGenerationMode(c, replyGenerationMode); err != nil {
 			return err
+		}
+		if replyNotebook != "" {
+			c.SetNotebookResource(replyNotebook)
 		}
 
 		chatID := args[0]
@@ -81,4 +85,5 @@ var replyCmd = &cobra.Command{
 func init() {
 	replyCmd.Flags().BoolVar(&replyNoStream, "no-stream", false, "Wait for complete response")
 	replyCmd.Flags().StringVar(&replyGenerationMode, "mode", "auto", "Generation mode: auto, text, image, video, image-to-video, music")
+	replyCmd.Flags().StringVar(&replyNotebook, "notebook", "", "Scope the chat to a notebook (id with or without notebooks/ prefix)")
 }

@@ -113,6 +113,26 @@ gemini-web-cli list
 gemini-web-cli list --cursor <cursor>
 ```
 
+### notebook
+
+Manage Gemini notebooks (create, inspect, attach sources, list chats).
+
+```bash
+gemini-web-cli notebook create "My Project"
+gemini-web-cli notebook get 5a088119-...
+gemini-web-cli notebook chats 5a088119-...
+gemini-web-cli notebook add-source 5a088119-... notes.md report.pdf
+gemini-web-cli notebook add-url 5a088119-... https://example.com/article
+gemini-web-cli notebook remove-source notebooks/5a088119-.../sources/fa1beeca-...
+```
+
+Ask questions inside a notebook so Gemini can use its sources:
+
+```bash
+gemini-web-cli ask --notebook 5a088119-... "Summarize the sources in one sentence"
+gemini-web-cli reply --notebook 5a088119-... c_abc123 "Tell me more about the second topic"
+```
+
 ### get
 
 Get a conversation's messages, including generated images, videos, and media.
@@ -121,6 +141,8 @@ Get a conversation's messages, including generated images, videos, and media.
 gemini-web-cli get c_abc123
 gemini-web-cli get c_abc123 --max-turns 10
 gemini-web-cli get c_abc123 --output chat.txt
+# Fetch older turns with the cursor printed by the previous page
+gemini-web-cli get c_abc123 --cursor <cursor>
 ```
 
 Example output:

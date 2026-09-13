@@ -18,6 +18,7 @@ var (
 	askFiles          []string
 	askGenerationMode string
 	askShowThoughts   bool
+	askNotebook       string
 )
 
 // textExtensions lists file extensions that should be inlined into the prompt.
@@ -53,6 +54,9 @@ var askCmd = &cobra.Command{
 		defer cleanup(c, jsonCookies)
 		if err := setGenerationMode(c, askGenerationMode); err != nil {
 			return err
+		}
+		if askNotebook != "" {
+			c.SetNotebookResource(askNotebook)
 		}
 
 		prompt := args[0]
@@ -145,6 +149,7 @@ func init() {
 	askCmd.Flags().BoolVar(&askNoStream, "no-stream", false, "Wait for complete response")
 	askCmd.Flags().StringArrayVarP(&askFiles, "file", "f", nil, "Attach file(s) (can be specified multiple times)")
 	askCmd.Flags().StringVar(&askGenerationMode, "mode", "auto", "Generation mode: auto, text, image, video, image-to-video, music")
+	askCmd.Flags().StringVar(&askNotebook, "notebook", "", "Scope the new chat to a notebook (id with or without notebooks/ prefix)")
 	askCmd.Flags().BoolVar(&askShowThoughts, "show-thoughts", false, "Print model thoughts/reasoning to stderr")
 }
 
