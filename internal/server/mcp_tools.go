@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"strings"
 
+	"github.com/Leechael/gemini-web-cli/internal/client/protocol/rpcs"
 	"github.com/Leechael/gemini-web-cli/internal/types"
 	mcp "github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
@@ -101,6 +103,9 @@ func (s *Server) registerMCPTools(srv *mcpserver.MCPServer) {
 		mcp.WithString("model",
 			mcp.Description("Model name override. Omit to use the server's --mcp-default-model."),
 		),
+		mcp.WithString("notebook",
+			mcp.Description("Notebook id to scope the new chat to (with or without the notebooks/ prefix)."),
+		),
 	)
 	srv.AddTool(askTool, s.handleMCPAsk)
 
@@ -108,6 +113,68 @@ func (s *Server) registerMCPTools(srv *mcpserver.MCPServer) {
 		mcp.WithDescription("List available Gemini model names and display names."),
 	)
 	srv.AddTool(listModelsTool, s.handleMCPListModels)
+
+	notebookCreateTool := mcp.NewTool("gemini_notebook_create",
+		mcp.WithDescription("Create a Gemini notebook. Returns the notebooks/<uuid> resource name."),
+		mcp.WithString("title",
+			mcp.Required(),
+			mcp.Description("Notebook title."),
+		),
+	)
+	srv.AddTool(notebookCreateTool, s.handleMCPNotebookCreate)
+
+	notebookGetTool := mcp.NewTool("gemini_notebook_get",
+		mcp.WithDescription("Get a notebook's title, emoji, and source list."),
+		mcp.WithString("id",
+			mcp.Required(),
+			mcp.Description("Notebook id, with or without the notebooks/ prefix."),
+		),
+	)
+	srv.AddTool(notebookGetTool, s.handleMCPNotebookGet)
+
+	notebookListChatsTool := mcp.NewTool("gemini_notebook_list_chats",
+		mcp.WithDescription("List the chats belonging to a notebook, newest first."),
+		mcp.WithString("id",
+			mcp.Required(),
+			mcp.Description("Notebook id, with or without the notebooks/ prefix."),
+		),
+	)
+	srv.AddTool(notebookListChatsTool, s.handleMCPNotebookListChats)
+
+	notebookAddFileSourceTool := mcp.NewTool("gemini_notebook_add_file_source",
+		mcp.WithDescription("Upload a local file (on the machine running gemini-web-cli serve) and attach it to a notebook as a source."),
+		mcp.WithString("id",
+			mcp.Required(),
+			mcp.Description("Notebook id, with or without the notebooks/ prefix."),
+		),
+		mcp.WithString("path",
+			mcp.Required(),
+			mcp.Description("Local file path to upload."),
+		),
+	)
+	srv.AddTool(notebookAddFileSourceTool, s.handleMCPNotebookAddFileSource)
+
+	notebookAddURLSourceTool := mcp.NewTool("gemini_notebook_add_url_source",
+		mcp.WithDescription("Attach a web URL to a notebook as a source."),
+		mcp.WithString("id",
+			mcp.Required(),
+			mcp.Description("Notebook id, with or without the notebooks/ prefix."),
+		),
+		mcp.WithString("url",
+			mcp.Required(),
+			mcp.Description("The http(s) URL to attach."),
+		),
+	)
+	srv.AddTool(notebookAddURLSourceTool, s.handleMCPNotebookAddURLSource)
+
+	notebookRemoveSourceTool := mcp.NewTool("gemini_notebook_remove_source",
+		mcp.WithDescription("Remove a source from a notebook."),
+		mcp.WithString("source",
+			mcp.Required(),
+			mcp.Description("Full source resource name: notebooks/<uuid>/sources/<sid>."),
+		),
+	)
+	srv.AddTool(notebookRemoveSourceTool, s.handleMCPNotebookRemoveSource)
 }
 
 func (s *Server) handleMCPResearchCreate(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -298,6 +365,11 @@ func (s *Server) handleMCPAsk(ctx context.Context, req mcp.CallToolRequest) (*mc
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
+	if notebook := req.GetString("notebook", ""); notebook != "" {
+		s.client.SetNotebookResource(notebook)
+		defer s.client.SetNotebookResource("")
+	}
+
 	output, err := s.client.GenerateContent(ctx, prompt, model)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -375,4 +447,130 @@ func (s *Server) handleMCPListModels(ctx context.Context, req mcp.CallToolReques
 		"models": items,
 	}
 	return mcp.NewToolResultJSON(result)
+}
+
+func (s *Server) handleMCPNotebookCreate(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	title, err := req.RequireString("title")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	resource, err := s.client.CreateNotebook(ctx, title)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	return mcp.NewToolResultJSON(map[string]any{"resource": resource, "title": title})
+}
+
+type mcpNotebookSourceItem struct {
+	Resource   string `json:"resource"`
+	FileName   string `json:"file_name"`
+	MimeType   string `json:"mime_type"`
+	UploadedAt int64  `json:"uploaded_at_unix,omitempty"`
+}
+
+func mcpNotebookJSON(nb *rpcs.Notebook) map[string]any {
+	sources := make([]mcpNotebookSourceItem, 0, len(nb.Sources))
+	for _, src := range nb.Sources {
+		sources = append(sources, mcpNotebookSourceItem{
+			Resource:   src.ResourceName,
+			FileName:   src.FileName,
+			MimeType:   src.MimeType,
+			UploadedAt: src.UploadedUnix,
+		})
+	}
+	return map[string]any{
+		"resource":     nb.ResourceName,
+		"title":        nb.Title,
+		"emoji":        nb.Emoji,
+		"sources":      sources,
+		"created_unix": nb.CreatedUnix,
+		"updated_unix": nb.UpdatedUnix,
+		"source_count": len(sources),
+	}
+}
+
+func (s *Server) handleMCPNotebookGet(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	id, err := req.RequireString("id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	nb, err := s.client.GetNotebook(ctx, id)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	if nb == nil {
+		return mcp.NewToolResultError("notebook not found"), nil
+	}
+	return mcp.NewToolResultJSON(mcpNotebookJSON(nb))
+}
+
+func (s *Server) handleMCPNotebookListChats(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	id, err := req.RequireString("id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	items, err := s.client.ListNotebookChats(ctx, id)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	type chatItem struct {
+		Cid     string `json:"cid"`
+		Title   string `json:"title"`
+		Updated string `json:"updated,omitempty"`
+	}
+	out := make([]chatItem, 0, len(items))
+	for _, it := range items {
+		out = append(out, chatItem{Cid: it.Cid, Title: it.Title, Updated: it.UpdatedAt})
+	}
+	return mcp.NewToolResultJSON(map[string]any{"chats": out})
+}
+
+func (s *Server) handleMCPNotebookAddFileSource(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	id, err := req.RequireString("id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	path, err := req.RequireString("path")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	u, err := s.client.UploadFile(ctx, path)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("upload failed: %v", err)), nil
+	}
+	nb, err := s.client.AddNotebookSource(ctx, id, u.FileName, u.MimeType, u.ID)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	return mcp.NewToolResultJSON(mcpNotebookJSON(nb))
+}
+
+func (s *Server) handleMCPNotebookAddURLSource(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	id, err := req.RequireString("id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	url, err := req.RequireString("url")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+		return mcp.NewToolResultError("url must start with http:// or https://"), nil
+	}
+	nb, err := s.client.AddNotebookURLSource(ctx, id, url)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	return mcp.NewToolResultJSON(mcpNotebookJSON(nb))
+}
+
+func (s *Server) handleMCPNotebookRemoveSource(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	source, err := req.RequireString("source")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	if err := s.client.RemoveNotebookSource(ctx, source); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	return mcp.NewToolResultJSON(map[string]any{"removed": source})
 }

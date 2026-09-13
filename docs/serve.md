@@ -85,13 +85,19 @@ The following tools are available:
 
 | Tool | Description |
 |------|-------------|
-| `gemini_ask` | Single-turn prompt; returns `text` plus any generated image/video/media URLs. Args: `prompt` (required), `model` (optional). |
+| `gemini_ask` | Single-turn prompt; returns `text` plus any generated image/video/media URLs. Args: `prompt` (required), `model` (optional), `notebook` (optional, scopes the new chat to a notebook). |
 | `gemini_research_create` | Submit a deep research task; returns `id`, `title`, `eta_text`, `steps`. Args: `prompt` (required), `model` (optional). |
 | `gemini_research_status` | Poll task state (`done`, `running`, `pending_confirm`, `not_research`, `empty`). Args: `id` (required). |
 | `gemini_research_result` | Fetch the completed report text and source citations. Args: `id` (required). |
 | `gemini_research_list` | List completed deep research reports from the library. Args: `count` (optional, default `13`), `cursor` (optional). |
 | `gemini_research_reply` | Send a follow-up prompt to an existing research chat; poll `gemini_research_status` after. Args: `id` (required), `prompt` (required), `model` (optional). |
 | `gemini_list_models` | List available model names and display names. No args. |
+| `gemini_notebook_create` | Create a notebook; returns `resource` (`notebooks/<uuid>`) and `title`. Args: `title` (required). |
+| `gemini_notebook_get` | Notebook title, emoji, and source list. Args: `id` (required). |
+| `gemini_notebook_list_chats` | List the chats inside a notebook, newest first. Args: `id` (required). |
+| `gemini_notebook_add_file_source` | Upload a local file (on the serve host) and attach it as a source. Args: `id` (required), `path` (required). |
+| `gemini_notebook_add_url_source` | Attach a web URL as a source. Args: `id` (required), `url` (required). |
+| `gemini_notebook_remove_source` | Remove a source. Args: `source` (required, `notebooks/<uuid>/sources/<sid>`). |
 
 Deep research flow: call `gemini_research_create` → poll `gemini_research_status` until `state` is `done` → call `gemini_research_result`. Use `gemini_research_reply` to refine a completed thread.
 

@@ -356,13 +356,19 @@ func TestMCPToolsList(t *testing.T) {
 	}
 
 	want := map[string]bool{
-		"gemini_ask":             false,
-		"gemini_list_models":     false,
-		"gemini_research_create": false,
-		"gemini_research_list":   false,
-		"gemini_research_reply":  false,
-		"gemini_research_status": false,
-		"gemini_research_result": false,
+		"gemini_ask":                      false,
+		"gemini_list_models":              false,
+		"gemini_research_create":          false,
+		"gemini_research_list":            false,
+		"gemini_research_reply":           false,
+		"gemini_research_status":          false,
+		"gemini_research_result":          false,
+		"gemini_notebook_create":          false,
+		"gemini_notebook_get":             false,
+		"gemini_notebook_list_chats":      false,
+		"gemini_notebook_add_file_source": false,
+		"gemini_notebook_add_url_source":  false,
+		"gemini_notebook_remove_source":   false,
 	}
 	for _, tool := range resp.Result.Tools {
 		if _, ok := want[tool.Name]; !ok {
