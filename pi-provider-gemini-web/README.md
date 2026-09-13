@@ -88,6 +88,17 @@ The extension registers:
 - `gemini_research_status` — poll its state
 - `gemini_research_result` — fetch the completed report and sources
 
+## Notebook tools
+
+The extension registers:
+
+- `gemini_notebook_create` — create a notebook, returns `notebooks/<uuid>`
+- `gemini_notebook_get` — title, emoji, and source list
+- `gemini_notebook_list_chats` — chats inside a notebook
+- `gemini_notebook_add_file_source` — upload a local file (on the gemini-web-cli server host) and attach it
+- `gemini_notebook_add_url_source` — attach a web URL
+- `gemini_notebook_remove_source` — remove a source by its full resource name
+
 Typical flow:
 
 ```text

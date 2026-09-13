@@ -15,6 +15,7 @@ import {
   PROVIDER_ID,
 } from "./src/models.ts";
 import { createGeminiWebStream } from "./src/stream.ts";
+import { buildNotebookTools } from "./src/tools/notebook.ts";
 import { buildResearchTools } from "./src/tools/research.ts";
 
 interface GeminiWebExtensionOptions {
@@ -91,6 +92,11 @@ export function GeminiWeb(options: GeminiWebExtensionOptions = {}): ExtensionFac
     }
 
     for (const tool of buildResearchTools({
+      getBaseUrl: () => state.config?.baseUrl,
+    })) {
+      pi.registerTool(tool);
+    }
+    for (const tool of buildNotebookTools({
       getBaseUrl: () => state.config?.baseUrl,
     })) {
       pi.registerTool(tool);
