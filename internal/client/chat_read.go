@@ -11,15 +11,22 @@ import (
 
 // ReadChat reads conversation turns from a chat.
 func (c *Client) ReadChat(ctx context.Context, cid string, maxTurns int) ([]types.ChatTurn, error) {
-	rpcID, payload := rpcs.EncodeReadChat(cid, maxTurns)
+	turns, _, err := c.ReadChatPage(ctx, cid, maxTurns, "")
+	return turns, err
+}
+
+// ReadChatPage reads one page of conversation turns and returns the cursor
+// for older turns (empty when there are none).
+func (c *Client) ReadChatPage(ctx context.Context, cid string, maxTurns int, cursor string) ([]types.ChatTurn, string, error) {
+	rpcID, payload := rpcs.EncodeReadChatPage(cid, maxTurns, cursor)
 	body, rejectCode, err := c.CallRPC(ctx, rpcID, payload, WithSourceCid(cid))
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if rejectCode != 0 {
-		return nil, fmt.Errorf("read_chat rejected with code=%d", rejectCode)
+		return nil, "", fmt.Errorf("read_chat rejected with code=%d", rejectCode)
 	}
-	return rpcs.DecodeReadChat(body)
+	return rpcs.DecodeReadChatPage(body)
 }
 
 // ReadChatRaw returns the raw JSON turns of a chat.
