@@ -88,6 +88,16 @@ The extension registers:
 - `gemini_research_status` — poll its state
 - `gemini_research_result` — fetch the completed report and sources
 
+Typical flow:
+
+```text
+gemini_research_create
+        ↓
+gemini_research_status until state = done
+        ↓
+gemini_research_result
+```
+
 ## Notebook tools
 
 The extension registers:
@@ -98,16 +108,6 @@ The extension registers:
 - `gemini_notebook_add_file_source` — upload a local file (on the gemini-web-cli server host) and attach it
 - `gemini_notebook_add_url_source` — attach a web URL
 - `gemini_notebook_remove_source` — remove a source by its full resource name
-
-Typical flow:
-
-```text
-gemini_research_create
-        ↓
-gemini_research_status until state = done
-        ↓
-gemini_research_result
-```
 
 All tools use the same effective `baseUrl` as the provider.
 

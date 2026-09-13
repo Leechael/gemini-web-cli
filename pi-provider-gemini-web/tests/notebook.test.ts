@@ -89,3 +89,17 @@ test("rejects invalid source resource names before hitting the server", async ()
 
   await assert.rejects(client.removeSource("src-1"), /invalid source resource name/);
 });
+
+test("surfaces server errors without exposing an unbounded response", async () => {
+  const client = new GeminiWebNotebookClient(
+    "http://gemini.internal:8080",
+    async () => new Response("x".repeat(1000), { status: 500 }),
+  );
+
+  await assert.rejects(client.get("nb-1"), (error: unknown) => {
+    assert.ok(error instanceof Error);
+    assert.match(error.message, /HTTP 500/);
+    assert.ok(error.message.length < 700);
+    return true;
+  });
+});
