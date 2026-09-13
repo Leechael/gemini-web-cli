@@ -19,6 +19,7 @@ type chatRequest struct {
 	Messages []chatMessage `json:"messages"`
 	Stream   bool          `json:"stream"`
 	ChatID   string        `json:"chat_id,omitempty"`
+	Notebook string        `json:"notebook,omitempty"`
 }
 
 type chatMessage struct {
@@ -139,6 +140,11 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	prompt := last.Content
 
 	ctx := r.Context()
+
+	if req.Notebook != "" {
+		s.client.SetNotebookResource(req.Notebook)
+		defer s.client.SetNotebookResource("")
+	}
 
 	if req.ChatID != "" {
 		latest, err := s.client.FetchLatestChatResponse(ctx, req.ChatID)
