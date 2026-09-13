@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -123,6 +124,9 @@ var notebookAddSourceCmd = &cobra.Command{
 			if err != nil {
 				return fmt.Errorf("attach %s failed: %w", f, err)
 			}
+			if nb == nil {
+				return fmt.Errorf("attach %s failed: empty notebook response", f)
+			}
 			fmt.Printf("Attached %s (%d source(s) total)\n", u.FileName, len(nb.Sources))
 		}
 		return nil
@@ -143,12 +147,15 @@ var notebookAddURLCmd = &cobra.Command{
 
 		notebookID := args[0]
 		for _, u := range args[1:] {
-			if !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
+			if !isHTTPURL(u) {
 				return fmt.Errorf("invalid URL %q", u)
 			}
 			nb, err := c.AddNotebookURLSource(ctx, notebookID, u)
 			if err != nil {
 				return fmt.Errorf("attach %s failed: %w", u, err)
+			}
+			if nb == nil {
+				return fmt.Errorf("attach %s failed: empty notebook response", u)
 			}
 			fmt.Printf("Attached %s (%d source(s) total)\n", u, len(nb.Sources))
 		}
@@ -174,6 +181,15 @@ var notebookRemoveSourceCmd = &cobra.Command{
 		fmt.Printf("Removed %s\n", args[0])
 		return nil
 	},
+}
+
+func isHTTPURL(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	scheme := strings.ToLower(u.Scheme)
+	return (scheme == "http" || scheme == "https") && u.Host != ""
 }
 
 func init() {
