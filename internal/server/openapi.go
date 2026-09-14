@@ -272,7 +272,7 @@ const openapiSpec = `{
         "type": "object",
         "required": ["role", "content"],
         "properties": {
-          "role": { "type": "string", "enum": ["system", "user", "assistant"] },
+          "role": { "type": "string", "enum": ["system", "developer", "user", "assistant"] },
           "content": {
             "oneOf": [
               { "type": "string" },

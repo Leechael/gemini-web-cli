@@ -58,6 +58,30 @@ func TestFlattenChatMessages(t *testing.T) {
 	}
 }
 
+func TestCanonicalChatMessageMapsDeveloperToSystem(t *testing.T) {
+	role, content, err := canonicalChatMessage(chatMessage{Role: "developer", Content: "rules"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if role != "system" || content != "rules" {
+		t.Fatalf("canonical = (%q, %q), want (system, rules)", role, content)
+	}
+}
+
+func TestFlattenChatMessagesLabelsDeveloperAsSystem(t *testing.T) {
+	got, err := flattenChatMessages([]chatMessage{
+		{Role: "developer", Content: "rules"},
+		{Role: "user", Content: "hello"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "[System]\nrules\n\n[User]\nhello"
+	if got != want {
+		t.Fatalf("flatten = %q, want %q", got, want)
+	}
+}
+
 func TestCanonicalChatMessageRejectsUnsupportedRole(t *testing.T) {
 	_, _, err := canonicalChatMessage(chatMessage{Role: "tool", Content: "x"})
 	if err == nil {
