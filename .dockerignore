@@ -1,0 +1,14 @@
+.git
+.github
+bin
+dist
+data
+docs
+*.png
+.DS_Store
+cookies.json
+accounts
+gemini-web-cli
+pi-provider-gemini-web
+.claude
+.doc-review
