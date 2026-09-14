@@ -47,16 +47,25 @@ jobs:
           source release-naming.env
           mkdir -p dist
           BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          for os in darwin linux; do
+          for os in darwin linux windows; do
             for arch in amd64 arm64; do
-              artifact="dist/${BINARY_NAME}-${os}-${arch}.tar.gz"
               tmpdir=$(mktemp -d)
-              CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -ldflags "-X github.com/Leechael/gemini-web-cli/cmd.Version=${RELEASE_TAG} -X github.com/Leechael/gemini-web-cli/cmd.BuildTime=${BUILD_TIME}" -o "$tmpdir/${BINARY_NAME}" "$BUILD_TARGET"
-              tar -czf "$artifact" -C "$tmpdir" "$BINARY_NAME"
+              bin="${BINARY_NAME}"
+              if [ "$os" = "windows" ]; then
+                bin="${BINARY_NAME}.exe"
+              fi
+              CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -ldflags "-X github.com/Leechael/gemini-web-cli/cmd.Version=${RELEASE_TAG} -X github.com/Leechael/gemini-web-cli/cmd.BuildTime=${BUILD_TIME}" -o "$tmpdir/${bin}" "$BUILD_TARGET"
+              if [ "$os" = "windows" ]; then
+                artifact="$PWD/dist/${BINARY_NAME}-${os}-${arch}.zip"
+                (cd "$tmpdir" && zip -q "$artifact" "$bin")
+              else
+                artifact="dist/${BINARY_NAME}-${os}-${arch}.tar.gz"
+                tar -czf "$artifact" -C "$tmpdir" "$bin"
+              fi
               rm -rf "$tmpdir"
             done
           done
-          (cd dist && sha256sum ./*.tar.gz > checksums.txt)
+          (cd dist && sha256sum ./*.tar.gz ./*.zip > checksums.txt)
 
       - name: Generate CHANGELOG.md
         run: |
@@ -87,6 +96,7 @@ jobs:
           body_path: dist/CHANGELOG.md
           files: |
             dist/*.tar.gz
+            dist/*.zip
             dist/checksums.txt
             dist/CHANGELOG.md
           prerelease: ${{ contains(env.RELEASE_TAG, '-alpha.') || contains(env.RELEASE_TAG, '-beta.') || contains(env.RELEASE_TAG, '-rc.') }}
