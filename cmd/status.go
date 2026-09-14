@@ -26,13 +26,16 @@ var statusCmd = &cobra.Command{
 			if len(cookiesJSON) == 0 {
 				return fmt.Errorf("--cookies-json is required for --cookies-only")
 			}
-			jar, err := cookies.Load(cookiesJSON[0])
+			// The flag may point at a directory of account files; inspect the
+			// first resolved cookie file.
+			cookiesPath, _ := resolveCookiesJSONWithStateDir("")
+			jar, err := cookies.Load(cookiesPath)
 			if err != nil {
 				return err
 			}
 
 			report := map[string]any{
-				"cookies_json": cookiesJSON[0],
+				"cookies_json": cookiesPath,
 				"required": map[string]any{
 					"__Secure-1PSID": map[string]any{
 						"present": jar.Cookies["__Secure-1PSID"] != "",

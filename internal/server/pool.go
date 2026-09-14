@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"sort"
@@ -223,24 +224,37 @@ func (p *accountPool) recordNotebook(id string, idx int) {
 	p.mu.Unlock()
 }
 
+// errNotebookNotFound marks a confirmed negative ownership probe: every
+// account answered and none owns the notebook. Probe failures (timeouts,
+// 429, expired sessions) return a plain error instead so handlers can surface
+// them rather than answering 404.
+var errNotebookNotFound = errors.New("notebook not found on any account")
+
 // notebookOwner resolves the account owning a notebook, probing every account
 // on first use.
-func (p *accountPool) notebookOwner(ctx context.Context, id string) (accountClient, error) {
+func (p *accountPool) notebookOwner(ctx context.Context, id string) (accountClient, int, error) {
 	key := normalizeNotebookID(id)
 	p.mu.Lock()
 	idx, ok := p.notebookOwners[key]
 	p.mu.Unlock()
 	if ok {
-		return p.clients[idx], nil
+		return p.clients[idx], idx, nil
 	}
+	var probeErrs []string
 	for i, c := range p.clients {
 		nb, err := c.GetNotebook(ctx, id)
 		if err == nil && nb != nil {
 			p.recordNotebook(key, i)
-			return c, nil
+			return c, i, nil
+		}
+		if err != nil {
+			probeErrs = append(probeErrs, fmt.Sprintf("account %d (%s): %v", i, p.sourceName(i), sanitizeUpstreamError(err.Error())))
 		}
 	}
-	return nil, fmt.Errorf("notebook %q not found on any account", id)
+	if len(probeErrs) > 0 {
+		return nil, -1, fmt.Errorf("probing notebook %q ownership failed:\n  %s", id, strings.Join(probeErrs, "\n  "))
+	}
+	return nil, -1, fmt.Errorf("notebook %q: %w", id, errNotebookNotFound)
 }
 
 // FetchLatestChatResponse routes to the account owning the chat.
@@ -292,7 +306,9 @@ func (p *accountPool) SendMessageStream(ctx context.Context, prompt string, meta
 	idx, err := p.forNew(func(c accountClient) error {
 		emitted := false
 		out, err := c.SendMessageStream(ctx, prompt, metadata, model, notebook, func(o *types.ModelOutput) {
-			emitted = true
+			if o.TextDelta != "" || o.ThoughtsDelta != "" {
+				emitted = true
+			}
 			cb(o)
 		})
 		if err != nil {
@@ -311,8 +327,22 @@ func (p *accountPool) SendMessageStream(ctx context.Context, prompt string, meta
 	return output, nil
 }
 
-// GenerateContent starts a new chat on the next account with failover.
+// GenerateContent starts a new chat on the next account with failover. When
+// the chat is scoped to a notebook, it is created on the account owning the
+// notebook — Gemini cannot attach a chat to another account's notebook.
 func (p *accountPool) GenerateContent(ctx context.Context, prompt string, model *types.Model, notebook string) (*types.ModelOutput, error) {
+	if notebook != "" {
+		c, idx, err := p.notebookOwner(ctx, notebook)
+		if err != nil {
+			return nil, err
+		}
+		output, err := c.GenerateContent(ctx, prompt, model, notebook)
+		if err != nil {
+			return nil, err
+		}
+		p.recordChatOutput(output, idx)
+		return output, nil
+	}
 	var output *types.ModelOutput
 	idx, err := p.forNew(func(c accountClient) error {
 		out, err := c.GenerateContent(ctx, prompt, model, notebook)
@@ -332,11 +362,25 @@ func (p *accountPool) GenerateContent(ctx context.Context, prompt string, model 
 // GenerateContentStream mirrors GenerateContent for streaming. Failover only
 // happens when the failing account has not emitted any delta yet.
 func (p *accountPool) GenerateContentStream(ctx context.Context, prompt string, model *types.Model, notebook string, cb client.StreamCallback) (*types.ModelOutput, error) {
+	if notebook != "" {
+		c, idx, err := p.notebookOwner(ctx, notebook)
+		if err != nil {
+			return nil, err
+		}
+		output, err := c.GenerateContentStream(ctx, prompt, model, notebook, cb)
+		if err != nil {
+			return nil, err
+		}
+		p.recordChatOutput(output, idx)
+		return output, nil
+	}
 	var output *types.ModelOutput
 	idx, err := p.forNew(func(c accountClient) error {
 		emitted := false
 		out, err := c.GenerateContentStream(ctx, prompt, model, notebook, func(o *types.ModelOutput) {
-			emitted = true
+			if o.TextDelta != "" || o.ThoughtsDelta != "" {
+				emitted = true
+			}
 			cb(o)
 		})
 		if err != nil {
@@ -456,18 +500,22 @@ func (p *accountPool) CreateNotebook(ctx context.Context, title string) (string,
 }
 
 // GetNotebook routes to the account owning the notebook. It returns
-// (nil, nil) when no account owns the id, so handlers can answer 404.
+// (nil, nil) when probes confirmed no account owns the id, so handlers can
+// answer 404; probe failures are returned as errors instead.
 func (p *accountPool) GetNotebook(ctx context.Context, id string) (*rpcs.Notebook, error) {
-	c, err := p.notebookOwner(ctx, id)
+	c, _, err := p.notebookOwner(ctx, id)
 	if err != nil {
-		return nil, nil
+		if errors.Is(err, errNotebookNotFound) {
+			return nil, nil
+		}
+		return nil, err
 	}
 	return c.GetNotebook(ctx, id)
 }
 
 // ListNotebookChats routes to the account owning the notebook.
 func (p *accountPool) ListNotebookChats(ctx context.Context, id string) ([]types.ChatItem, error) {
-	c, err := p.notebookOwner(ctx, id)
+	c, _, err := p.notebookOwner(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -476,7 +524,7 @@ func (p *accountPool) ListNotebookChats(ctx context.Context, id string) ([]types
 
 // AddNotebookURLSource routes to the account owning the notebook.
 func (p *accountPool) AddNotebookURLSource(ctx context.Context, id string, url string) (*rpcs.Notebook, error) {
-	c, err := p.notebookOwner(ctx, id)
+	c, _, err := p.notebookOwner(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -487,7 +535,7 @@ func (p *accountPool) AddNotebookURLSource(ctx context.Context, id string, url s
 // account owning the notebook. Upload and attach must share one account
 // because upload tokens are account-bound.
 func (p *accountPool) AddNotebookFileSource(ctx context.Context, id string, path string) (*rpcs.Notebook, error) {
-	c, err := p.notebookOwner(ctx, id)
+	c, _, err := p.notebookOwner(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -505,7 +553,7 @@ func (p *accountPool) RemoveNotebookSource(ctx context.Context, resource string)
 	if idx := strings.Index(resource, "/sources/"); idx >= 0 {
 		notebookID = resource[:idx]
 	}
-	c, err := p.notebookOwner(ctx, notebookID)
+	c, _, err := p.notebookOwner(ctx, notebookID)
 	if err != nil {
 		return err
 	}

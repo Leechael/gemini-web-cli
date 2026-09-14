@@ -77,3 +77,27 @@ func TestResolveCookiePathsExpandsDirectories(t *testing.T) {
 		t.Fatalf("env paths = %v", paths)
 	}
 }
+
+func TestClientConfigsErrorsOnEmptyExplicitDir(t *testing.T) {
+	oldCookiesJSON := cookiesJSON
+	t.Cleanup(func() { cookiesJSON = oldCookiesJSON })
+
+	cookiesJSON = []string{t.TempDir()} // no *.json inside
+	if _, _, err := clientConfigsWithStateDir(""); err == nil {
+		t.Fatal("expected error for an explicitly configured directory with no cookie files")
+	}
+}
+
+func TestDefaultCookiesPathWithPathListEnv(t *testing.T) {
+	first := filepath.Join(t.TempDir(), "first.json")
+	t.Setenv(envCookiesPath, first+string(os.PathListSeparator)+"second.json")
+	if got := defaultCookiesPath(); got != first {
+		t.Fatalf("defaultCookiesPath = %q, want %q", got, first)
+	}
+
+	dir := t.TempDir()
+	t.Setenv(envCookiesPath, dir)
+	if got, want := defaultCookiesPath(), filepath.Join(dir, "cookies.json"); got != want {
+		t.Fatalf("defaultCookiesPath = %q, want %q", got, want)
+	}
+}

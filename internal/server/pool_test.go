@@ -365,3 +365,79 @@ func TestPoolResearchListMergesAccounts(t *testing.T) {
 		t.Fatalf("nextCursor = %q, want passthrough cursor-a", nextCursor)
 	}
 }
+
+func TestPoolNotebookScopedNewChatUsesNotebookOwner(t *testing.T) {
+	owner := &fakeAccount{
+		getNotebookFn: func(ctx context.Context, id string) (*rpcs.Notebook, error) {
+			return &rpcs.Notebook{ResourceName: "notebooks/" + id}, nil
+		},
+	}
+	ownerCalled := false
+	owner.generateContentFn = func(ctx context.Context, prompt string) (*types.ModelOutput, error) {
+		ownerCalled = true
+		return &types.ModelOutput{Text: "ok", Metadata: []string{"c_nb"}}, nil
+	}
+	other := &fakeAccount{
+		generateContentFn: func(ctx context.Context, prompt string) (*types.ModelOutput, error) {
+			t.Fatal("notebook-scoped chat must not rotate to a non-owner account")
+			return nil, nil
+		},
+	}
+	// Round-robin would pick `other` first; the notebook scope must override it.
+	pool := newAccountPool([]accountClient{other, owner}, nil)
+
+	out, err := pool.GenerateContent(context.Background(), "hi", nil, "nb-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ownerCalled || out.Text != "ok" {
+		t.Fatalf("ownerCalled=%v out=%+v", ownerCalled, out)
+	}
+
+	// The created chat is pinned to the notebook owner's account.
+	owner.sendMessageFn = func(ctx context.Context, md []string) (*types.ModelOutput, error) {
+		return &types.ModelOutput{Text: "continued"}, nil
+	}
+	if _, err := pool.SendMessage(context.Background(), "next", []string{"c_nb"}, nil, ""); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPoolStreamFailoverAfterMetadataOnlyFrame(t *testing.T) {
+	metaThenBroken := &fakeAccount{
+		genStreamFn: func(ctx context.Context, cb client.StreamCallback) (*types.ModelOutput, error) {
+			// Metadata-only frame: no delta reaches the caller, so failover
+			// must still be allowed.
+			cb(&types.ModelOutput{Metadata: []string{"c_x"}})
+			return nil, fmt.Errorf("rate limited by server (HTTP 429)")
+		},
+	}
+	healthy := &fakeAccount{
+		genStreamFn: func(ctx context.Context, cb client.StreamCallback) (*types.ModelOutput, error) {
+			return &types.ModelOutput{Text: "ok", Metadata: []string{"c_1"}}, nil
+		},
+	}
+	pool := newAccountPool([]accountClient{metaThenBroken, healthy}, nil)
+
+	out, err := pool.GenerateContentStream(context.Background(), "hi", nil, "", func(o *types.ModelOutput) {})
+	if err != nil {
+		t.Fatalf("failover after metadata-only frame should succeed: %v", err)
+	}
+	if out.Text != "ok" {
+		t.Fatalf("output = %q", out.Text)
+	}
+}
+
+func TestPoolGetNotebookProbeFailureIsNot404(t *testing.T) {
+	broken := &fakeAccount{
+		getNotebookFn: func(ctx context.Context, id string) (*rpcs.Notebook, error) {
+			return nil, fmt.Errorf("init returned HTTP 429")
+		},
+	}
+	pool := newAccountPool([]accountClient{broken}, nil)
+
+	nb, err := pool.GetNotebook(context.Background(), "nb-1")
+	if err == nil {
+		t.Fatalf("probe failure must surface as error, got nb=%+v", nb)
+	}
+}

@@ -30,8 +30,16 @@ func cookiesSearchPaths() []string {
 
 // defaultCookiesPath returns the best path for writing cookies:
 // env > first writable search path (project-level ./cookies.json).
+// A path-list env value resolves to its first entry; a directory entry
+// resolves to <dir>/cookies.json.
 func defaultCookiesPath() string {
 	if p := os.Getenv(envCookiesPath); p != "" {
+		if entries := filepath.SplitList(p); len(entries) > 0 && entries[0] != "" {
+			p = entries[0]
+		}
+		if info, err := os.Stat(p); err == nil && info.IsDir() {
+			return filepath.Join(p, "cookies.json")
+		}
 		return p
 	}
 	return "cookies.json"
@@ -93,7 +101,11 @@ func expandCookiePaths(entries []string) []string {
 			matches, globErr := filepath.Glob(filepath.Join(entry, "*.json"))
 			if globErr == nil {
 				sort.Strings(matches)
-				paths = append(paths, matches...)
+				for _, match := range matches {
+					if mInfo, statErr := os.Stat(match); statErr == nil && mInfo.Mode().IsRegular() {
+						paths = append(paths, match)
+					}
+				}
 			}
 			continue
 		}
@@ -110,6 +122,9 @@ func clientConfigFromFlags() (client.Config, map[string]string, error) {
 
 func clientConfigFromFlagsWithStateDir(stateDir string) (client.Config, map[string]string, string, error) {
 	effectiveCookies, cookieSource := resolveCookiesJSONWithStateDir(stateDir)
+	if effectiveCookies == "" && cookieSource != "" {
+		return client.Config{}, nil, "", fmt.Errorf("no cookie files found via %s", cookieSource)
+	}
 	cfg, jsonCookies, err := clientConfigFromCookieFile(effectiveCookies)
 	if err != nil {
 		return client.Config{}, nil, "", err
@@ -124,6 +139,9 @@ func clientConfigFromFlagsWithStateDir(stateDir string) (client.Config, map[stri
 func clientConfigsWithStateDir(stateDir string) ([]client.Config, []string, error) {
 	paths, source := resolveCookiePathsWithStateDir(stateDir)
 	if len(paths) == 0 {
+		if source != "" {
+			return nil, nil, fmt.Errorf("no cookie files found via %s", source)
+		}
 		cfg, _, err := clientConfigFromCookieFile("")
 		if err != nil {
 			return nil, nil, err
