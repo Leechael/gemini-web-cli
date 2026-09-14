@@ -11,6 +11,7 @@ import (
 var (
 	replyNoStream       bool
 	replyGenerationMode string
+	replyNotebook       string
 )
 
 var replyCmd = &cobra.Command{
@@ -27,7 +28,6 @@ var replyCmd = &cobra.Command{
 		if err := setGenerationMode(c, replyGenerationMode); err != nil {
 			return err
 		}
-
 		chatID := args[0]
 		prompt := args[1]
 		model := resolveModelForClient(ctx, c, preferredModelsForGenerationMode(replyGenerationMode, prompt, false)...)
@@ -48,7 +48,7 @@ var replyCmd = &cobra.Command{
 		}
 
 		if replyNoStream {
-			output, err := c.SendMessage(ctx, prompt, metadata, model)
+			output, err := c.SendMessage(ctx, prompt, metadata, model, replyNotebook)
 			if err != nil {
 				return err
 			}
@@ -57,7 +57,7 @@ var replyCmd = &cobra.Command{
 			printVideos(output)
 			printMedia(output)
 		} else {
-			output, err := c.SendMessageStream(ctx, prompt, metadata, model, func(out *types.ModelOutput) {
+			output, err := c.SendMessageStream(ctx, prompt, metadata, model, replyNotebook, func(out *types.ModelOutput) {
 				if out.TextDelta != "" {
 					fmt.Print(out.TextDelta)
 				}
@@ -81,4 +81,5 @@ var replyCmd = &cobra.Command{
 func init() {
 	replyCmd.Flags().BoolVar(&replyNoStream, "no-stream", false, "Wait for complete response")
 	replyCmd.Flags().StringVar(&replyGenerationMode, "mode", "auto", "Generation mode: auto, text, image, video, image-to-video, music")
+	replyCmd.Flags().StringVar(&replyNotebook, "notebook", "", "Scope the chat to a notebook (id with or without notebooks/ prefix)")
 }

@@ -7,7 +7,7 @@ import (
 	"github.com/Leechael/gemini-web-cli/internal/client/protocol/rpcs"
 )
 
-var defaultDiscoverSurfaceFilters = []int{390, 391, 392, 393, 394, 395, 396, 418, 417, 415, 416, 414, 400, 422, 425, 431, 432}
+var defaultDiscoverSurfaceFilters = []int{390, 391, 392, 393, 394, 395, 396, 418, 417, 415, 416, 414, 400, 422, 425, 431, 432, 445, 446, 454}
 
 // GetDiscoverSurface returns image Discover surface cards.
 func (c *Client) GetDiscoverSurface(ctx context.Context) ([]rpcs.DiscoverCard, error) {

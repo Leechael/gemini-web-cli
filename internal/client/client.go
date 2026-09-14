@@ -25,6 +25,17 @@ const (
 	cookieDomain = ".google.com"
 )
 
+// AbuseCheckError is returned when Google serves its /sorry/ abuse-check
+// interstitial instead of the Gemini app. It means the IP/account is rate
+// checked — NOT that the cookies expired.
+type AbuseCheckError struct {
+	FinalURL string
+}
+
+func (e *AbuseCheckError) Error() string {
+	return "Google abuse check triggered — cookies are NOT expired, do not re-import. Wait a few minutes and retry, or switch network/IP"
+}
+
 // RateLimitError is returned when the server responds with HTTP 429.
 type RateLimitError struct {
 	StatusCode int
@@ -179,6 +190,14 @@ func (c *Client) Init(ctx context.Context) error {
 		return fmt.Errorf("session expired — redirected to Google login. Re-import cookies with: gemini-web-cli import '<cookie_string>'")
 	}
 
+	if strings.Contains(finalURL, "/sorry/") {
+		entry.Status = resp.StatusCode
+		entry.DurMS = time.Since(start).Milliseconds()
+		entry.Error = "landed on Google /sorry/ abuse-check page"
+		rpclog.Log(ctx, entry)
+		return &AbuseCheckError{FinalURL: finalURL}
+	}
+
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(resp.Body)
 		entry.Status = resp.StatusCode
@@ -208,6 +227,9 @@ func (c *Client) Init(ctx context.Context) error {
 
 	token := extractRegex(htmlBody, `"SNlM0e"\s*:\s*"([^"]*)"`)
 	if token == "" {
+		if strings.Contains(htmlBody, "google.com/sorry") || strings.Contains(htmlBody, "detected unusual traffic") {
+			return &AbuseCheckError{FinalURL: finalURL}
+		}
 		if strings.Contains(htmlBody, "accounts.google.com/ServiceLogin") || strings.Contains(htmlBody, "accounts.google.com/v3/signin") {
 			return fmt.Errorf("session expired — page redirected to Google login. Re-import cookies with: gemini-web-cli import '<cookie_string>'")
 		}
@@ -254,6 +276,25 @@ func (c *Client) generationModeSnapshot() string {
 	c.generationMu.RLock()
 	defer c.generationMu.RUnlock()
 	return c.generationMode
+}
+
+func normalizeNotebookResource(resource string) string {
+	resource = strings.TrimSpace(resource)
+	if resource == "" {
+		return ""
+	}
+	if !strings.HasPrefix(resource, "notebooks/") {
+		return "notebooks/" + resource
+	}
+	return resource
+}
+
+func notebookPagePath(notebookID string) string {
+	id := strings.TrimPrefix(normalizeNotebookResource(notebookID), "notebooks/")
+	if i := strings.Index(id, "/"); i >= 0 {
+		id = id[:i]
+	}
+	return "/notebook/" + id
 }
 
 // sessionSnapshot holds a consistent copy of session fields for a single request.

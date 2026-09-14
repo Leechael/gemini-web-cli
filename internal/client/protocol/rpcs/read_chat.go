@@ -2,13 +2,17 @@
 // Source-path: any Gemini chat page (defaults to /app/<chat_id>)
 // Reject codes: none observed in sample fixtures
 //
-// Payload shape:
+// Payload shape (verified against boq_assistant-bard-web-server_20260910.05_p2):
 //
-//	["<chat_id>", <max_turns>, null, 1, [1], [4], null, 1]
+//	["<chat_id>", <max_turns>, null, 1, [0], [4], null, 1]
+//
+// Slot 2 is the pagination cursor: the first page passes null, and the
+// browser sends the opaque cursor from the previous response to fetch older
+// turns (verified live by scrolling an 11-turn chat to the top).
 //
 // Response shape (after StripResponsePrefix + ExtractRPCBody):
 //
-//	[[turn_arr, ...]]
+//	[[turn_arr, ...], <cursor or null>, ...]
 //
 //	turn_arr structure:
 //	  [0]: metadata; request id is [0][1]
@@ -40,24 +44,46 @@ const readChatRPCID = "hNvQHb"
 
 // EncodeReadChat returns the ReadChat payload.
 func EncodeReadChat(chatID string, maxTurns int) (rpcID, payload string) {
-	payloadBytes, _ := json.Marshal([]any{chatID, maxTurns, nil, 1, []any{1}, []any{4}, nil, 1})
+	return EncodeReadChatPage(chatID, maxTurns, "")
+}
+
+// EncodeReadChatPage returns the ReadChat payload with an explicit pagination
+// cursor (slot 2). The cursor is the opaque string returned as top[1] of the
+// previous page's response; pass "" for the first page. Verified against
+// boq_assistant-bard-web-server_20260910.05_p2: scrolling to the top of an
+// 11-turn chat issues [cid, 10, "tC...", 1, [0], [4], null, 1] and returns
+// the oldest turn.
+func EncodeReadChatPage(chatID string, maxTurns int, cursor string) (rpcID, payload string) {
+	var cursorVal any
+	if cursor != "" {
+		cursorVal = cursor
+	}
+	payloadBytes, _ := json.Marshal([]any{chatID, maxTurns, cursorVal, 1, []any{0}, []any{4}, nil, 1})
 	return readChatRPCID, string(payloadBytes)
 }
 
 // DecodeReadChat parses the wrb.fr body JSON returned by ExtractRPCBody.
 func DecodeReadChat(body []byte) ([]types.ChatTurn, error) {
+	turns, _, err := DecodeReadChatPage(body)
+	return turns, err
+}
+
+// DecodeReadChatPage parses the wrb.fr body and also returns the pagination
+// cursor for older turns (response top[1], empty when no older turns exist).
+func DecodeReadChatPage(body []byte) ([]types.ChatTurn, string, error) {
 	if strings.TrimSpace(string(body)) == "" {
-		return nil, nil
+		return nil, "", nil
 	}
 
 	var data []any
 	if err := json.Unmarshal(body, &data); err != nil {
-		return nil, fmt.Errorf("decode ReadChat JSON: %w", err)
+		return nil, "", fmt.Errorf("decode ReadChat JSON: %w", err)
 	}
 
+	nextCursor := protocol.StringAt(data, 1)
 	turnList, ok := protocol.ArrayAt(data, 0)
 	if !ok {
-		return nil, nil
+		return nil, nextCursor, nil
 	}
 
 	turns := make([]types.ChatTurn, 0, len(turnList))
@@ -75,7 +101,7 @@ func DecodeReadChat(body []byte) ([]types.ChatTurn, error) {
 	for i, j := 0, len(turns)-1; i < j; i, j = i+1, j-1 {
 		turns[i], turns[j] = turns[j], turns[i]
 	}
-	return turns, nil
+	return turns, nextCursor, nil
 }
 
 // DecodeReadChatRaw returns raw JSON turns without decoding them into ChatTurn values.

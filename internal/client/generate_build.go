@@ -5,7 +5,7 @@ import (
 	"github.com/Leechael/gemini-web-cli/internal/types"
 )
 
-func (c *Client) buildInnerRequest(prompt string, metadata []string, uploads []*UploadResult, model *types.Model, deepResearch bool, uuid string, language string, mode string) []any {
+func (c *Client) buildInnerRequest(prompt string, metadata []string, uploads []*UploadResult, model *types.Model, deepResearch bool, uuid string, language string, mode string, notebookResource ...string) []any {
 	fileRefs := make([]rpcs.FileRef, 0, len(uploads))
 	for _, u := range uploads {
 		fileRefs = append(fileRefs, rpcs.FileRef{
@@ -21,16 +21,21 @@ func (c *Client) buildInnerRequest(prompt string, metadata []string, uploads []*
 	if deepResearch {
 		entropyToken = generateDeepResearchEntropyToken()
 	}
+	notebook := ""
+	if len(notebookResource) > 0 {
+		notebook = notebookResource[0]
+	}
 	return rpcs.EncodeStreamGenerate(rpcs.EncodeStreamGenerateOpts{
-		Prompt:        prompt,
-		Language:      language,
-		Metadata:      metadata,
-		Uploads:       fileRefs,
-		Mode:          mode,
-		DeepResearch:  deepResearch,
-		ModelSelector: modelSelector(model),
-		UUID:          uuid,
-		EntropyToken:  entropyToken,
-		HexUUID:       generateHexUUID(),
+		Prompt:           prompt,
+		Language:         language,
+		Metadata:         metadata,
+		Uploads:          fileRefs,
+		Mode:             mode,
+		DeepResearch:     deepResearch,
+		ModelSelector:    modelSelector(model),
+		UUID:             uuid,
+		EntropyToken:     entropyToken,
+		HexUUID:          generateHexUUID(),
+		NotebookResource: notebook,
 	})
 }

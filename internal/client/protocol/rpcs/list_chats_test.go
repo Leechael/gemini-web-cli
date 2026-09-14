@@ -69,3 +69,22 @@ func TestDecodeListChats_MalformedJSON(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
+
+func TestEncodeListChatsRaw_NotebookScope(t *testing.T) {
+	rpcID, payload := EncodeListChatsRaw(ListChatsPayload{PageSize: 10, NotebookResource: "notebooks/nb-1"})
+	if rpcID != "MaZiqc" {
+		t.Fatalf("rpcID = %q", rpcID)
+	}
+	want := `[10,null,[null,null,1,"notebooks/nb-1",1]]`
+	if payload != want {
+		t.Fatalf("payload = %s, want %s", payload, want)
+	}
+}
+
+func TestEncodeListChatsRaw_NotebookScopeWithCursor(t *testing.T) {
+	_, payload := EncodeListChatsRaw(ListChatsPayload{PageSize: 10, Cursor: "next_page", NotebookResource: "notebooks/nb-1"})
+	want := `[10,"next_page",[null,null,1,"notebooks/nb-1",1]]`
+	if payload != want {
+		t.Fatalf("payload = %s, want %s", payload, want)
+	}
+}

@@ -352,12 +352,27 @@ type Model struct {
 const ModelHeaderKey = "x-goog-ext-525001261-jspb"
 
 // BuildModelHeader constructs the HTTP headers required for model selection.
+// Header shape verified against boq_assistant-bard-web-server_20260910.05_p2:
+// index 8 is [4,5,6,8,4,5,6,8] (duplicated run), index 14 is the model
+// selector, index 15 is the surface (1 = chat).
 func BuildModelHeader(modelID string, selector int) map[string]string {
+	return BuildModelHeaderForSurface(modelID, selector, 1)
+}
+
+// BuildModelHeaderForSurface constructs the model-selection headers for a
+// specific surface. Surface 1 is the default chat surface; surface 2 is the
+// /images image-generation surface (verified against
+// boq_assistant-bard-web-server_20260910.05_p2). The surface value lands in
+// header index 15.
+func BuildModelHeaderForSurface(modelID string, selector int, surface int) map[string]string {
 	if selector == 0 {
 		selector = 1
 	}
+	if surface == 0 {
+		surface = 1
+	}
 	return map[string]string{
-		ModelHeaderKey:             fmt.Sprintf(`[1,null,null,null,"%s",null,null,0,[4,5,6,8],null,null,2,null,null,%d,1,"FDC4D579-7A5D-4C69-A864-7188BDCFC8FF"]`, modelID, selector),
+		ModelHeaderKey:             fmt.Sprintf(`[1,null,null,null,"%s",null,null,0,[4,5,6,8,4,5,6,8],null,null,2,null,null,%d,%d,"FDC4D579-7A5D-4C69-A864-7188BDCFC8FF"]`, modelID, selector, surface),
 		"x-goog-ext-73010989-jspb": "[0]",
 		"x-goog-ext-73010990-jspb": "[0,0,0]",
 	}
@@ -385,25 +400,36 @@ func (m *Model) ModelID() string {
 // Known models matching the Python library constants.
 var Models = []Model{
 	{Name: "unspecified", DisplayName: "Auto-select", Headers: map[string]string{}},
-	{Name: "gemini-3.1-flash-lite", DisplayName: "Gemini 3.1 Flash-Lite", Headers: BuildModelHeader("8c46e95b1a07cecc", 6)},
-	{Name: "gemini-3.5-flash", DisplayName: "Gemini 3.5 Flash", Headers: BuildModelHeader("56fdd199312815e2", 1)},
+	{Name: "gemini-3.5-flash-lite", DisplayName: "Gemini 3.5 Flash-Lite", Headers: BuildModelHeader("8c46e95b1a07cecc", 6)},
+	{Name: "gemini-3.8-flash", DisplayName: "Gemini 3.8 Flash", Headers: BuildModelHeader("56fdd199312815e2", 1)},
 	{Name: "gemini-3.1-pro", DisplayName: "Gemini 3.1 Pro", AdvancedOnly: true, Headers: BuildModelHeader("e6fa609c3fa255c0", 3)},
 	{Name: "gemini-3-pro", DisplayName: "Gemini 3 Pro", Headers: BuildModelHeader("9d8ca3786ebdfbea", 3)},
 	{Name: "gemini-3-flash", DisplayName: "Gemini 3 Flash", Headers: BuildModelHeader("fbb127bbb056c959", 1)},
 	{Name: "gemini-3-flash-thinking", DisplayName: "Gemini 3 Flash Thinking", Headers: BuildModelHeader("5bf011840784117a", 2)},
 	{Name: "gemini-3-pro-plus", DisplayName: "Gemini 3 Pro Plus", AdvancedOnly: true, Headers: BuildModelHeader("e6fa609c3fa255c0", 3)},
-	{Name: "gemini-3-flash-plus", DisplayName: "Gemini 3 Flash Plus", AdvancedOnly: true, Headers: BuildModelHeader("56fdd199312815e2", 1)},
+	{Name: "gemini-3.8-flash-plus", DisplayName: "Gemini 3.8 Flash Plus", AdvancedOnly: true, Headers: BuildModelHeader("56fdd199312815e2", 1)},
 	{Name: "gemini-3-flash-thinking-plus", DisplayName: "Gemini 3 Flash Thinking Plus", AdvancedOnly: true, Headers: BuildModelHeader("e051ce1aa80aa576", 2)},
 	{Name: "gemini-3-pro-advanced", DisplayName: "Gemini 3 Pro Advanced", AdvancedOnly: true, Headers: BuildModelHeader("e6fa609c3fa255c0", 3)},
-	{Name: "gemini-3-flash-advanced", DisplayName: "Gemini 3 Flash Advanced", AdvancedOnly: true, Headers: BuildModelHeader("56fdd199312815e2", 1)},
+	{Name: "gemini-3.8-flash-advanced", DisplayName: "Gemini 3.8 Flash Advanced", AdvancedOnly: true, Headers: BuildModelHeader("56fdd199312815e2", 1)},
 	{Name: "gemini-3-flash-thinking-advanced", DisplayName: "Gemini 3 Flash Thinking Advanced", AdvancedOnly: true, Headers: BuildModelHeader("e051ce1aa80aa576", 2)},
 }
 
 // FallbackModelName is the model to use when error 1052 (model unavailable) is encountered.
 const FallbackModelName = "gemini-3-flash"
 
+// modelAliases maps previous public model IDs onto the current catalog names.
+var modelAliases = map[string]string{
+	"gemini-3.1-flash-lite":   "gemini-3.5-flash-lite",
+	"gemini-3.5-flash":        "gemini-3.8-flash",
+	"gemini-3-flash-plus":     "gemini-3.8-flash-plus",
+	"gemini-3-flash-advanced": "gemini-3.8-flash-advanced",
+}
+
 // FindModel looks up a model by name, returns nil if not found.
 func FindModel(name string) *Model {
+	if aliased, ok := modelAliases[name]; ok {
+		name = aliased
+	}
 	for i := range Models {
 		if Models[i].Name == name {
 			return &Models[i]

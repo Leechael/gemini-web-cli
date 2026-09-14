@@ -57,6 +57,91 @@ const openapiSpec = `{
         }
       }
     },
+    "/v1/notebooks": {
+      "post": {
+        "operationId": "createNotebook",
+        "summary": "Create a notebook",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["title"],
+                "properties": { "title": { "type": "string" } }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Notebook created (resource name and title)" }
+        }
+      }
+    },
+    "/v1/notebooks/{id}": {
+      "get": {
+        "operationId": "getNotebook",
+        "summary": "Get a notebook's title, emoji, and source list",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" }, "description": "Notebook uuid (without the notebooks/ prefix)" }
+        ],
+        "responses": {
+          "200": { "description": "Notebook details" },
+          "404": { "description": "Notebook not found" }
+        }
+      }
+    },
+    "/v1/notebooks/{id}/chats": {
+      "get": {
+        "operationId": "listNotebookChats",
+        "summary": "List chats inside a notebook",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Chat list (newest first)" }
+        }
+      }
+    },
+    "/v1/notebooks/{id}/sources": {
+      "post": {
+        "operationId": "addNotebookSource",
+        "summary": "Attach a source to a notebook (local file path on the serve host, or a web URL)",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "path": { "type": "string", "description": "Local file path to upload (on the serve host)" },
+                  "url": { "type": "string", "description": "http(s) URL to attach" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Updated notebook with source list" }
+        }
+      }
+    },
+    "/v1/notebooks/{id}/sources/{sid}": {
+      "delete": {
+        "operationId": "removeNotebookSource",
+        "summary": "Remove a source from a notebook",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "sid", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Source removed" }
+        }
+      }
+    },
     "/v1/research": {
       "post": {
         "operationId": "createResearch",
@@ -173,20 +258,21 @@ const openapiSpec = `{
         "type": "object",
         "required": ["messages"],
         "properties": {
-          "model": { "type": "string", "description": "Model name (e.g. gemini-3.5-flash). Defaults to auto-select." },
+          "model": { "type": "string", "description": "Model name (e.g. gemini-3.8-flash). Defaults to auto-select." },
           "messages": {
             "type": "array",
             "items": { "$ref": "#/components/schemas/ChatMessage" }
           },
           "stream": { "type": "boolean", "default": false },
-          "chat_id": { "type": "string", "description": "gemini-web-cli extension: continue an existing Gemini chat by ID. If omitted, the server uses chat-map state when available or starts a new Gemini chat." }
+          "chat_id": { "type": "string", "description": "gemini-web-cli extension: continue an existing Gemini chat by ID. If omitted, the server uses chat-map state when available or starts a new Gemini chat." },
+          "notebook": { "type": "string", "description": "gemini-web-cli extension: scope the request to a notebook (id with or without the notebooks/ prefix)." }
         }
       },
       "ChatMessage": {
         "type": "object",
         "required": ["role", "content"],
         "properties": {
-          "role": { "type": "string", "enum": ["system", "user", "assistant"] },
+          "role": { "type": "string", "enum": ["system", "developer", "user", "assistant"] },
           "content": {
             "oneOf": [
               { "type": "string" },

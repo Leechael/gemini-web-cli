@@ -18,6 +18,7 @@ var (
 	askFiles          []string
 	askGenerationMode string
 	askShowThoughts   bool
+	askNotebook       string
 )
 
 // textExtensions lists file extensions that should be inlined into the prompt.
@@ -54,7 +55,6 @@ var askCmd = &cobra.Command{
 		if err := setGenerationMode(c, askGenerationMode); err != nil {
 			return err
 		}
-
 		prompt := args[0]
 
 		// Process --file: text files inlined, binary files uploaded via resumable protocol
@@ -84,9 +84,9 @@ var askCmd = &cobra.Command{
 		if askNoStream {
 			var output *types.ModelOutput
 			if len(uploads) > 0 {
-				output, err = c.GenerateContentWithFiles(ctx, prompt, uploads, model)
+				output, err = c.GenerateContentWithFiles(ctx, prompt, uploads, model, askNotebook)
 			} else {
-				output, err = c.GenerateContent(ctx, prompt, model)
+				output, err = c.GenerateContent(ctx, prompt, model, askNotebook)
 			}
 			if err != nil {
 				return err
@@ -119,9 +119,9 @@ var askCmd = &cobra.Command{
 				}
 			}
 			if len(uploads) > 0 {
-				output, err = c.GenerateContentStreamWithFiles(ctx, prompt, uploads, model, streamCb)
+				output, err = c.GenerateContentStreamWithFiles(ctx, prompt, uploads, model, askNotebook, streamCb)
 			} else {
-				output, err = c.GenerateContentStream(ctx, prompt, model, streamCb)
+				output, err = c.GenerateContentStream(ctx, prompt, model, askNotebook, streamCb)
 			}
 			if err != nil {
 				return err
@@ -145,6 +145,7 @@ func init() {
 	askCmd.Flags().BoolVar(&askNoStream, "no-stream", false, "Wait for complete response")
 	askCmd.Flags().StringArrayVarP(&askFiles, "file", "f", nil, "Attach file(s) (can be specified multiple times)")
 	askCmd.Flags().StringVar(&askGenerationMode, "mode", "auto", "Generation mode: auto, text, image, video, image-to-video, music")
+	askCmd.Flags().StringVar(&askNotebook, "notebook", "", "Scope the new chat to a notebook (id with or without notebooks/ prefix)")
 	askCmd.Flags().BoolVar(&askShowThoughts, "show-thoughts", false, "Print model thoughts/reasoning to stderr")
 }
 

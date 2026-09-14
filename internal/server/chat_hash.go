@@ -66,6 +66,11 @@ func completedChatRoot(messages []chatMessage) (chatPrefixHash, bool, error) {
 
 func canonicalChatMessage(msg chatMessage) (role string, content string, err error) {
 	role = strings.ToLower(strings.TrimSpace(msg.Role))
+	// OpenAI renamed the system role to developer for reasoning models;
+	// accept it as an alias so OpenAI-compatible clients keep working.
+	if role == "developer" {
+		role = "system"
+	}
 	switch role {
 	case "system", "user", "assistant":
 		return role, msg.Content, nil

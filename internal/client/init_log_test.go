@@ -2,6 +2,7 @@ package client
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -68,6 +69,48 @@ func TestInitLogsRequestResponse(t *testing.T) {
 	}
 	if entry.ReqHeaders.Get("User-Agent") == "" {
 		t.Fatalf("User-Agent header missing")
+	}
+}
+
+func TestInitDetectsSorryRedirect(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/app" {
+			http.Redirect(w, r, "/sorry/index", http.StatusFound)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("<html>sorry</html>"))
+	}))
+	defer srv.Close()
+
+	origBase := baseURL
+	baseURL = srv.URL
+	t.Cleanup(func() { baseURL = origBase })
+
+	c := newTestClient()
+	err := c.Init(t.Context())
+	var ace *AbuseCheckError
+	if !errors.As(err, &ace) {
+		t.Fatalf("Init error = %v, want AbuseCheckError", err)
+	}
+}
+
+func TestInitDetectsSorryPageBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`<html><body>Our systems have detected unusual traffic from your computer network.</body></html>`))
+	}))
+	defer srv.Close()
+
+	origBase := baseURL
+	baseURL = srv.URL
+	t.Cleanup(func() { baseURL = origBase })
+
+	c := newTestClient()
+	err := c.Init(t.Context())
+	var ace *AbuseCheckError
+	if !errors.As(err, &ace) {
+		t.Fatalf("Init error = %v, want AbuseCheckError", err)
 	}
 }
 

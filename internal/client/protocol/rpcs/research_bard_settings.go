@@ -15,7 +15,9 @@
 //
 // Notes:
 //   - Deep research preflight queries "bard_activity_enabled".
-//   - The same RPC is also used for general account settings reads.
+//   - The same RPC is also used for general account settings reads; the web app
+//     batches ~188 keys in one call on startup (verified against
+//     boq_assistant-bard-web-server_20260910.05_p2).
 //   - Empty bodies are accepted because preflight responses are best-effort acknowledgements.
 package rpcs
 

@@ -20,6 +20,7 @@ var (
 var (
 	getMaxTurns int
 	getOutput   string
+	getCursor   string
 )
 
 var getCmd = &cobra.Command{
@@ -35,7 +36,7 @@ var getCmd = &cobra.Command{
 		defer cleanup(c, jsonCookies)
 
 		chatID := args[0]
-		turns, err := c.ReadChat(ctx, chatID, getMaxTurns)
+		turns, nextCursor, err := c.ReadChatPage(ctx, chatID, getMaxTurns, getCursor)
 		if err != nil {
 			return err
 		}
@@ -115,6 +116,9 @@ var getCmd = &cobra.Command{
 		} else {
 			fmt.Println(text)
 		}
+		if nextCursor != "" {
+			fmt.Fprintf(cmd.ErrOrStderr(), "\nOlder turns available — continue with: gemini-web-cli get %s --cursor %q\n", chatID, nextCursor)
+		}
 		return nil
 	},
 }
@@ -148,4 +152,5 @@ func formatChatText(text string) string {
 func init() {
 	getCmd.Flags().IntVar(&getMaxTurns, "max-turns", 30, "Max turns to fetch")
 	getCmd.Flags().StringVar(&getOutput, "output", "", "Write to file instead of stdout")
+	getCmd.Flags().StringVar(&getCursor, "cursor", "", "Pagination cursor from a previous get (fetches older turns)")
 }

@@ -78,6 +78,18 @@ var statusCmd = &cobra.Command{
 				}
 				return nil
 			}
+			var ace *client.AbuseCheckError
+			if errors.As(err, &ace) {
+				fmt.Printf("  Init: FAILED — Google abuse check (/sorry/ page)\n")
+				fmt.Println("  Hints:")
+				fmt.Println("    - Cookies are NOT the problem; do not re-import.")
+				fmt.Println("    - Wait a few minutes and retry, or switch proxy/exit node.")
+				fmt.Println("    - Verify gemini.google.com loads in a browser via the same network.")
+				if proxy != "" {
+					fmt.Printf("  Proxy: %s\n", proxy)
+				}
+				return nil
+			}
 			fmt.Printf("  Init: FAILED — %v\n", err)
 			fmt.Println("  Hint: cookies may be expired or incomplete; re-export __Secure-1PSID + __Secure-1PSIDTS from your browser.")
 			return nil

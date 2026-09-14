@@ -2,11 +2,20 @@
 // Source-path: any Gemini page (defaults to /app)
 // Reject codes: none observed in sample fixtures
 //
-// Payload shape:
+// Payload shape (pagination verified against boq_assistant-bard-web-server_20260910.05_p2):
 //
 //	[<page_size>, <cursor or null>, [<flag1>, null, <flag2>]]
 //	↑            ↑                   ↑
 //	13 typical   pagination cursor   browser variant flags
+//
+// Pagination (verified): first page uses [1,null,1] (browser page size 34,
+// this client uses 13); subsequent pages use page size 20 with flags
+// [0,null,1] and the opaque next_cursor from the previous response.
+//
+// Notebook-scoped variant (implemented; first page verified): the flags array
+// grows to 5 elements — [<10>, <cursor or null>, [null, null, 1, "notebooks/<uuid>", 1]].
+// This client lists only the first page (PageSize 10). Later pages can be
+// requested by passing the previous response cursor in slot 1.
 //
 // Response shape (after StripResponsePrefix + ExtractRPCBody):
 //
@@ -40,6 +49,12 @@ type ListChatsPayload struct {
 	Cursor   string
 	Flag1    int
 	Flag2    int
+	// NotebookResource scopes the list to a notebook ("notebooks/<uuid>").
+	// When set, the flags array becomes [null, null, 1, <resource>, 1] and
+	// the browser page size is 10 (verified in a live session where the
+	// response listed the notebook's chats with the notebook resource name
+	// at item index 7).
+	NotebookResource string
 }
 
 // ChatListItem is the protocol-level representation of one listed chat.
@@ -60,6 +75,14 @@ func EncodeListChats(pageSize int, cursor string) (rpcID, payload string) {
 
 // EncodeListChatsRaw returns a specific ListChats browser payload variant.
 func EncodeListChatsRaw(p ListChatsPayload) (rpcID, payload string) {
+	if p.NotebookResource != "" {
+		var cursor any
+		if p.Cursor != "" {
+			cursor = p.Cursor
+		}
+		payloadBytes, _ := json.Marshal([]any{p.PageSize, cursor, []any{nil, nil, 1, p.NotebookResource, 1}})
+		return listChatsRPCID, string(payloadBytes)
+	}
 	payloadArr := []any{p.PageSize, nil, []any{p.Flag1, nil, p.Flag2}}
 	if p.Cursor != "" {
 		payloadArr[1] = p.Cursor

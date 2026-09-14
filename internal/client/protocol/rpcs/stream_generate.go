@@ -3,7 +3,7 @@
 // Notes: this endpoint does not use batchexecute, so it has no source-path query parameter.
 // Reject codes: HTTP-level 429 (RateLimit) / envelope code 1052 (ModelUnavailable)
 //
-// Inner request shape (81-element array):
+// Inner request shape (99-element array, verified against boq_assistant-bard-web-server_20260910.05_p2):
 //
 //	[0]: message content
 //	     no attachments: [prompt, 0, null, null, null, null, 0]
@@ -15,16 +15,24 @@
 //	     continuation: [cid, rid, rcid, null, null, null, null, null, null, context]
 //	[3]: "!" + base64(2600 random bytes) — request entropy
 //	[4]: hex(16 random bytes) — request UUID
-//	[6]: [0] (normal) / [1] (deep research)
+//	[6]: [0] — always 0 in the 20260910.05_p2 build, including deep research
+//	     plan-generation requests (the old [1] deep-research marker is stale;
+//	     no [1] sample exists in current captures).
 //	[7]: 1 — enable snapshot streaming
 //	[10]: 1
 //	[11]: 0
-//	[17]: [[0]] (new) / [[1]] (continuation)
+//	[17]: [[0]] (new) / [[1]] (continuation — decided by rid, not cid)
 //	[18]: 0
+//	[19]: "notebooks/<uuid>" (notebook-scoped chats only)
 //	[27]: 1
 //	[30]: [4]
+//	[40]: notebook scope — 14-element, [13]=[2] (first turn) / [13]=[2,null,null,null,1] (continuation)
 //	[41]: [1]
-//	[49]: mode flag — 11 (video) / 14 (image-to-video) / 21 (music) / 1 (deep research)
+//	[49]: mode flag — 11 (video) / 14 (image generation, verified on /images surface) /
+//	      21 (music) / 1 (deep research).
+//	      Note: 14 was previously labeled "image-to-video" from upstream docs; the
+//	      20260910.05_p2 capture proves 14 is used for plain image generation with no
+//	      uploads. The image-to-video semantics of 14 remain unverified.
 //	[53]: 0
 //	[54]: [] (video) / [[[[[1]]]]] (deep research)
 //	[55]: [[16]] (video) / [[1]] (deep research)
@@ -32,7 +40,38 @@
 //	[61]: []
 //	[68]: 1
 //	[79]: modelSelector(model) — 1/2/3/4 by tier
-//	[80]: 1
+//	[80]: 1 (text) / 2 (image)
+//	[91]: 0
+//	[96]: 1 (first turn) / 0 (continuation)
+//	[98]: 1
+//
+// Slots 91/96/98 were added by the 20260910.05_p2 web build.
+//
+// Verified slot rules (5 captures across text/image/notebook surfaces):
+//
+//	[17]: [[N]] where N is the number of prior turns the request builds on —
+//	      [[0]] for a new chat or a parentless continuation, [[1]] after one
+//	      prior turn, [[11]] observed in a live session with eleven prior turns.
+//	      This client cannot recover the true count from a bare cid/rid/rcid
+//	      triple, so it sends [[1]] for any continuation (an approximation the
+//	      server has always tolerated).
+//	[19]: notebook resource name ("notebooks/<uuid>") for notebook-scoped chats.
+//	[40]: notebook scope — 14-element array, [13]=[2] on the first turn and
+//	      [13]=[2,null,null,null,1] on continuation turns.
+//	[67]: 0 for plain text-chat continuation turns (verified: round-1 capture,
+//	      a live 12-turn session, and a plain message in a completed research
+//	      chat); null for first turns, /images, notebooks, and while a deep
+//	      research is still running.
+//	[96]: 1 only for first turns initiated from a dedicated surface landing
+//	      page (/images, /notebook); 0 for /app text chats (new or
+//	      continuation) and for deep research plan requests.
+//
+// Mode-dependent slots:
+//
+//	image mode: [49]=14 [80]=2, model header [15]=2
+//	text/other: [80]=1, model header [15]=1
+//
+// Video/music/deep-research variants of the new slots have no capture evidence yet.
 //
 // Other slots default to nil (Go json.Marshal nil → null).
 //
@@ -54,16 +93,17 @@ import (
 
 // EncodeStreamGenerateOpts collects the inputs needed for the 81-element request.
 type EncodeStreamGenerateOpts struct {
-	Prompt        string
-	Language      string
-	Metadata      []string
-	Uploads       []FileRef
-	Mode          string
-	DeepResearch  bool
-	ModelSelector int
-	UUID          string
-	EntropyToken  string
-	HexUUID       string
+	Prompt           string
+	Language         string
+	Metadata         []string
+	Uploads          []FileRef
+	Mode             string
+	DeepResearch     bool
+	ModelSelector    int
+	UUID             string
+	EntropyToken     string
+	HexUUID          string
+	NotebookResource string // "notebooks/<uuid>" for notebook-scoped chats
 }
 
 // FileRef is the protocol-layer upload reference.
@@ -87,7 +127,7 @@ func (e *EnvelopeError) RejectCode() int { return e.Code }
 
 // EncodeStreamGenerate constructs the full StreamGenerate inner request.
 func EncodeStreamGenerate(opts EncodeStreamGenerateOpts) []any {
-	req := make([]any, 81)
+	req := make([]any, 99)
 	if opts.Language == "" {
 		opts.Language = "en"
 	}
@@ -137,28 +177,52 @@ func EncodeStreamGenerate(opts EncodeStreamGenerateOpts) []any {
 	req[7] = 1
 	req[10] = 1
 	req[11] = 0
+	isNewChat := len(opts.Metadata) == 0 || opts.Metadata[0] == ""
+	hasRid := len(opts.Metadata) > 1 && opts.Metadata[1] != ""
 	req[17] = []any{[]any{0}}
-	if len(opts.Metadata) > 0 && opts.Metadata[0] != "" {
+	if hasRid {
 		req[17] = []any{[]any{1}}
 	}
 	req[18] = 0
+	if opts.NotebookResource != "" {
+		req[19] = opts.NotebookResource
+		notebookScope := make([]any, 14)
+		if isNewChat {
+			notebookScope[13] = []any{2}
+		} else {
+			notebookScope[13] = []any{2, nil, nil, nil, 1}
+		}
+		req[40] = notebookScope
+	}
 	req[27] = 1
 	req[30] = []any{4}
 	req[41] = []any{1}
 	req[53] = 0
 	req[59] = opts.UUID
 	req[61] = []any{}
+	if !isNewChat && opts.Mode != "image" && opts.NotebookResource == "" && !opts.DeepResearch {
+		req[67] = 0
+	}
+	req[91] = 0
+	if isNewChat && (opts.Mode == "image" || opts.NotebookResource != "") {
+		req[96] = 1
+	} else {
+		req[96] = 0
+	}
+	req[98] = 1
 	req[79] = opts.ModelSelector
 	req[80] = 1
 
 	if opts.DeepResearch {
-		req[6] = []any{1}
 		req[49] = 1
 		req[54] = []any{[]any{[]any{[]any{[]any{1}}}}}
 		req[55] = []any{[]any{1}}
 		req[68] = 1
 	} else {
 		switch opts.Mode {
+		case "image":
+			req[49] = 14
+			req[80] = 2
 		case "video":
 			req[49] = 11
 			req[54] = []any{}

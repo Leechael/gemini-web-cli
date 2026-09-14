@@ -116,3 +116,50 @@ func TestDecodeReadChat_CardURLLines(t *testing.T) {
 		t.Fatalf("AssistantResponse = %q", turns[0].AssistantResponse)
 	}
 }
+
+func TestEncodeReadChatPage_WithCursor(t *testing.T) {
+	rpcID, payload := EncodeReadChatPage("c_000000000000001", 10, "tCt8cursor")
+	if rpcID != "hNvQHb" {
+		t.Fatalf("rpcID = %q", rpcID)
+	}
+	want := `["c_000000000000001",10,"tCt8cursor",1,[0],[4],null,1]`
+	if payload != want {
+		t.Fatalf("payload = %s, want %s", payload, want)
+	}
+}
+
+func TestEncodeReadChatPage_NoCursor(t *testing.T) {
+	_, payload := EncodeReadChatPage("c_000000000000001", 10, "")
+	want := `["c_000000000000001",10,null,1,[0],[4],null,1]`
+	if payload != want {
+		t.Fatalf("payload = %s, want %s", payload, want)
+	}
+}
+
+func TestDecodeReadChatPage_NextCursor(t *testing.T) {
+	body := []byte(`[[],"tCoMnextcursor",null,[]]`)
+	turns, next, err := DecodeReadChatPage(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(turns) != 0 {
+		t.Fatalf("turns = %d, want 0", len(turns))
+	}
+	if next != "tCoMnextcursor" {
+		t.Fatalf("next = %q, want tCoMnextcursor", next)
+	}
+}
+
+func TestDecodeReadChatPage_CursorWithoutTurnArray(t *testing.T) {
+	body := []byte(`[null,"tCoMnextcursor"]`)
+	turns, next, err := DecodeReadChatPage(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(turns) != 0 {
+		t.Fatalf("turns = %d, want 0", len(turns))
+	}
+	if next != "tCoMnextcursor" {
+		t.Fatalf("next = %q, want tCoMnextcursor", next)
+	}
+}

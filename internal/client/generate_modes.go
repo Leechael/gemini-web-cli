@@ -48,13 +48,13 @@ func generateHexUUID() string {
 func resolveGenerationMode(clientMode string, prompt string, uploads []*UploadResult) string {
 	mode := strings.ToLower(strings.TrimSpace(clientMode))
 	switch mode {
-	case "text", "image", "", "auto":
-	case "video", "image-to-video", "music":
+	case "text", "", "auto":
+	case "image", "video", "image-to-video", "music":
 		return mode
 	default:
 		return ""
 	}
-	if mode == "text" || mode == "image" {
+	if mode == "text" {
 		return ""
 	}
 	lower := strings.ToLower(prompt)

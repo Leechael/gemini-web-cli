@@ -51,6 +51,12 @@ test("registers discovered models and research tools from global configuration",
     "gemini_research_create",
     "gemini_research_status",
     "gemini_research_result",
+    "gemini_notebook_create",
+    "gemini_notebook_get",
+    "gemini_notebook_list_chats",
+    "gemini_notebook_add_file_source",
+    "gemini_notebook_add_url_source",
+    "gemini_notebook_remove_source",
   ]);
 });
 
@@ -71,6 +77,12 @@ test("malformed global configuration does not disable tools or session recovery"
     "gemini_research_create",
     "gemini_research_status",
     "gemini_research_result",
+    "gemini_notebook_create",
+    "gemini_notebook_get",
+    "gemini_notebook_list_chats",
+    "gemini_notebook_add_file_source",
+    "gemini_notebook_add_url_source",
+    "gemini_notebook_remove_source",
   ]);
   assert.equal(h.handlers.has("session_start"), true);
 });

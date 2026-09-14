@@ -356,13 +356,19 @@ func TestMCPToolsList(t *testing.T) {
 	}
 
 	want := map[string]bool{
-		"gemini_ask":             false,
-		"gemini_list_models":     false,
-		"gemini_research_create": false,
-		"gemini_research_list":   false,
-		"gemini_research_reply":  false,
-		"gemini_research_status": false,
-		"gemini_research_result": false,
+		"gemini_ask":                      false,
+		"gemini_list_models":              false,
+		"gemini_research_create":          false,
+		"gemini_research_list":            false,
+		"gemini_research_reply":           false,
+		"gemini_research_status":          false,
+		"gemini_research_result":          false,
+		"gemini_notebook_create":          false,
+		"gemini_notebook_get":             false,
+		"gemini_notebook_list_chats":      false,
+		"gemini_notebook_add_file_source": false,
+		"gemini_notebook_add_url_source":  false,
+		"gemini_notebook_remove_source":   false,
 	}
 	for _, tool := range resp.Result.Tools {
 		if _, ok := want[tool.Name]; !ok {
@@ -386,11 +392,11 @@ func TestMCPToolsList(t *testing.T) {
 func TestResolveMCPModel(t *testing.T) {
 	c := mustTestClient(t)
 
-	s := &Server{client: c, mcpDefaultModel: "gemini-3.5-flash"}
+	s := &Server{client: c, mcpDefaultModel: "gemini-3.8-flash"}
 	if m, err := s.resolveMCPModel("unspecified"); err != nil || m == nil || m.Name != "unspecified" {
 		t.Fatalf("override should take precedence, got model=%v err=%v", m, err)
 	}
-	if m, err := s.resolveMCPModel(""); err != nil || m == nil || m.Name != "gemini-3.5-flash" {
+	if m, err := s.resolveMCPModel(""); err != nil || m == nil || m.Name != "gemini-3.8-flash" {
 		t.Fatalf("default model not applied, got model=%v err=%v", m, err)
 	}
 	if _, err := s.resolveMCPModel("missing-model-name"); err == nil {
