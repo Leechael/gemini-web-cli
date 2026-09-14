@@ -23,12 +23,14 @@ make build    # outputs to ./bin/gemini-web-cli
 Release tags also publish a multi-arch image (`linux/amd64`, `linux/arm64`) to GHCR:
 
 ```bash
-docker run -p 8080:8080 -v "$PWD/accounts:/accounts" \
+docker run -p 8080:8080 -v "$PWD/cookies.json:/cookies.json:ro" \
   ghcr.io/leechael/gemini-web-cli:latest \
-  serve --host 0.0.0.0 --cookies-json /accounts/
+  serve --host 0.0.0.0 --cookies-json /cookies.json --api-key your-secret
 ```
 
 The image entrypoint is the `gemini-web-cli` binary (default command: `serve --host 0.0.0.0 --port 8080`), so one-off commands work too: `docker run --rm ghcr.io/leechael/gemini-web-cli:latest --help`.
+
+Published ports are reachable by anyone who can reach the host — always set `--api-key` (or `GEMINI_WEB_CLI_API_KEY`) when binding beyond localhost, the same as running the binary directly.
 
 ## Quick start
 

@@ -143,8 +143,8 @@ jobs:
           flavor: |
             latest=auto
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{version}},value=${{ env.RELEASE_TAG }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ env.RELEASE_TAG }}
 
       - name: Build and push image
         uses: docker/build-push-action@v6
