@@ -39,7 +39,7 @@ func EncodeCreateNotebook(title string) (rpcID, payload string) {
 func DecodeCreateNotebook(body []byte) (string, error) {
 	trimmed := strings.TrimSpace(string(body))
 	if trimmed == "" || trimmed == "[]" {
-		return "", fmt.Errorf("CreateNotebook: empty response")
+		return "", fmt.Errorf("CreateNotebook: empty response, got %q", trimmed)
 	}
 	var data []any
 	if err := json.Unmarshal(body, &data); err != nil {
@@ -50,7 +50,7 @@ func DecodeCreateNotebook(body []byte) (string, error) {
 		resource, _ = data[0].(string)
 	}
 	if !strings.HasPrefix(resource, "notebooks/") || strings.TrimPrefix(resource, "notebooks/") == "" {
-		return "", fmt.Errorf("CreateNotebook: missing notebooks/<id> resource")
+		return "", fmt.Errorf("CreateNotebook: missing notebooks/<id> resource, got %q", trimmed)
 	}
 	return resource, nil
 }

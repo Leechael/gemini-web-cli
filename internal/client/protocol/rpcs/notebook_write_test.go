@@ -32,7 +32,7 @@ func TestDecodeCreateNotebook_FromSampleFixture(t *testing.T) {
 }
 
 func TestDecodeCreateNotebook_EmptyOrInvalidResource(t *testing.T) {
-	cases := []string{"", "[]", `[""]`, `["not-a-notebook"]`, `[null]`}
+	cases := []string{"", "[]", `[""]`, `["not-a-notebook"]`, `["notebooks/"]`, `[null]`}
 	for _, body := range cases {
 		if _, err := DecodeCreateNotebook([]byte(body)); err == nil {
 			t.Errorf("DecodeCreateNotebook(%q) = nil error, want error", body)
