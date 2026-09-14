@@ -3,9 +3,9 @@ package server
 import (
 	"encoding/json"
 	"net/http"
-	"net/url"
 	"strings"
 
+	"github.com/Leechael/gemini-web-cli/internal/client"
 	"github.com/Leechael/gemini-web-cli/internal/client/protocol/rpcs"
 )
 
@@ -33,15 +33,6 @@ type notebookJSON struct {
 	SourceCount int                  `json:"source_count"`
 	CreatedUnix int64                `json:"created_unix,omitempty"`
 	UpdatedUnix int64                `json:"updated_unix,omitempty"`
-}
-
-func isHTTPURL(raw string) bool {
-	u, err := url.Parse(raw)
-	if err != nil {
-		return false
-	}
-	scheme := strings.ToLower(u.Scheme)
-	return (scheme == "http" || scheme == "https") && u.Host != ""
 }
 
 func notebookToJSON(nb *rpcs.Notebook) notebookJSON {
@@ -137,8 +128,8 @@ func (s *Server) handleNotebookAddSource(w http.ResponseWriter, r *http.Request)
 	var err error
 	switch {
 	case req.URL != "":
-		if !isHTTPURL(req.URL) {
-			writeError(w, http.StatusBadRequest, "url must start with http:// or https://")
+		if !client.IsHTTPURL(req.URL) {
+			writeError(w, http.StatusBadRequest, "url must be an absolute http or https URL with a host")
 			return
 		}
 		nb, err = s.client.AddNotebookURLSource(ctx, id, req.URL)

@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -111,4 +112,14 @@ func (c *Client) GetNotebook(ctx context.Context, notebookID string) (*rpcs.Note
 		return nil, fmt.Errorf("GetNotebook rejected with code=%d", rejectCode)
 	}
 	return rpcs.DecodeGetNotebook(body)
+}
+
+// IsHTTPURL reports whether raw is an absolute http or https URL with a host.
+func IsHTTPURL(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	scheme := strings.ToLower(u.Scheme)
+	return (scheme == "http" || scheme == "https") && u.Hostname() != ""
 }

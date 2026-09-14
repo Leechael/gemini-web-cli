@@ -66,6 +66,7 @@ func TestNotebookAddSourceValidation(t *testing.T) {
 		{`{}`, http.StatusBadRequest},
 		{`{"url":"ftp://example.com"}`, http.StatusBadRequest},
 		{`{"url":"https://"}`, http.StatusBadRequest},
+		{`{"url":"http://:80"}`, http.StatusBadRequest},
 	}
 	for _, tc := range cases {
 		req := httptest.NewRequest(http.MethodPost, "/v1/notebooks/nb-1/sources", strings.NewReader(tc.body))

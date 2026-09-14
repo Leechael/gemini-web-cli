@@ -3,9 +3,8 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"net/url"
-	"strings"
 
+	"github.com/Leechael/gemini-web-cli/internal/client"
 	"github.com/spf13/cobra"
 )
 
@@ -147,7 +146,7 @@ var notebookAddURLCmd = &cobra.Command{
 
 		notebookID := args[0]
 		for _, u := range args[1:] {
-			if !isHTTPURL(u) {
+			if !client.IsHTTPURL(u) {
 				return fmt.Errorf("invalid URL %q", u)
 			}
 			nb, err := c.AddNotebookURLSource(ctx, notebookID, u)
@@ -181,15 +180,6 @@ var notebookRemoveSourceCmd = &cobra.Command{
 		fmt.Printf("Removed %s\n", args[0])
 		return nil
 	},
-}
-
-func isHTTPURL(raw string) bool {
-	u, err := url.Parse(raw)
-	if err != nil {
-		return false
-	}
-	scheme := strings.ToLower(u.Scheme)
-	return (scheme == "http" || scheme == "https") && u.Host != ""
 }
 
 func init() {
