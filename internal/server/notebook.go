@@ -68,7 +68,7 @@ func (s *Server) handleNotebookCreate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "title is required")
 		return
 	}
-	resource, err := s.client.CreateNotebook(r.Context(), req.Title)
+	resource, err := s.pool.CreateNotebook(r.Context(), req.Title)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
@@ -82,7 +82,7 @@ func (s *Server) handleNotebookCreate(w http.ResponseWriter, r *http.Request) {
 
 // handleNotebookGet handles GET /v1/notebooks/{id}.
 func (s *Server) handleNotebookGet(w http.ResponseWriter, r *http.Request) {
-	nb, err := s.client.GetNotebook(r.Context(), r.PathValue("id"))
+	nb, err := s.pool.GetNotebook(r.Context(), r.PathValue("id"))
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
@@ -96,7 +96,7 @@ func (s *Server) handleNotebookGet(w http.ResponseWriter, r *http.Request) {
 
 // handleNotebookChats handles GET /v1/notebooks/{id}/chats.
 func (s *Server) handleNotebookChats(w http.ResponseWriter, r *http.Request) {
-	items, err := s.client.ListNotebookChats(r.Context(), r.PathValue("id"))
+	items, err := s.pool.ListNotebookChats(r.Context(), r.PathValue("id"))
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
@@ -132,14 +132,10 @@ func (s *Server) handleNotebookAddSource(w http.ResponseWriter, r *http.Request)
 			writeError(w, http.StatusBadRequest, "url must be an absolute http or https URL with a host")
 			return
 		}
-		nb, err = s.client.AddNotebookURLSource(ctx, id, req.URL)
+		nb, err = s.pool.AddNotebookURLSource(ctx, id, req.URL)
 	case req.Path != "":
-		up, upErr := s.client.UploadFile(ctx, req.Path)
-		if upErr != nil {
-			writeError(w, http.StatusBadGateway, "upload failed: "+upErr.Error())
-			return
-		}
-		nb, err = s.client.AddNotebookSource(ctx, id, up.FileName, up.MimeType, up.ID)
+		// Upload and attach must run on the account owning the notebook.
+		nb, err = s.pool.AddNotebookFileSource(ctx, id, req.Path)
 	default:
 		writeError(w, http.StatusBadRequest, "either path or url is required")
 		return
@@ -158,7 +154,7 @@ func (s *Server) handleNotebookAddSource(w http.ResponseWriter, r *http.Request)
 // handleNotebookRemoveSource handles DELETE /v1/notebooks/{id}/sources/{sid}.
 func (s *Server) handleNotebookRemoveSource(w http.ResponseWriter, r *http.Request) {
 	resource := "notebooks/" + r.PathValue("id") + "/sources/" + r.PathValue("sid")
-	if err := s.client.RemoveNotebookSource(r.Context(), resource); err != nil {
+	if err := s.pool.RemoveNotebookSource(r.Context(), resource); err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}

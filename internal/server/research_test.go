@@ -25,7 +25,7 @@ func TestResearchCreateRejectsExplicitModelWithoutStreamRequest(t *testing.T) {
 	}
 	defer c.Close()
 
-	s := &Server{client: c, mux: http.NewServeMux()}
+	s := &Server{pool: newAccountPool([]accountClient{c}, nil), mux: http.NewServeMux()}
 	s.registerRoutes()
 	req := httptest.NewRequest(http.MethodPost, "/v1/research", strings.NewReader(`{"prompt":"model rejection smoke","model":"gemini-3.1-pro"}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -57,7 +57,7 @@ func TestMCPResearchCreateRejectsExplicitModelWithoutStreamRequest(t *testing.T)
 	}
 	defer c.Close()
 
-	s := &Server{client: c}
+	s := &Server{pool: newAccountPool([]accountClient{c}, nil)}
 	result, err := s.handleMCPResearchCreate(context.Background(), mcp.CallToolRequest{
 		Params: mcp.CallToolParams{Arguments: map[string]any{
 			"prompt": "model rejection smoke",

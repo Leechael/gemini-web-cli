@@ -23,16 +23,16 @@ var statusCmd = &cobra.Command{
 	Short: "Check login status and account diagnostics",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if statusCookiesOnly {
-			if cookiesJSON == "" {
+			if len(cookiesJSON) == 0 {
 				return fmt.Errorf("--cookies-json is required for --cookies-only")
 			}
-			jar, err := cookies.Load(cookiesJSON)
+			jar, err := cookies.Load(cookiesJSON[0])
 			if err != nil {
 				return err
 			}
 
 			report := map[string]any{
-				"cookies_json": cookiesJSON,
+				"cookies_json": cookiesJSON[0],
 				"required": map[string]any{
 					"__Secure-1PSID": map[string]any{
 						"present": jar.Cookies["__Secure-1PSID"] != "",
@@ -159,7 +159,7 @@ var statusCmd = &cobra.Command{
 // cookieSourceOrigin reports which input the cookies path was resolved from,
 // matching the priority order in resolveCookiesJSON.
 func cookieSourceOrigin() string {
-	if cookiesJSON != "" {
+	if len(cookiesJSON) > 0 {
 		return "--cookies-json flag"
 	}
 	if os.Getenv("GEMINI_WEB_COOKIES_JSON_PATH") != "" {

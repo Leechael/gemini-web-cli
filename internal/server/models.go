@@ -39,8 +39,8 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) availableModels() []types.Model {
-	if s.client != nil {
-		if models := s.client.AvailableModels(); len(models) > 0 {
+	if s.pool != nil {
+		if models := s.pool.AvailableModels(); len(models) > 0 {
 			return models
 		}
 	}

@@ -9,7 +9,7 @@ import (
 func TestResolveCookiesJSONWithStateDirPriority(t *testing.T) {
 	oldCookiesJSON := cookiesJSON
 	t.Cleanup(func() { cookiesJSON = oldCookiesJSON })
-	cookiesJSON = ""
+	cookiesJSON = nil
 	t.Setenv(envCookiesPath, filepath.Join(t.TempDir(), "env-cookies.json"))
 
 	stateDir := t.TempDir()
@@ -24,9 +24,56 @@ func TestResolveCookiesJSONWithStateDirPriority(t *testing.T) {
 	}
 
 	explicit := filepath.Join(t.TempDir(), "explicit.json")
-	cookiesJSON = explicit
+	cookiesJSON = []string{explicit}
 	path, source = resolveCookiesJSONWithStateDir(stateDir)
 	if path != explicit || source != "--cookies-json" {
 		t.Fatalf("explicit path/source = %q/%q", path, source)
+	}
+}
+
+func TestResolveCookiePathsExpandsDirectories(t *testing.T) {
+	oldCookiesJSON := cookiesJSON
+	t.Cleanup(func() { cookiesJSON = oldCookiesJSON })
+
+	accountsDir := t.TempDir()
+	for _, name := range []string{"b.json", "a.json", "not-cookies.txt"} {
+		if err := os.WriteFile(filepath.Join(accountsDir, name), []byte(`{"cookies":{}}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	single := filepath.Join(t.TempDir(), "single.json")
+	if err := os.WriteFile(single, []byte(`{"cookies":{}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Flag entries: directory expands to sorted *.json, files pass through.
+	cookiesJSON = []string{accountsDir, single}
+	paths, source := resolveCookiePathsWithStateDir("")
+	want := []string{
+		filepath.Join(accountsDir, "a.json"),
+		filepath.Join(accountsDir, "b.json"),
+		single,
+	}
+	if source != "--cookies-json" {
+		t.Fatalf("source = %q", source)
+	}
+	if len(paths) != len(want) {
+		t.Fatalf("paths = %v, want %v", paths, want)
+	}
+	for i := range want {
+		if paths[i] != want[i] {
+			t.Fatalf("paths[%d] = %q, want %q", i, paths[i], want[i])
+		}
+	}
+
+	// Env var accepts a path list.
+	cookiesJSON = nil
+	t.Setenv(envCookiesPath, single+string(os.PathListSeparator)+accountsDir)
+	paths, source = resolveCookiePathsWithStateDir("")
+	if source != "$"+envCookiesPath {
+		t.Fatalf("source = %q", source)
+	}
+	if len(paths) != 3 || paths[0] != single {
+		t.Fatalf("env paths = %v", paths)
 	}
 }

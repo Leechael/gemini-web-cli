@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -43,26 +44,62 @@ func resolveCookiesJSON() string {
 	return path
 }
 
+// resolveCookiesJSONWithStateDir returns the first effective cookies path.
+// One-shot commands stay single-account; serve uses
+// resolveCookiePathsWithStateDir to pick up every configured account.
 func resolveCookiesJSONWithStateDir(stateDir string) (string, string) {
-	if cookiesJSON != "" {
-		return cookiesJSON, "--cookies-json"
+	paths, source := resolveCookiePathsWithStateDir(stateDir)
+	if len(paths) == 0 {
+		return "", ""
+	}
+	return paths[0], source
+}
+
+// resolveCookiePathsWithStateDir returns every configured cookies path.
+// Each --cookies-json entry (and each path-list entry in
+// $GEMINI_WEB_COOKIES_JSON_PATH) may be a cookie file or a directory; a
+// directory expands to its *.json files in name order.
+func resolveCookiePathsWithStateDir(stateDir string) ([]string, string) {
+	if len(cookiesJSON) > 0 {
+		return expandCookiePaths(cookiesJSON), "--cookies-json"
 	}
 	if stateDir != "" {
 		p := filepath.Join(stateDir, "cookies.json")
 		if _, err := os.Stat(p); err == nil {
-			return p, "state-dir"
+			return []string{p}, "state-dir"
 		}
 	}
 	if p := os.Getenv(envCookiesPath); p != "" {
-		return p, "$" + envCookiesPath
+		return expandCookiePaths(filepath.SplitList(p)), "$" + envCookiesPath
 	}
 	// Auto-discover from search paths
 	for _, p := range cookiesSearchPaths() {
 		if _, err := os.Stat(p); err == nil {
-			return p, "auto-discover"
+			return []string{p}, "auto-discover"
 		}
 	}
-	return "", ""
+	return nil, ""
+}
+
+// expandCookiePaths expands directory entries into their *.json files.
+func expandCookiePaths(entries []string) []string {
+	var paths []string
+	for _, entry := range entries {
+		if entry == "" {
+			continue
+		}
+		info, err := os.Stat(entry)
+		if err == nil && info.IsDir() {
+			matches, globErr := filepath.Glob(filepath.Join(entry, "*.json"))
+			if globErr == nil {
+				sort.Strings(matches)
+				paths = append(paths, matches...)
+			}
+			continue
+		}
+		paths = append(paths, entry)
+	}
+	return paths
 }
 
 // clientConfigFromFlags builds client configuration from CLI flags and environment.
@@ -72,14 +109,50 @@ func clientConfigFromFlags() (client.Config, map[string]string, error) {
 }
 
 func clientConfigFromFlagsWithStateDir(stateDir string) (client.Config, map[string]string, string, error) {
+	effectiveCookies, cookieSource := resolveCookiesJSONWithStateDir(stateDir)
+	cfg, jsonCookies, err := clientConfigFromCookieFile(effectiveCookies)
+	if err != nil {
+		return client.Config{}, nil, "", err
+	}
+	return cfg, jsonCookies, cookieSourceName(effectiveCookies, cookieSource), nil
+}
+
+// clientConfigsWithStateDir builds one client.Config per resolved cookie
+// file, for multi-account serve. With no cookie files it falls back to a
+// single env-var-only config. It returns the per-account cookie source names
+// for display.
+func clientConfigsWithStateDir(stateDir string) ([]client.Config, []string, error) {
+	paths, source := resolveCookiePathsWithStateDir(stateDir)
+	if len(paths) == 0 {
+		cfg, _, err := clientConfigFromCookieFile("")
+		if err != nil {
+			return nil, nil, err
+		}
+		return []client.Config{cfg}, []string{"env vars"}, nil
+	}
+	cfgs := make([]client.Config, 0, len(paths))
+	sources := make([]string, 0, len(paths))
+	for _, p := range paths {
+		cfg, _, err := clientConfigFromCookieFile(p)
+		if err != nil {
+			return nil, nil, err
+		}
+		cfgs = append(cfgs, cfg)
+		sources = append(sources, cookieSourceName(p, source))
+	}
+	return cfgs, sources, nil
+}
+
+// clientConfigFromCookieFile builds a client.Config from one cookie file.
+// An empty path builds an env-var-only config.
+func clientConfigFromCookieFile(path string) (client.Config, map[string]string, error) {
 	var jsonCookies map[string]string
 	var extraCookies map[string]string
 
-	effectiveCookies, cookieSource := resolveCookiesJSONWithStateDir(stateDir)
-	if effectiveCookies != "" {
-		jar, err := cookies.Load(effectiveCookies)
+	if path != "" {
+		jar, err := cookies.Load(path)
 		if err != nil {
-			return client.Config{}, nil, "", fmt.Errorf("loading cookies from %s: %w", effectiveCookies, err)
+			return client.Config{}, nil, fmt.Errorf("loading cookies from %s: %w", path, err)
 		}
 		jsonCookies = jar.Cookies
 
@@ -95,7 +168,7 @@ func clientConfigFromFlagsWithStateDir(stateDir string) (client.Config, map[stri
 	psidts := firstNonEmpty(jsonCookies["__Secure-1PSIDTS"], os.Getenv("GEMINI_SECURE_1PSIDTS"))
 
 	if psid == "" {
-		return client.Config{}, nil, "", cookiesNotFoundError()
+		return client.Config{}, nil, cookiesNotFoundError()
 	}
 	if psidts == "" {
 		fmt.Fprintln(os.Stderr, "Warning: __Secure-1PSIDTS not found. Session may still work with long-lived cookies.")
@@ -108,10 +181,6 @@ func clientConfigFromFlagsWithStateDir(stateDir string) (client.Config, map[stri
 
 	model := types.FindModel(modelName)
 
-	if effectiveCookies == "" {
-		cookieSource = "env vars"
-	}
-
 	return client.Config{
 		Secure1PSID:   psid,
 		Secure1PSIDTS: psidts,
@@ -121,7 +190,7 @@ func clientConfigFromFlagsWithStateDir(stateDir string) (client.Config, map[stri
 		Model:         model,
 		Verbose:       verbose,
 		Timeout:       time.Duration(requestTimeout * float64(time.Second)),
-	}, jsonCookies, cookieSourceName(effectiveCookies, cookieSource), nil
+	}, jsonCookies, nil
 }
 
 func cookieSourceName(path, source string) string {
@@ -159,8 +228,8 @@ func cookiesNotFoundError() error {
 	var b strings.Builder
 	b.WriteString("no cookies found\n\n")
 	b.WriteString("Looked in:\n")
-	if cookiesJSON != "" {
-		b.WriteString(fmt.Sprintf("  --cookies-json %s (not found or missing __Secure-1PSID)\n", cookiesJSON))
+	if len(cookiesJSON) > 0 {
+		b.WriteString(fmt.Sprintf("  --cookies-json %s (not found or missing __Secure-1PSID)\n", strings.Join(cookiesJSON, ", ")))
 	}
 	if p := os.Getenv(envCookiesPath); p != "" {
 		b.WriteString(fmt.Sprintf("  $GEMINI_WEB_COOKIES_JSON_PATH=%s\n", p))
