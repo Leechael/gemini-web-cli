@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Leechael/gemini-web-cli/internal/client"
 	"github.com/Leechael/gemini-web-cli/internal/client/protocol/rpcs"
@@ -60,6 +61,21 @@ func (e fatalStreamError) Error() string { return e.err.Error() }
 //   - Follow-up requests for an existing chat/research id or notebook id are
 //     pinned to the account that owns the resource (recorded at creation, or
 //     discovered by probing each account on first use).
+type accountHealth struct {
+	loggedIn    bool
+	lastError   string
+	lastErrorAt time.Time
+}
+
+// AccountSnapshot is the redacted health of one pool account for the status API.
+type AccountSnapshot struct {
+	Index       int
+	Name        string
+	LoggedIn    bool
+	LastError   string
+	LastErrorAt time.Time
+}
+
 type accountPool struct {
 	clients []accountClient
 	sources []string
@@ -68,6 +84,7 @@ type accountPool struct {
 	rr             int
 	chatOwners     map[string]int
 	notebookOwners map[string]int
+	health         []accountHealth
 }
 
 func newAccountPool(clients []accountClient, sources []string) *accountPool {
@@ -76,6 +93,7 @@ func newAccountPool(clients []accountClient, sources []string) *accountPool {
 		sources:        sources,
 		chatOwners:     make(map[string]int),
 		notebookOwners: make(map[string]int),
+		health:         make([]accountHealth, len(clients)),
 	}
 }
 
@@ -91,11 +109,13 @@ func (p *accountPool) Init(ctx context.Context) error {
 	var failures []string
 	for i, c := range p.clients {
 		if err := c.Init(ctx); err != nil {
+			p.noteInit(i, err)
 			msg := fmt.Sprintf("%s: %s", p.accountLabel(i), sanitizeUpstreamError(err.Error()))
 			failures = append(failures, msg)
 			log.Printf("%s init failed: %s", p.accountLabel(i), sanitizeUpstreamError(err.Error()))
 			continue
 		}
+		p.noteInit(i, nil)
 		log.Printf("%s ready", p.accountLabel(i))
 	}
 	if len(failures) == len(p.clients) {
@@ -191,6 +211,59 @@ func (p *accountPool) labelForChat(cid string) string {
 	return p.accountLabel(idx)
 }
 
+func (p *accountPool) noteInit(idx int, err error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if idx < 0 || idx >= len(p.health) {
+		return
+	}
+	if err != nil {
+		p.health[idx].loggedIn = false
+		p.health[idx].lastError = sanitizeUpstreamError(err.Error())
+		p.health[idx].lastErrorAt = time.Now().UTC()
+		return
+	}
+	p.health[idx].loggedIn = true
+}
+
+func (p *accountPool) noteRequestError(idx int, err error) {
+	if err == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if idx < 0 || idx >= len(p.health) {
+		return
+	}
+	p.health[idx].lastError = sanitizeUpstreamError(err.Error())
+	p.health[idx].lastErrorAt = time.Now().UTC()
+}
+
+// AccountSnapshots returns redacted per-account login health. Names are cookie
+// basenames (alice.json), never full paths.
+func (p *accountPool) AccountSnapshots() []AccountSnapshot {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	out := make([]AccountSnapshot, len(p.clients))
+	for i := range p.clients {
+		name := ""
+		if i < len(p.sources) {
+			name = shortSourceName(p.sources[i])
+		}
+		snap := AccountSnapshot{
+			Index:     i + 1,
+			Name:      name,
+			LoggedIn:  p.health[i].loggedIn,
+			LastError: p.health[i].lastError,
+		}
+		if !p.health[i].lastErrorAt.IsZero() {
+			snap.LastErrorAt = p.health[i].lastErrorAt
+		}
+		out[i] = snap
+	}
+	return out
+}
+
 // forNew runs fn against accounts in round-robin order until one succeeds.
 // It returns the winning account index so callers can record affinity.
 // A fatalStreamError stops the failover immediately.
@@ -210,6 +283,7 @@ func (p *accountPool) forNew(fn func(c accountClient) error) (int, error) {
 		if fatal, ok := err.(fatalStreamError); ok {
 			return -1, fatal.err
 		}
+		p.noteRequestError(idx, err)
 		log.Printf("%s failed, trying next: %s", p.accountLabel(idx), sanitizeUpstreamError(err.Error()))
 		lastErr = err
 	}

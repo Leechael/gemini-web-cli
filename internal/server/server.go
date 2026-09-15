@@ -255,6 +255,7 @@ func stateValue(value, fallback string) string {
 
 func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /v1/models", s.requireAuth(s.handleModels))
+	s.mux.HandleFunc("GET /v1/accounts", s.requireAuth(s.handleAccounts))
 	s.mux.HandleFunc("POST /v1/chat/completions", s.requireAuth(s.handleChatCompletions))
 	s.mux.HandleFunc("POST /v1/research", s.requireAuth(s.handleResearchCreate))
 	s.mux.HandleFunc("GET /v1/research/{id}", s.requireAuth(s.handleResearchGet))
