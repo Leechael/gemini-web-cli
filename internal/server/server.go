@@ -25,10 +25,11 @@ type StateInfo struct {
 	ChatMappingPath string
 	ChatMappingMode string
 	MCPDefaultModel string
+	Accounts        int
 }
 
 type Server struct {
-	client          *client.Client
+	pool            *accountPool
 	mux             *http.ServeMux
 	apiKey          string
 	exposeThoughts  bool
@@ -39,19 +40,29 @@ type Server struct {
 	stopRefresh context.CancelFunc
 }
 
-func New(cfg client.Config, apiKey string, exposeThoughts bool, mcpDefaultModel string, stateInfo StateInfo) (*Server, error) {
-	c, err := client.New(cfg)
-	if err != nil {
-		return nil, err
+func New(cfgs []client.Config, cookieSources []string, apiKey string, exposeThoughts bool, mcpDefaultModel string, stateInfo StateInfo) (*Server, error) {
+	if len(cfgs) == 0 {
+		return nil, fmt.Errorf("at least one account is required")
+	}
+	clients := make([]accountClient, 0, len(cfgs))
+	for _, cfg := range cfgs {
+		c, err := client.New(cfg)
+		if err != nil {
+			return nil, err
+		}
+		clients = append(clients, c)
 	}
 	chatMap, err := serverstate.NewChatMapStore(stateInfo.ChatMappingPath)
 	if err != nil {
-		c.Close()
+		for _, c := range clients {
+			c.Close()
+		}
 		return nil, err
 	}
 
+	stateInfo.Accounts = len(clients)
 	s := &Server{
-		client:          c,
+		pool:            newAccountPool(clients, cookieSources),
 		mux:             http.NewServeMux(),
 		apiKey:          apiKey,
 		exposeThoughts:  exposeThoughts,
@@ -64,10 +75,10 @@ func New(cfg client.Config, apiKey string, exposeThoughts bool, mcpDefaultModel 
 }
 
 func (s *Server) Init(ctx context.Context) error {
-	if err := s.client.Init(ctx); err != nil {
+	if err := s.pool.Init(ctx); err != nil {
 		return err
 	}
-	if err := s.client.FetchAndCacheModels(ctx); err != nil {
+	if err := s.pool.FetchAndCacheModels(ctx); err != nil {
 		return err
 	}
 
@@ -86,7 +97,7 @@ func (s *Server) Close() {
 	if s.stopRefresh != nil {
 		s.stopRefresh()
 	}
-	s.client.Close()
+	s.pool.Close()
 }
 
 func (s *Server) ListenAndServe(addr string) error {
@@ -212,6 +223,9 @@ func printBanner(addr string, stateInfo StateInfo) {
 	fmt.Fprintf(w, "State:\n")
 	fmt.Fprintf(w, "  state_dir: %s\n", stateValue(stateInfo.StateDir, "<none>"))
 	fmt.Fprintf(w, "  cookies: %s\n", stateValue(stateInfo.CookieSource, "<none>"))
+	if stateInfo.Accounts > 1 {
+		fmt.Fprintf(w, "  accounts: %d (round-robin with failover)\n", stateInfo.Accounts)
+	}
 	fmt.Fprintf(w, "  chat_mapping: %s\n\n", stateValue(stateInfo.ChatMappingMode, "memory only"))
 }
 
@@ -279,7 +293,7 @@ func (s *Server) refreshLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if err := s.client.Init(ctx); err != nil {
+			if err := s.pool.Init(ctx); err != nil {
 				log.Printf("token refresh failed: %v", err)
 			} else {
 				log.Printf("token refreshed")
@@ -292,8 +306,8 @@ func (s *Server) resolveModel(name string) *types.Model {
 	if name == "" || name == "auto" {
 		return types.FindModel("unspecified")
 	}
-	if s.client != nil {
-		if m := s.client.ResolveModel(name); m != nil {
+	if s.pool != nil {
+		if m := s.pool.ResolveModel(name); m != nil {
 			return m
 		}
 	}

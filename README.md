@@ -68,6 +68,12 @@ gemini-web-cli serve --state-dir ~/.local/share/gemini-web-cli/serve
 gemini-web-cli serve --port 8080 --state-dir ~/.local/share/gemini-web-cli/serve
 ```
 
+Multiple accounts are supported to spread rate limits — point `--cookies-json` at a directory of cookie files and new conversations rotate across accounts with failover:
+
+```bash
+gemini-web-cli serve --cookies-json accounts/   # one <name>.json per account
+```
+
 See [docs/serve.md](docs/serve.md) for the full reference: serve flags, REST endpoints, chat state mapping, MCP tools, and client configuration (Cursor, VS Code, Claude Desktop).
 
 ## Commands

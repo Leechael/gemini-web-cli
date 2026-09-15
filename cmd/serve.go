@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -30,7 +31,7 @@ var serveCmd = &cobra.Command{
 func runServe(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
-	cfg, _, cookieSource, err := clientConfigFromFlagsWithStateDir(serveStateDir)
+	cfgs, cookieSources, err := clientConfigsWithStateDir(serveStateDir)
 	if err != nil {
 		return err
 	}
@@ -40,7 +41,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	exposeThoughts := serveExposeThoughts || os.Getenv("GEMINI_WEB_CLI_EXPOSE_THOUGHTS") == "1"
 	stateInfo := server.StateInfo{
 		StateDir:        serveStateDir,
-		CookieSource:    cookieSource,
+		CookieSource:    strings.Join(cookieSources, ", "),
 		ChatMappingMode: "memory only",
 	}
 	if serveStateDir != "" {
@@ -49,7 +50,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 	stateInfo.MCPDefaultModel = serveMCPDefaultModel
 
-	srv, err := server.New(cfg, apiKey, exposeThoughts, serveMCPDefaultModel, stateInfo)
+	srv, err := server.New(cfgs, cookieSources, apiKey, exposeThoughts, serveMCPDefaultModel, stateInfo)
 	if err != nil {
 		return fmt.Errorf("creating server: %w", err)
 	}

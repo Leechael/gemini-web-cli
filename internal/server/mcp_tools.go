@@ -27,7 +27,7 @@ func (s *Server) resolveMCPModel(override string) (*types.Model, error) {
 		}
 		return model, nil
 	}
-	if m := s.client.ResolveModel(name); m != nil {
+	if m := s.pool.ResolveModel(name); m != nil {
 		return m, nil
 	}
 	if m := types.FindModel(name); m != nil {
@@ -198,7 +198,7 @@ func (s *Server) handleMCPResearchCreate(ctx context.Context, req mcp.CallToolRe
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 	}
-	plan, err := s.client.CreateAndStartDeepResearch(ctx, prompt, model)
+	plan, err := s.pool.CreateAndStartDeepResearch(ctx, prompt, model)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
@@ -218,7 +218,7 @@ func (s *Server) handleMCPResearchStatus(ctx context.Context, req mcp.CallToolRe
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	status, err := s.client.CheckDeepResearch(ctx, id)
+	status, err := s.pool.CheckDeepResearch(ctx, id)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
@@ -238,7 +238,7 @@ func (s *Server) handleMCPResearchResult(ctx context.Context, req mcp.CallToolRe
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	text, sources, err := s.client.GetDeepResearchResult(ctx, id)
+	text, sources, err := s.pool.GetDeepResearchResult(ctx, id)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
@@ -281,7 +281,7 @@ func (s *Server) handleMCPResearchList(ctx context.Context, req mcp.CallToolRequ
 	}
 	cursor := req.GetString("cursor", "")
 
-	reports, nextCursor, err := s.client.ListResearchReportsPage(ctx, count, cursor)
+	reports, nextCursor, err := s.pool.ListResearchReportsPage(ctx, count, cursor)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
@@ -328,7 +328,7 @@ func (s *Server) handleMCPResearchReply(ctx context.Context, req mcp.CallToolReq
 
 	metadata := make([]string, 10)
 	metadata[0] = id
-	if latest, err := s.client.FetchLatestChatResponse(ctx, id); err == nil && latest != nil {
+	if latest, err := s.pool.FetchLatestChatResponse(ctx, id); err == nil && latest != nil {
 		if latest.Rid != "" {
 			metadata[1] = latest.Rid
 		}
@@ -339,7 +339,7 @@ func (s *Server) handleMCPResearchReply(ctx context.Context, req mcp.CallToolReq
 		log.Printf("mcp research reply continuing without latest metadata chat_id=%q err=%q", id, err.Error())
 	}
 
-	output, err := s.client.SendMessageDeepResearch(ctx, prompt, metadata, model)
+	output, err := s.pool.SendMessageDeepResearch(ctx, prompt, metadata, model)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
@@ -366,7 +366,7 @@ func (s *Server) handleMCPAsk(ctx context.Context, req mcp.CallToolRequest) (*mc
 	}
 
 	notebook := req.GetString("notebook", "")
-	output, err := s.client.GenerateContent(ctx, prompt, model, notebook)
+	output, err := s.pool.GenerateContent(ctx, prompt, model, notebook)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
@@ -450,7 +450,7 @@ func (s *Server) handleMCPNotebookCreate(ctx context.Context, req mcp.CallToolRe
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	resource, err := s.client.CreateNotebook(ctx, title)
+	resource, err := s.pool.CreateNotebook(ctx, title)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
@@ -490,7 +490,7 @@ func (s *Server) handleMCPNotebookGet(ctx context.Context, req mcp.CallToolReque
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	nb, err := s.client.GetNotebook(ctx, id)
+	nb, err := s.pool.GetNotebook(ctx, id)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
@@ -505,7 +505,7 @@ func (s *Server) handleMCPNotebookListChats(ctx context.Context, req mcp.CallToo
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	items, err := s.client.ListNotebookChats(ctx, id)
+	items, err := s.pool.ListNotebookChats(ctx, id)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
@@ -530,11 +530,8 @@ func (s *Server) handleMCPNotebookAddFileSource(ctx context.Context, req mcp.Cal
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	u, err := s.client.UploadFile(ctx, path)
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("upload failed: %v", err)), nil
-	}
-	nb, err := s.client.AddNotebookSource(ctx, id, u.FileName, u.MimeType, u.ID)
+	// Upload and attach must run on the account owning the notebook.
+	nb, err := s.pool.AddNotebookFileSource(ctx, id, path)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
@@ -553,7 +550,7 @@ func (s *Server) handleMCPNotebookAddURLSource(ctx context.Context, req mcp.Call
 	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
 		return mcp.NewToolResultError("url must start with http:// or https://"), nil
 	}
-	nb, err := s.client.AddNotebookURLSource(ctx, id, url)
+	nb, err := s.pool.AddNotebookURLSource(ctx, id, url)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
@@ -565,7 +562,7 @@ func (s *Server) handleMCPNotebookRemoveSource(ctx context.Context, req mcp.Call
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	if err := s.client.RemoveNotebookSource(ctx, source); err != nil {
+	if err := s.pool.RemoveNotebookSource(ctx, source); err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	return mcp.NewToolResultJSON(map[string]any{"removed": source})

@@ -73,6 +73,27 @@ Cookie files are resolved in the following order:
 
 Existing cookies are not migrated into `--state-dir` automatically.
 
+### Multiple accounts
+
+`serve` can run against several Google accounts at once to spread rate limits. New conversations, research tasks, and notebooks are assigned round-robin; when an account fails (e.g. HTTP 429), the next account is tried. Follow-ups for an existing chat/research id or notebook id are pinned to the account that owns it — the owner is recorded at creation and re-discovered by probing after a restart. Streaming requests fail over only before the first delta is emitted.
+
+Point the server at multiple cookie files by repeating `--cookies-json`, or by giving a directory (all `*.json` files inside, in name order):
+
+```bash
+gemini-web-cli import '<cookies_alice>' -o accounts/alice.json
+gemini-web-cli import '<cookies_bob>' -o accounts/bob.json
+
+gemini-web-cli serve --cookies-json accounts/
+# equivalent: gemini-web-cli serve --cookies-json accounts/alice.json --cookies-json accounts/bob.json
+```
+
+`$GEMINI_WEB_COOKIES_JSON_PATH` also accepts multiple entries separated by the OS path-list separator (`:` on Linux/macOS).
+
+Notes:
+
+- One-shot commands (`ask`, `reply`, ...) and `status --cookies-only` stay single-account and use the first resolved cookie file.
+- `gemini_research_list` merges reports from every account, newest first; cross-account pagination cursors are not supported.
+
 ## MCP server
 
 The MCP endpoint is at `http://127.0.0.1:<port>/mcp` (Streamable HTTP, stateless). It is **not** protected by `--api-key` — keep it bound to `127.0.0.1` and do not expose it publicly without your own auth proxy.

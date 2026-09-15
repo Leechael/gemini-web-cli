@@ -392,7 +392,7 @@ func TestMCPToolsList(t *testing.T) {
 func TestResolveMCPModel(t *testing.T) {
 	c := mustTestClient(t)
 
-	s := &Server{client: c, mcpDefaultModel: "gemini-3.8-flash"}
+	s := &Server{pool: newAccountPool([]accountClient{c}, nil), mcpDefaultModel: "gemini-3.8-flash"}
 	if m, err := s.resolveMCPModel("unspecified"); err != nil || m == nil || m.Name != "unspecified" {
 		t.Fatalf("override should take precedence, got model=%v err=%v", m, err)
 	}
@@ -403,12 +403,12 @@ func TestResolveMCPModel(t *testing.T) {
 		t.Fatal("explicit missing model should return an error")
 	}
 
-	s2 := &Server{client: c}
+	s2 := &Server{pool: newAccountPool([]accountClient{c}, nil)}
 	if m, err := s2.resolveMCPModel(""); err != nil || m == nil || m.Name != "unspecified" {
 		t.Fatalf("fallback to unspecified failed, got model=%v err=%v", m, err)
 	}
 
-	s3 := &Server{client: c, mcpDefaultModel: "missing-default-model"}
+	s3 := &Server{pool: newAccountPool([]accountClient{c}, nil), mcpDefaultModel: "missing-default-model"}
 	if _, err := s3.resolveMCPModel(""); err == nil {
 		t.Fatal("missing default model should return an error")
 	}
@@ -426,7 +426,7 @@ func TestMCPResearchCreateRequiresPrompt(t *testing.T) {
 }
 
 func TestMCPListModelsFallsBackToBuiltInsWhenNotFetched(t *testing.T) {
-	s := &Server{client: mustTestClient(t)}
+	s := &Server{pool: newAccountPool([]accountClient{mustTestClient(t)}, nil)}
 	result, err := s.handleMCPListModels(context.Background(), mcp.CallToolRequest{})
 	if err != nil {
 		t.Fatalf("handler returned Go error: %v", err)

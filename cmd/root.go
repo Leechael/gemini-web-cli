@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	cookiesJSON    string
+	cookiesJSON    []string
 	proxy          string
 	accountIndex   int
 	hasAccountIdx  bool
@@ -57,7 +57,7 @@ func init() {
 	)
 
 	pf := rootCmd.PersistentFlags()
-	pf.StringVar(&cookiesJSON, "cookies-json", "", "Path to JSON cookie file (or set $GEMINI_WEB_COOKIES_JSON_PATH)")
+	pf.StringArrayVar(&cookiesJSON, "cookies-json", nil, "Path to JSON cookie file or directory of cookie files; repeatable for multi-account serve (or set $GEMINI_WEB_COOKIES_JSON_PATH, path-list separated)")
 	pf.StringVar(&proxy, "proxy", defaultProxy, "HTTP/SOCKS proxy URL")
 	pf.IntVar(&accountIndex, "account-index", 0, "Google account index (e.g. 2 => /u/2)")
 	pf.StringVar(&modelName, "model", "unspecified", "Model name")

@@ -74,7 +74,7 @@ func (s *Server) handleResearchCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	plan, err := s.client.CreateAndStartDeepResearch(r.Context(), req.Prompt, model)
+	plan, err := s.pool.CreateAndStartDeepResearch(r.Context(), req.Prompt, model)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -98,7 +98,7 @@ func (s *Server) handleResearchStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	status, err := s.client.CheckDeepResearch(r.Context(), id)
+	status, err := s.pool.CheckDeepResearch(r.Context(), id)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -120,7 +120,7 @@ func (s *Server) handleResearchGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	status, err := s.client.CheckDeepResearch(r.Context(), id)
+	status, err := s.pool.CheckDeepResearch(r.Context(), id)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -159,7 +159,7 @@ func (s *Server) handleResearchResult(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) researchResult(ctx context.Context, id string) (*researchResultResponse, error) {
-	text, sources, err := s.client.GetDeepResearchResult(ctx, id)
+	text, sources, err := s.pool.GetDeepResearchResult(ctx, id)
 	if err != nil {
 		return nil, err
 	}
