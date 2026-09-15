@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -18,12 +19,18 @@ var importCmd = &cobra.Command{
 	Short: "Parse raw browser cookies and save as JSON",
 	Long: `Parse a raw cookie string (from browser DevTools) and save as a structured JSON file.
 
-Example:
+Read from an argument, from stdin when the argument is omitted or "-", or from a pipe:
+
   gemini-web-cli import '_ga=GA1.1.123; __Secure-1PSID=g.a000...; SID=abc...'
-  gemini-web-cli import '_ga=GA1.1.123; __Secure-1PSID=g.a000...' -o cookies.json`,
-	Args: cobra.ExactArgs(1),
+  gemini-web-cli import '_ga=GA1.1.123; __Secure-1PSID=g.a000...' -o cookies.json
+  pbpaste | gemini-web-cli import
+  gemini-web-cli import - -o cookies.json`,
+	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		raw := args[0]
+		raw, err := readImportInput(args)
+		if err != nil {
+			return err
+		}
 		parsed := parseRawCookies(raw)
 
 		if len(parsed) == 0 {
@@ -75,6 +82,33 @@ Example:
 		fmt.Printf("Saved %d cookies to %s\n", len(parsed), output)
 		return nil
 	},
+}
+
+// readImportInput returns the raw cookie string from the argument, or stdin
+// when the argument is omitted or `-`. A missing argument on a TTY is an
+// error so the command does not hang waiting for keyboard input.
+func readImportInput(args []string) (string, error) {
+	if len(args) == 1 && args[0] != "-" {
+		return args[0], nil
+	}
+	if len(args) == 0 {
+		fi, err := os.Stdin.Stat()
+		if err != nil {
+			return "", err
+		}
+		if fi.Mode()&os.ModeCharDevice != 0 {
+			return "", fmt.Errorf("cookie string required (pass as argument or pipe via stdin)")
+		}
+	}
+	data, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		return "", err
+	}
+	raw := strings.TrimSpace(string(data))
+	if raw == "" {
+		return "", fmt.Errorf("no cookies parsed from stdin")
+	}
+	return raw, nil
 }
 
 // parseRawCookies parses a raw cookie header string like "name1=value1; name2=value2; ..."
