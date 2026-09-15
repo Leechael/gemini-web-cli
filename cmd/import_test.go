@@ -1,8 +1,11 @@
 package cmd
 
 import (
+	"io"
 	"os"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestReadImportInputArgument(t *testing.T) {
@@ -15,14 +18,19 @@ func TestReadImportInputArgument(t *testing.T) {
 	}
 }
 
+func withImportStdin(t *testing.T, src importStdinSource) {
+	t.Helper()
+	old := importStdin
+	importStdin = src
+	t.Cleanup(func() { importStdin = old })
+}
+
 func TestReadImportInputStdin(t *testing.T) {
 	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
 	}
-	old := os.Stdin
-	os.Stdin = r
-	t.Cleanup(func() { os.Stdin = old })
+	withImportStdin(t, r)
 	if _, err := w.WriteString("  __Secure-1PSID=abc; SID=x \n"); err != nil {
 		t.Fatal(err)
 	}
@@ -42,9 +50,7 @@ func TestReadImportInputDash(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	old := os.Stdin
-	os.Stdin = r
-	t.Cleanup(func() { os.Stdin = old })
+	withImportStdin(t, r)
 	if _, err := w.WriteString("__Secure-1PSID=fromdash"); err != nil {
 		t.Fatal(err)
 	}
@@ -64,12 +70,36 @@ func TestReadImportInputEmptyStdin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	old := os.Stdin
-	os.Stdin = r
-	t.Cleanup(func() { os.Stdin = old })
+	withImportStdin(t, r)
 	_ = w.Close()
 
 	if _, err := readImportInput([]string{"-"}); err == nil {
 		t.Fatal("expected error for empty stdin")
 	}
 }
+
+func TestReadImportInputTTYRequiresArg(t *testing.T) {
+	withImportStdin(t, stubStdin{Reader: strings.NewReader("should-not-read"), mode: os.ModeCharDevice})
+	_, err := readImportInput(nil)
+	if err == nil || !strings.Contains(err.Error(), "cookie string required") {
+		t.Fatalf("err = %v, want cookie string required", err)
+	}
+}
+
+type stubStdin struct {
+	io.Reader
+	mode os.FileMode
+}
+
+func (s stubStdin) Stat() (os.FileInfo, error) {
+	return stubFileInfo{mode: s.mode}, nil
+}
+
+type stubFileInfo struct{ mode os.FileMode }
+
+func (stubFileInfo) Name() string        { return "stdin" }
+func (stubFileInfo) Size() int64         { return 0 }
+func (i stubFileInfo) Mode() os.FileMode { return i.mode }
+func (stubFileInfo) ModTime() time.Time  { return time.Time{} }
+func (stubFileInfo) IsDir() bool         { return false }
+func (stubFileInfo) Sys() any            { return nil }

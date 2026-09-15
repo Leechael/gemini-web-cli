@@ -12,6 +12,7 @@ Download from [GitHub Releases](https://github.com/Leechael/gemini-web-cli/relea
 | Windows | arm64 | `gemini-web-cli-windows-arm64.zip` |
 
 ```bash
+# macOS arm64; other platforms: use the table above
 curl -sL https://github.com/Leechael/gemini-web-cli/releases/latest/download/gemini-web-cli-darwin-arm64.tar.gz | tar xz
 ./gemini-web-cli import '_ga=...; __Secure-1PSID=...'
 ./gemini-web-cli serve --state-dir ~/.local/share/gemini-web-cli/serve

@@ -11,7 +11,7 @@ It is **not** protected by `--api-key`. Keep it on `127.0.0.1`, or put your own 
 | Tool | Description |
 |------|-------------|
 | `gemini_ask` | Single-turn prompt; returns `text` plus any generated image/video/media URLs. Args: `prompt` (required), `model` (optional), `notebook` (optional, scopes the new chat to a notebook). |
-| `gemini_research_create` | Submit a deep research task; returns `id`, `title`, `eta_text`, `steps`. Args: `prompt` (required), `model` (optional). |
+| `gemini_research_create` | Submit a deep research task; returns `id`, `title`, `eta_text`, `steps`. Args: `prompt` (required), `model` (optional, `auto`/`unspecified` only). |
 | `gemini_research_status` | Poll task state (`done`, `running`, `pending_confirm`, `not_research`, `empty`). Args: `id` (required). |
 | `gemini_research_result` | Fetch the completed report text and source citations. Args: `id` (required). |
 | `gemini_research_list` | List completed deep research reports from the library. Args: `count` (optional, default `13`), `cursor` (optional). |

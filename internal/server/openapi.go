@@ -18,6 +18,7 @@ const openapiSpec = `{
       "get": {
         "operationId": "listAccounts",
         "summary": "List cookie accounts and login health",
+        "security": [ {}, { "bearerAuth": [] }, { "apiKeyAuth": [] } ],
         "responses": {
           "200": {
             "description": "Account list",
@@ -250,6 +251,10 @@ const openapiSpec = `{
     }
   },
   "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer" },
+      "apiKeyAuth": { "type": "apiKey", "in": "header", "name": "X-API-Key" }
+    },
     "schemas": {
       "AccountList": {
         "type": "object",

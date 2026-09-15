@@ -188,7 +188,9 @@ func shortSourceName(name string) string {
 		return ""
 	}
 	path := name
-	if i := strings.Index(name, " ("); i >= 0 {
+	// cookieSourceName formats "<path> (<origin>)"; strip only that trailing
+	// annotation so a basename like "foo (bar).json" stays intact.
+	if i := strings.LastIndex(name, " ("); i >= 0 && strings.HasSuffix(name, ")") {
 		path = name[:i]
 	}
 	base := filepath.Base(path)
@@ -281,7 +283,7 @@ func (p *accountPool) forNew(fn func(c accountClient) error) (int, error) {
 			return idx, nil
 		}
 		if fatal, ok := err.(fatalStreamError); ok {
-			return -1, fatal.err
+			return idx, fatal.err
 		}
 		p.noteRequestError(idx, err)
 		log.Printf("%s failed, trying next: %s", p.accountLabel(idx), sanitizeUpstreamError(err.Error()))
@@ -309,21 +311,28 @@ func (p *accountPool) recordChatOutput(output *types.ModelOutput, idx int) {
 
 // chatOwner resolves the account owning a chat or research id, probing every
 // account on first use (e.g. after a restart wiped the in-memory affinity).
-func (p *accountPool) chatOwner(ctx context.Context, cid string) (accountClient, error) {
+func (p *accountPool) chatOwner(ctx context.Context, cid string) (accountClient, int, error) {
 	p.mu.Lock()
 	idx, ok := p.chatOwners[cid]
 	p.mu.Unlock()
 	if ok {
-		return p.clients[idx], nil
+		return p.clients[idx], idx, nil
 	}
 	for i, c := range p.clients {
 		turns, err := c.ReadChat(ctx, cid, 1)
 		if err == nil && len(turns) > 0 {
 			p.recordChat(cid, i)
-			return c, nil
+			return c, i, nil
 		}
 	}
-	return nil, fmt.Errorf("chat %q not found on any account", cid)
+	return nil, -1, fmt.Errorf("chat %q not found on any account", cid)
+}
+
+func (p *accountPool) observeErr(idx int, err error) error {
+	if err != nil && idx >= 0 {
+		p.noteRequestError(idx, err)
+	}
+	return err
 }
 
 func normalizeNotebookID(id string) string {
@@ -365,6 +374,7 @@ func (p *accountPool) notebookOwner(ctx context.Context, id string) (accountClie
 			return c, i, nil
 		}
 		if err != nil {
+			p.noteRequestError(i, err)
 			probeErrs = append(probeErrs, fmt.Sprintf("%s: %s", p.accountLabel(i), sanitizeUpstreamError(err.Error())))
 		}
 	}
@@ -376,22 +386,24 @@ func (p *accountPool) notebookOwner(ctx context.Context, id string) (accountClie
 
 // FetchLatestChatResponse routes to the account owning the chat.
 func (p *accountPool) FetchLatestChatResponse(ctx context.Context, cid string) (*client.LatestResponse, error) {
-	c, err := p.chatOwner(ctx, cid)
+	c, idx, err := p.chatOwner(ctx, cid)
 	if err != nil {
 		return nil, err
 	}
-	return c.FetchLatestChatResponse(ctx, cid)
+	out, err := c.FetchLatestChatResponse(ctx, cid)
+	return out, p.observeErr(idx, err)
 }
 
 // SendMessage continues an existing chat when metadata carries a chat id,
 // otherwise starts a new chat on the next account with failover.
 func (p *accountPool) SendMessage(ctx context.Context, prompt string, metadata []string, model *types.Model, notebook string) (*types.ModelOutput, error) {
 	if len(metadata) > 0 && metadata[0] != "" {
-		c, err := p.chatOwner(ctx, metadata[0])
+		c, idx, err := p.chatOwner(ctx, metadata[0])
 		if err != nil {
 			return nil, err
 		}
-		return c.SendMessage(ctx, prompt, metadata, model, notebook)
+		out, err := c.SendMessage(ctx, prompt, metadata, model, notebook)
+		return out, p.observeErr(idx, err)
 	}
 	var output *types.ModelOutput
 	idx, err := p.forNew(func(c accountClient) error {
@@ -413,19 +425,24 @@ func (p *accountPool) SendMessage(ctx context.Context, prompt string, metadata [
 // when the failing account has not emitted any delta yet.
 func (p *accountPool) SendMessageStream(ctx context.Context, prompt string, metadata []string, model *types.Model, notebook string, cb client.StreamCallback) (*types.ModelOutput, error) {
 	if len(metadata) > 0 && metadata[0] != "" {
-		c, err := p.chatOwner(ctx, metadata[0])
+		c, idx, err := p.chatOwner(ctx, metadata[0])
 		if err != nil {
 			return nil, err
 		}
-		return c.SendMessageStream(ctx, prompt, metadata, model, notebook, cb)
+		out, err := c.SendMessageStream(ctx, prompt, metadata, model, notebook, cb)
+		return out, p.observeErr(idx, err)
 	}
 	var output *types.ModelOutput
+	var seen string
 	idx, err := p.forNew(func(c accountClient) error {
 		// Buffer metadata-only frames so a failing account cannot leak its
 		// chat id to the caller before failover picks the winner.
 		var buffered []*types.ModelOutput
 		emitted := false
 		out, err := c.SendMessageStream(ctx, prompt, metadata, model, notebook, func(o *types.ModelOutput) {
+			if len(o.Metadata) > 0 && o.Metadata[0] != "" {
+				seen = o.Metadata[0]
+			}
 			if o.TextDelta != "" || o.ThoughtsDelta != "" {
 				emitted = true
 				for _, b := range buffered {
@@ -452,6 +469,9 @@ func (p *accountPool) SendMessageStream(ctx context.Context, prompt string, meta
 		return nil
 	})
 	if err != nil {
+		if seen != "" && idx >= 0 {
+			p.recordChat(seen, idx)
+		}
 		return nil, err
 	}
 	p.recordChatOutput(output, idx)
@@ -469,7 +489,7 @@ func (p *accountPool) GenerateContent(ctx context.Context, prompt string, model 
 		}
 		output, err := c.GenerateContent(ctx, prompt, model, notebook)
 		if err != nil {
-			return nil, err
+			return nil, p.observeErr(idx, err)
 		}
 		p.recordChatOutput(output, idx)
 		return output, nil
@@ -500,18 +520,22 @@ func (p *accountPool) GenerateContentStream(ctx context.Context, prompt string, 
 		}
 		output, err := c.GenerateContentStream(ctx, prompt, model, notebook, cb)
 		if err != nil {
-			return nil, err
+			return nil, p.observeErr(idx, err)
 		}
 		p.recordChatOutput(output, idx)
 		return output, nil
 	}
 	var output *types.ModelOutput
+	var seen string
 	idx, err := p.forNew(func(c accountClient) error {
 		// Buffer metadata-only frames so a failing account cannot leak its
 		// chat id to the caller before failover picks the winner.
 		var buffered []*types.ModelOutput
 		emitted := false
 		out, err := c.GenerateContentStream(ctx, prompt, model, notebook, func(o *types.ModelOutput) {
+			if len(o.Metadata) > 0 && o.Metadata[0] != "" {
+				seen = o.Metadata[0]
+			}
 			if o.TextDelta != "" || o.ThoughtsDelta != "" {
 				emitted = true
 				for _, b := range buffered {
@@ -538,6 +562,9 @@ func (p *accountPool) GenerateContentStream(ctx context.Context, prompt string, 
 		return nil
 	})
 	if err != nil {
+		if seen != "" && idx >= 0 {
+			p.recordChat(seen, idx)
+		}
 		return nil, err
 	}
 	p.recordChatOutput(output, idx)
@@ -567,20 +594,22 @@ func (p *accountPool) CreateAndStartDeepResearch(ctx context.Context, prompt str
 
 // CheckDeepResearch routes to the account owning the research chat.
 func (p *accountPool) CheckDeepResearch(ctx context.Context, cid string) (*client.ResearchStatus, error) {
-	c, err := p.chatOwner(ctx, cid)
+	c, idx, err := p.chatOwner(ctx, cid)
 	if err != nil {
 		return nil, err
 	}
-	return c.CheckDeepResearch(ctx, cid)
+	out, err := c.CheckDeepResearch(ctx, cid)
+	return out, p.observeErr(idx, err)
 }
 
 // GetDeepResearchResult routes to the account owning the research chat.
 func (p *accountPool) GetDeepResearchResult(ctx context.Context, cid string) (string, map[int]types.GroundingSource, error) {
-	c, err := p.chatOwner(ctx, cid)
+	c, idx, err := p.chatOwner(ctx, cid)
 	if err != nil {
 		return "", nil, err
 	}
-	return c.GetDeepResearchResult(ctx, cid)
+	text, sources, err := c.GetDeepResearchResult(ctx, cid)
+	return text, sources, p.observeErr(idx, err)
 }
 
 // SendMessageDeepResearch routes to the account owning the research chat.
@@ -588,11 +617,12 @@ func (p *accountPool) SendMessageDeepResearch(ctx context.Context, prompt string
 	if len(metadata) == 0 || metadata[0] == "" {
 		return nil, fmt.Errorf("research chat id is required in metadata")
 	}
-	c, err := p.chatOwner(ctx, metadata[0])
+	c, idx, err := p.chatOwner(ctx, metadata[0])
 	if err != nil {
 		return nil, err
 	}
-	return c.SendMessageDeepResearch(ctx, prompt, metadata, model)
+	out, err := c.SendMessageDeepResearch(ctx, prompt, metadata, model)
+	return out, p.observeErr(idx, err)
 }
 
 // ListResearchReportsPage merges reports from every account, newest first.
@@ -607,6 +637,7 @@ func (p *accountPool) ListResearchReportsPage(ctx context.Context, count int, cu
 	for i, c := range p.clients {
 		reports, _, err := c.ListResearchReportsPage(ctx, count, "")
 		if err != nil {
+			p.noteRequestError(i, err)
 			failures = append(failures, fmt.Sprintf("%s: %s", p.accountLabel(i), sanitizeUpstreamError(err.Error())))
 			continue
 		}
@@ -648,47 +679,51 @@ func (p *accountPool) CreateNotebook(ctx context.Context, title string) (string,
 // (nil, nil) when probes confirmed no account owns the id, so handlers can
 // answer 404; probe failures are returned as errors instead.
 func (p *accountPool) GetNotebook(ctx context.Context, id string) (*rpcs.Notebook, error) {
-	c, _, err := p.notebookOwner(ctx, id)
+	c, idx, err := p.notebookOwner(ctx, id)
 	if err != nil {
 		if errors.Is(err, errNotebookNotFound) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	return c.GetNotebook(ctx, id)
+	nb, err := c.GetNotebook(ctx, id)
+	return nb, p.observeErr(idx, err)
 }
 
 // ListNotebookChats routes to the account owning the notebook.
 func (p *accountPool) ListNotebookChats(ctx context.Context, id string) ([]types.ChatItem, error) {
-	c, _, err := p.notebookOwner(ctx, id)
+	c, idx, err := p.notebookOwner(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	return c.ListNotebookChats(ctx, id)
+	out, err := c.ListNotebookChats(ctx, id)
+	return out, p.observeErr(idx, err)
 }
 
 // AddNotebookURLSource routes to the account owning the notebook.
 func (p *accountPool) AddNotebookURLSource(ctx context.Context, id string, url string) (*rpcs.Notebook, error) {
-	c, _, err := p.notebookOwner(ctx, id)
+	c, idx, err := p.notebookOwner(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	return c.AddNotebookURLSource(ctx, id, url)
+	out, err := c.AddNotebookURLSource(ctx, id, url)
+	return out, p.observeErr(idx, err)
 }
 
 // AddNotebookFileSource uploads a file and attaches it to the notebook on the
 // account owning the notebook. Upload and attach must share one account
 // because upload tokens are account-bound.
 func (p *accountPool) AddNotebookFileSource(ctx context.Context, id string, path string) (*rpcs.Notebook, error) {
-	c, _, err := p.notebookOwner(ctx, id)
+	c, idx, err := p.notebookOwner(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 	u, err := c.UploadFile(ctx, path)
 	if err != nil {
-		return nil, fmt.Errorf("upload failed: %w", err)
+		return nil, p.observeErr(idx, fmt.Errorf("upload failed: %w", err))
 	}
-	return c.AddNotebookSource(ctx, id, u.FileName, u.MimeType, u.ID)
+	nb, err := c.AddNotebookSource(ctx, id, u.FileName, u.MimeType, u.ID)
+	return nb, p.observeErr(idx, err)
 }
 
 // RemoveNotebookSource routes to the account owning the notebook that the
@@ -698,9 +733,9 @@ func (p *accountPool) RemoveNotebookSource(ctx context.Context, resource string)
 	if idx := strings.Index(resource, "/sources/"); idx >= 0 {
 		notebookID = resource[:idx]
 	}
-	c, _, err := p.notebookOwner(ctx, notebookID)
+	c, idx, err := p.notebookOwner(ctx, notebookID)
 	if err != nil {
 		return err
 	}
-	return c.RemoveNotebookSource(ctx, resource)
+	return p.observeErr(idx, c.RemoveNotebookSource(ctx, resource))
 }

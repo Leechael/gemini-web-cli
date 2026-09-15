@@ -117,14 +117,14 @@ func (s *Server) ListenAndServe(addr string) error {
 // mcpLoggingMiddleware already logs those calls.
 func accessLogMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/mcp") {
+		if r.URL.Path == "/mcp" || strings.HasPrefix(r.URL.Path, "/mcp/") {
 			next.ServeHTTP(w, r)
 			return
 		}
 		start := time.Now()
 		sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(sw, r)
-		log.Printf("http %s %s remote=%s status=%d dur=%s",
+		log.Printf("http %s %q remote=%s status=%d dur=%s",
 			r.Method, r.URL.Path, clientIP(r), sw.status, time.Since(start).Round(time.Millisecond))
 	})
 }

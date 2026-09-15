@@ -38,10 +38,16 @@ var rootCmd = &cobra.Command{
 		// Silence usage after Args validation passes — argument errors
 		// still show usage, but runtime errors (network, auth, etc.) don't.
 		cmd.SilenceUsage = true
-		if verbose || envFlagOn(envVerbose) {
+		if envFlagOn(envVerbose) {
+			verbose = true
+		}
+		if envFlagOn(envRPCLog) {
+			rpcLog = true
+		}
+		if verbose {
 			client.SetVerbose(os.Stderr)
 		}
-		if rpcLog || envFlagOn(envRPCLog) {
+		if rpcLog {
 			rpclog.SetEnabled(true)
 		}
 	},

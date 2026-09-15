@@ -14,6 +14,13 @@ import (
 
 var importOutput string
 
+type importStdinSource interface {
+	io.Reader
+	Stat() (os.FileInfo, error)
+}
+
+var importStdin importStdinSource = os.Stdin
+
 var importCmd = &cobra.Command{
 	Use:   "import [raw_cookies]",
 	Short: "Parse raw browser cookies and save as JSON",
@@ -92,7 +99,7 @@ func readImportInput(args []string) (string, error) {
 		return args[0], nil
 	}
 	if len(args) == 0 {
-		fi, err := os.Stdin.Stat()
+		fi, err := importStdin.Stat()
 		if err != nil {
 			return "", err
 		}
@@ -100,7 +107,7 @@ func readImportInput(args []string) (string, error) {
 			return "", fmt.Errorf("cookie string required (pass as argument or pipe via stdin)")
 		}
 	}
-	data, err := io.ReadAll(os.Stdin)
+	data, err := io.ReadAll(importStdin)
 	if err != nil {
 		return "", err
 	}

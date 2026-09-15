@@ -520,6 +520,9 @@ func TestAccountLabel(t *testing.T) {
 	if got, want := pool.accountLabel(1), "account 2/2 (bob.json)"; got != want {
 		t.Fatalf("accountLabel(1) = %q, want %q", got, want)
 	}
+	if got, want := shortSourceName("/tmp/foo (bar).json (--cookies-json)"), "foo (bar).json"; got != want {
+		t.Fatalf("shortSourceName = %q, want %q", got, want)
+	}
 
 	pool.recordChat("c_1", 1)
 	if got, want := pool.labelForChat("c_1"), "account 2/2 (bob.json)"; got != want {

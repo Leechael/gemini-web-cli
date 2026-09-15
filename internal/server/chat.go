@@ -414,7 +414,7 @@ func (s *Server) writeSSE(w http.ResponseWriter, chatID, modelName string, gener
 var (
 	geminiURLWithQueryRE = regexp.MustCompile(`https://gemini\.google\.com/[^\s"]+\?[^\s"]+`)
 	// Longer cookie names first so SID does not match inside 1PSID.
-	secretAssignmentRE = regexp.MustCompile(`(?i)(__Secure-1PSIDTS|__Secure-1PSID|SAPISID|APISID|SSID|HSID|SID|NID|Bearer)(=|[ \t]+)[^\s;&"]+`)
+	secretAssignmentRE = regexp.MustCompile(`(?i)(__Secure-1PSIDTS|__Secure-1PSID|PSIDTS|SAPISID|APISID|SSID|HSID|SID|NID|Bearer)(=|[ \t]+)[^\s;&"]+`)
 	atAssignmentRE     = regexp.MustCompile(`(^|[&?\s])at=[^&\s"]+`)
 )
 

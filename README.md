@@ -97,12 +97,13 @@ docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/out" \
 
 # Run the server
 docker run --user "$(id -u):$(id -g)" -p 8080:8080 \
+  -e GEMINI_WEB_CLI_API_KEY=your-secret \
   -v "$PWD/cookies.json:/cookies:ro" \
   -v "$PWD/state:/state" \
   ghcr.io/leechael/gemini-web-cli:latest
 ```
 
-Multi-account: mount a directory of `*.json` files at `/cookies`.
+Published ports are reachable by anyone who can reach the host — set `GEMINI_WEB_CLI_API_KEY`. Multi-account: mount a directory of `*.json` files at `/cookies`.
 
 Env, volumes, and logs: [docs/docker.md](docs/docker.md).
 
