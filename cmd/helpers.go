@@ -15,7 +15,17 @@ import (
 	"github.com/Leechael/gemini-web-cli/internal/types"
 )
 
-const envCookiesPath = "GEMINI_WEB_COOKIES_JSON_PATH"
+const (
+	envCookiesPath = "GEMINI_WEB_COOKIES_JSON_PATH"
+	envVerbose     = "GEMINI_WEB_CLI_VERBOSE"
+	envRPCLog      = "GEMINI_WEB_CLI_RPC_LOG"
+)
+
+// envFlagOn reports whether a 0/1-style env toggle is on.
+func envFlagOn(name string) bool {
+	v := strings.TrimSpace(os.Getenv(name))
+	return v == "1" || strings.EqualFold(v, "true") || strings.EqualFold(v, "yes")
+}
 
 // cookiesSearchPaths returns the ordered list of paths to search for cookies.json.
 // Project-level (./cookies.json) → User-level (~/.config/) → System-level (/etc/).

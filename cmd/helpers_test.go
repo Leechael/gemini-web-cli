@@ -9,6 +9,25 @@ import (
 	"github.com/Leechael/gemini-web-cli/internal/client"
 )
 
+func TestEnvFlagOn(t *testing.T) {
+	t.Setenv(envVerbose, "")
+	if envFlagOn(envVerbose) {
+		t.Fatal("empty should be off")
+	}
+	t.Setenv(envVerbose, "1")
+	if !envFlagOn(envVerbose) {
+		t.Fatal("1 should be on")
+	}
+	t.Setenv(envVerbose, "true")
+	if !envFlagOn(envVerbose) {
+		t.Fatal("true should be on")
+	}
+	t.Setenv(envVerbose, "0")
+	if envFlagOn(envVerbose) {
+		t.Fatal("0 should be off")
+	}
+}
+
 func TestSetGenerationModeAcceptsImage(t *testing.T) {
 	c := &client.Client{}
 	if err := setGenerationMode(c, "image"); err != nil {

@@ -174,7 +174,7 @@ func mcpToolLoggingMiddleware(next mcpserver.ToolHandlerFunc) mcpserver.ToolHand
 		result, err := next(ctx, req)
 		dur := time.Since(start).Round(time.Millisecond)
 		if err != nil {
-			log.Printf("mcp call done tool=%q error=%q dur=%s", req.Params.Name, err.Error(), dur)
+			log.Printf("mcp call done tool=%q error=%q dur=%s", req.Params.Name, sanitizeUpstreamError(err.Error()), dur)
 			return result, err
 		}
 		isError := result != nil && result.IsError

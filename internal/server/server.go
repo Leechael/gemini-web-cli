@@ -103,13 +103,30 @@ func (s *Server) Close() {
 func (s *Server) ListenAndServe(addr string) error {
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           s,
+		Handler:           accessLogMiddleware(s),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
 	printBanner(addr, s.stateInfo)
 	return srv.ListenAndServe()
+}
+
+// accessLogMiddleware logs one redacted line per HTTP request: method, path
+// (no query string), peer IP, status, and duration. /mcp is skipped because
+// mcpLoggingMiddleware already logs those calls.
+func accessLogMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/mcp") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		start := time.Now()
+		sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(sw, r)
+		log.Printf("http %s %s remote=%s status=%d dur=%s",
+			r.Method, r.URL.Path, clientIP(r), sw.status, time.Since(start).Round(time.Millisecond))
+	})
 }
 
 // bannerHost returns the host to display in startup URLs. When the server is
@@ -294,7 +311,7 @@ func (s *Server) refreshLoop(ctx context.Context) {
 			return
 		case <-ticker.C:
 			if err := s.pool.Init(ctx); err != nil {
-				log.Printf("token refresh failed: %v", err)
+				log.Printf("token refresh failed: %s", sanitizeUpstreamError(err.Error()))
 			} else {
 				log.Printf("token refreshed")
 			}

@@ -32,6 +32,8 @@ docker run -p 8080:8080 -v "$PWD/accounts:/cookies:ro" -v "$PWD/state:/state" \
 
 The image defaults to `serve` on `0.0.0.0:8080` reading `/cookies` (a cookie file, or a directory of `*.json` files) and writing chat-map state to `/state`. Override with env (`GEMINI_WEB_CLI_HOST`, `GEMINI_WEB_CLI_PORT`, `GEMINI_WEB_COOKIES_JSON_PATH`, `GEMINI_WEB_CLI_STATE_DIR`, `GEMINI_WEB_CLI_API_KEY`); `--api-key` / `GEMINI_WEB_CLI_API_KEY` is unset by default. One-off commands work too: `docker run --rm ghcr.io/leechael/gemini-web-cli:latest --help`.
 
+`docker logs` prints redacted operational lines (account ready/failover, HTTP access without query strings or bodies). Extra debug: `-e GEMINI_WEB_CLI_VERBOSE=1`. RPC bodies (cookies redacted, prompts still present) go to `/state/rpc_logs` when `-e GEMINI_WEB_CLI_RPC_LOG=1`.
+
 `import` writes `cookies.json` with `0600` permissions. If the image's nonroot user cannot read the mount, run with `--user "$(id -u):$(id -g)"` or `chmod 644` the file.
 
 ## Quick start
@@ -374,8 +376,8 @@ Supported housekeeping names: `heartbeat`, `ui-heartbeat`, `set-lang`, `ma-gu-ac
 | `--model` | Model name (see `models` command) | `unspecified` |
 | `--proxy` | HTTP/SOCKS proxy URL | `$HTTPS_PROXY` |
 | `--account-index` | Google account index (for multi-login, e.g. `/u/2`) | — |
-| `--verbose` | Debug logging to stderr | `false` |
-| `--rpc-log` | Log complete Gemini RPC requests and responses to disk | `false` |
+| `--verbose` | Debug logging to stderr | `$GEMINI_WEB_CLI_VERBOSE=1` |
+| `--rpc-log` | Log Gemini RPC requests/responses to disk (cookies redacted) | `$GEMINI_WEB_CLI_RPC_LOG=1` |
 | `--no-persist` | Don't write updated cookies back to file | `false` |
 | `--request-timeout` | HTTP timeout in seconds | `300` |
 

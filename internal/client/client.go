@@ -259,7 +259,7 @@ func (c *Client) Init(ctx context.Context) error {
 	c.sessionMu.Unlock()
 
 	if c.verbose {
-		fmt.Fprintf(logWriter, "Init OK: token=%s... bl=%s sid=%s lang=%s push=%s\n", token[:min(8, len(token))], bl, sid, lang, pid)
+		fmt.Fprintf(logWriter, "Init OK: token=<redacted> bl=%s sid=<redacted> lang=%s push=%s\n", bl, lang, pid)
 	}
 
 	return nil
@@ -393,11 +393,4 @@ var logWriter io.Writer = io.Discard
 // SetVerbose enables debug logging to stderr.
 func SetVerbose(w io.Writer) {
 	logWriter = w
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

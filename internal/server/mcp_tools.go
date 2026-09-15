@@ -336,7 +336,7 @@ func (s *Server) handleMCPResearchReply(ctx context.Context, req mcp.CallToolReq
 			metadata[2] = latest.RCid
 		}
 	} else if err != nil {
-		log.Printf("mcp research reply continuing without latest metadata chat_id=%q err=%q", id, err.Error())
+		log.Printf("mcp research reply continuing without latest metadata chat_id=%q err=%q", id, sanitizeUpstreamError(err.Error()))
 	}
 
 	output, err := s.pool.SendMessageDeepResearch(ctx, prompt, metadata, model)

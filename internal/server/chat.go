@@ -403,10 +403,15 @@ func (s *Server) writeSSE(w http.ResponseWriter, chatID, modelName string, gener
 	flusher.Flush()
 }
 
-var geminiURLWithQueryRE = regexp.MustCompile(`https://gemini\.google\.com/[^\s"]+\?[^\s"]+`)
+var (
+	geminiURLWithQueryRE = regexp.MustCompile(`https://gemini\.google\.com/[^\s"]+\?[^\s"]+`)
+	// Longer cookie names first so SID does not match inside 1PSID.
+	secretAssignmentRE = regexp.MustCompile(`(?i)(__Secure-1PSIDTS|__Secure-1PSID|SAPISID|APISID|SSID|HSID|SID|NID|Bearer)(=|[ \t]+)[^\s;&"]+`)
+	atAssignmentRE     = regexp.MustCompile(`(^|[&?\s])at=[^&\s"]+`)
+)
 
 func sanitizeUpstreamError(message string) string {
-	return geminiURLWithQueryRE.ReplaceAllStringFunc(message, func(raw string) string {
+	out := geminiURLWithQueryRE.ReplaceAllStringFunc(message, func(raw string) string {
 		u, err := url.Parse(raw)
 		if err != nil {
 			return "https://gemini.google.com/<redacted>"
@@ -414,4 +419,12 @@ func sanitizeUpstreamError(message string) string {
 		u.RawQuery = "redacted"
 		return u.String()
 	})
+	out = secretAssignmentRE.ReplaceAllString(out, "${1}${2}<redacted>")
+	out = atAssignmentRE.ReplaceAllStringFunc(out, func(m string) string {
+		if strings.HasPrefix(m, "at=") {
+			return "at=<redacted>"
+		}
+		return m[:1] + "at=<redacted>"
+	})
+	return out
 }

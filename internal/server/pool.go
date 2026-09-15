@@ -90,14 +90,15 @@ func (p *accountPool) Init(ctx context.Context) error {
 	var failures []string
 	for i, c := range p.clients {
 		if err := c.Init(ctx); err != nil {
-			failures = append(failures, fmt.Sprintf("account %d (%s): %v", i, p.sourceName(i), sanitizeUpstreamError(err.Error())))
+			msg := fmt.Sprintf("account %d (%s): %v", i, p.sourceName(i), sanitizeUpstreamError(err.Error()))
+			failures = append(failures, msg)
+			log.Printf("account init failed: %s", msg)
+			continue
 		}
+		log.Printf("account %d (%s) ready", i, p.sourceName(i))
 	}
 	if len(failures) == len(p.clients) {
 		return fmt.Errorf("all accounts failed to initialize:\n  %s", strings.Join(failures, "\n  "))
-	}
-	for _, f := range failures {
-		log.Printf("account init failed: %s", f)
 	}
 	return nil
 }
