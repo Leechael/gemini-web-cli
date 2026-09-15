@@ -284,7 +284,11 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) logChatCompletion(modelName, chatID string, stream bool, source string) {
-	log.Printf("chat completion finished model=%q chat_id=%q stream=%t source=%q", modelName, chatID, stream, source)
+	account := s.pool.labelForChat(chatID)
+	if account == "" {
+		account = "account ?"
+	}
+	log.Printf("chat completion finished %s model=%q chat_id=%q stream=%t source=%q", account, modelName, chatID, stream, source)
 }
 
 func chatIDFromOutput(output *types.ModelOutput, fallback string) string {
@@ -370,7 +374,11 @@ func (s *Server) writeSSE(w http.ResponseWriter, chatID, modelName string, gener
 	}
 
 	if err := generate(emit); err != nil {
-		log.Printf("chat stream failed model=%q chat_id=%q err=%q", modelName, currentChatID, sanitizeUpstreamError(err.Error()))
+		account := s.pool.labelForChat(currentChatID)
+		if account == "" {
+			account = "account ?"
+		}
+		log.Printf("chat stream failed %s model=%q chat_id=%q err=%q", account, modelName, currentChatID, sanitizeUpstreamError(err.Error()))
 		if _, writeErr := fmt.Fprintf(w, "data: {\"error\":{\"message\":%q}}\n\n", err.Error()); writeErr == nil {
 			flusher.Flush()
 		}
@@ -403,10 +411,15 @@ func (s *Server) writeSSE(w http.ResponseWriter, chatID, modelName string, gener
 	flusher.Flush()
 }
 
-var geminiURLWithQueryRE = regexp.MustCompile(`https://gemini\.google\.com/[^\s"]+\?[^\s"]+`)
+var (
+	geminiURLWithQueryRE = regexp.MustCompile(`https://gemini\.google\.com/[^\s"]+\?[^\s"]+`)
+	// Longer cookie names first so SID does not match inside 1PSID.
+	secretAssignmentRE = regexp.MustCompile(`(?i)(__Secure-1PSIDTS|__Secure-1PSID|PSIDTS|SAPISID|APISID|SSID|HSID|SID|NID|Bearer)(=|[ \t]+)[^\s;&"]+`)
+	atAssignmentRE     = regexp.MustCompile(`(^|[&?\s])at=[^&\s"]+`)
+)
 
 func sanitizeUpstreamError(message string) string {
-	return geminiURLWithQueryRE.ReplaceAllStringFunc(message, func(raw string) string {
+	out := geminiURLWithQueryRE.ReplaceAllStringFunc(message, func(raw string) string {
 		u, err := url.Parse(raw)
 		if err != nil {
 			return "https://gemini.google.com/<redacted>"
@@ -414,4 +427,12 @@ func sanitizeUpstreamError(message string) string {
 		u.RawQuery = "redacted"
 		return u.String()
 	})
+	out = secretAssignmentRE.ReplaceAllString(out, "${1}${2}<redacted>")
+	out = atAssignmentRE.ReplaceAllStringFunc(out, func(m string) string {
+		if strings.HasPrefix(m, "at=") {
+			return "at=<redacted>"
+		}
+		return m[:1] + "at=<redacted>"
+	})
+	return out
 }

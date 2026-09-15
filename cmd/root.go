@@ -38,6 +38,12 @@ var rootCmd = &cobra.Command{
 		// Silence usage after Args validation passes — argument errors
 		// still show usage, but runtime errors (network, auth, etc.) don't.
 		cmd.SilenceUsage = true
+		if envFlagOn(envVerbose) {
+			verbose = true
+		}
+		if envFlagOn(envRPCLog) {
+			rpcLog = true
+		}
 		if verbose {
 			client.SetVerbose(os.Stderr)
 		}
@@ -61,8 +67,8 @@ func init() {
 	pf.StringVar(&proxy, "proxy", defaultProxy, "HTTP/SOCKS proxy URL")
 	pf.IntVar(&accountIndex, "account-index", 0, "Google account index (e.g. 2 => /u/2)")
 	pf.StringVar(&modelName, "model", "unspecified", "Model name")
-	pf.BoolVar(&verbose, "verbose", false, "Enable debug logging")
-	pf.BoolVar(&rpcLog, "rpc-log", false, "Enable RPC request/response logging to data/rpc_logs (overridable via $GEMINI_WEB_CLI_RPC_LOG_DIR)")
+	pf.BoolVar(&verbose, "verbose", false, "Enable debug logging (or $GEMINI_WEB_CLI_VERBOSE=1)")
+	pf.BoolVar(&rpcLog, "rpc-log", false, "Enable RPC request/response logging to data/rpc_logs (or $GEMINI_WEB_CLI_RPC_LOG=1; dir via $GEMINI_WEB_CLI_RPC_LOG_DIR)")
 	pf.BoolVar(&noPersist, "no-persist", false, "Do not write updated cookies back")
 	pf.Float64Var(&requestTimeout, "request-timeout", 300, "Per-request HTTP timeout in seconds")
 

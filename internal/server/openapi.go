@@ -14,6 +14,23 @@ const openapiSpec = `{
   },
   "servers": [{"url": "/"}],
   "paths": {
+    "/v1/accounts": {
+      "get": {
+        "operationId": "listAccounts",
+        "summary": "List cookie accounts and login health",
+        "security": [ {}, { "bearerAuth": [] }, { "apiKeyAuth": [] } ],
+        "responses": {
+          "200": {
+            "description": "Account list",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AccountList" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/models": {
       "get": {
         "operationId": "listModels",
@@ -234,7 +251,31 @@ const openapiSpec = `{
     }
   },
   "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer" },
+      "apiKeyAuth": { "type": "apiKey", "in": "header", "name": "X-API-Key" }
+    },
     "schemas": {
+      "AccountList": {
+        "type": "object",
+        "properties": {
+          "object": { "type": "string", "enum": ["list"] },
+          "accounts": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/AccountStatus" }
+          }
+        }
+      },
+      "AccountStatus": {
+        "type": "object",
+        "properties": {
+          "index": { "type": "integer", "description": "1-based account index" },
+          "name": { "type": "string", "description": "Cookie filename only, e.g. alice.json" },
+          "logged_in": { "type": "boolean" },
+          "last_error": { "type": "string" },
+          "last_error_at": { "type": "string", "format": "date-time" }
+        }
+      },
       "ModelList": {
         "type": "object",
         "properties": {

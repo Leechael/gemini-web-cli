@@ -14,18 +14,20 @@ func TestRequireAuthProtectsV1Routes(t *testing.T) {
 	s := &Server{mux: http.NewServeMux(), apiKey: "secret"}
 	s.registerRoutes()
 
-	unauthorized := httptest.NewRecorder()
-	s.ServeHTTP(unauthorized, httptest.NewRequest(http.MethodGet, "/v1/models", nil))
-	if unauthorized.Code != http.StatusUnauthorized {
-		t.Fatalf("unauthorized status = %d, want %d", unauthorized.Code, http.StatusUnauthorized)
-	}
+	for _, path := range []string{"/v1/models", "/v1/accounts"} {
+		unauthorized := httptest.NewRecorder()
+		s.ServeHTTP(unauthorized, httptest.NewRequest(http.MethodGet, path, nil))
+		if unauthorized.Code != http.StatusUnauthorized {
+			t.Fatalf("%s unauthorized status = %d, want %d", path, unauthorized.Code, http.StatusUnauthorized)
+		}
 
-	authorized := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
-	req.Header.Set("Authorization", "Bearer secret")
-	s.ServeHTTP(authorized, req)
-	if authorized.Code != http.StatusOK {
-		t.Fatalf("authorized status = %d, want %d", authorized.Code, http.StatusOK)
+		authorized := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Header.Set("Authorization", "Bearer secret")
+		s.ServeHTTP(authorized, req)
+		if authorized.Code != http.StatusOK {
+			t.Fatalf("%s authorized status = %d, want %d", path, authorized.Code, http.StatusOK)
+		}
 	}
 }
 

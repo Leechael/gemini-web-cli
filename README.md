@@ -1,414 +1,126 @@
 # gemini-web-cli
 
-A Go command-line interface for [Google Gemini](https://gemini.google.com) via browser cookies.
+Use [Google Gemini](https://gemini.google.com) from the terminal or as an API server -- no API key needed, just your browser cookies.
 
-Built on the reverse-engineering work of [Gemini-API](https://github.com/HanaokaYuzu/Gemini-API) by [@HanaokaYuzu](https://github.com/HanaokaYuzu). Huge thanks for figuring out the Gemini web protocol, streaming format, and deep research flow.
-
-## Install
-
-```bash
-go install github.com/Leechael/gemini-web-cli@latest
-```
-
-Or build from source:
-
-```bash
-git clone https://github.com/Leechael/gemini-web-cli
-cd gemini-web-cli
-make build    # outputs to ./bin/gemini-web-cli
-```
-
-### Docker
-
-Release tags also publish a multi-arch image (`linux/amd64`, `linux/arm64`) to GHCR:
-
-```bash
-docker run -p 8080:8080 -v "$PWD/cookies.json:/cookies:ro" \
-  ghcr.io/leechael/gemini-web-cli:latest
-
-docker run -p 8080:8080 -v "$PWD/accounts:/cookies:ro" -v "$PWD/state:/state" \
-  ghcr.io/leechael/gemini-web-cli:latest
-```
-
-The image defaults to `serve` on `0.0.0.0:8080` reading `/cookies` (a cookie file, or a directory of `*.json` files) and writing chat-map state to `/state`. Override with env (`GEMINI_WEB_CLI_HOST`, `GEMINI_WEB_CLI_PORT`, `GEMINI_WEB_COOKIES_JSON_PATH`, `GEMINI_WEB_CLI_STATE_DIR`, `GEMINI_WEB_CLI_API_KEY`); `--api-key` / `GEMINI_WEB_CLI_API_KEY` is unset by default. One-off commands work too: `docker run --rm ghcr.io/leechael/gemini-web-cli:latest --help`.
-
-`import` writes `cookies.json` with `0600` permissions. If the image's nonroot user cannot read the mount, run with `--user "$(id -u):$(id -g)"` or `chmod 644` the file.
+[中文](README.zh.md)
 
 ## Quick start
 
 ```bash
-# Import cookies from browser (copy raw cookie string from DevTools)
-gemini-web-cli import '_ga=GA1.1...; __Secure-1PSID=g.a000...; SID=abc...'
+# Download (macOS arm64; other platforms: docs/install.md)
+curl -sL https://github.com/Leechael/gemini-web-cli/releases/latest/download/gemini-web-cli-darwin-arm64.tar.gz | tar xz
 
-# Or set the path via environment variable
-export GEMINI_WEB_COOKIES_JSON_PATH=cookies.json
+# Import cookies from your browser
+./gemini-web-cli import '_ga=...; __Secure-1PSID=...'
+
+# Or pipe from stdin
+pbpaste | ./gemini-web-cli import
 
 # Ask a question
-gemini-web-cli ask "What is the capital of France?"
+./gemini-web-cli ask "What is the capital of France?"
+```
 
-# Continue the conversation
-gemini-web-cli reply c_abc123 "And what's its population?"
+## What you get
 
-# List your chats
-gemini-web-cli list
+Text, image, video, music generation, deep research, and notebooks -- all through Gemini's web interface.
 
-# Start the OpenAI-compatible REST server and MCP endpoint
+```bash
+# Text
+gemini-web-cli ask "Explain quantum computing"
+
+# Image generation
+gemini-web-cli ask --mode image "A cat astronaut on Mars"
+
+# Video generation
+gemini-web-cli ask --mode video "A timelapse of a city at night"
+
+# Continue a conversation
+gemini-web-cli reply c_abc123 "Tell me more"
+
+# Deep research
+gemini-web-cli research run "Compare Rust and Go for systems programming"
+gemini-web-cli report c_abc123 --output report.md
+
+# Notebooks
+gemini-web-cli notebook create "My Project"
+gemini-web-cli notebook add-source 5a088119-... notes.md report.pdf
+gemini-web-cli ask --notebook 5a088119-... "Summarize the sources"
+```
+
+Full command reference: [docs/cli.md](docs/cli.md).
+
+## Serve: HTTP API + MCP
+
+`serve` runs a local server with an OpenAI-compatible REST API and an MCP endpoint. Point any OpenAI client or MCP-capable editor at it.
+
+```bash
 gemini-web-cli serve --state-dir ~/.local/share/gemini-web-cli/serve
 ```
 
-## Serve & MCP
-
-`gemini-web-cli serve` starts a local HTTP server with:
-
-- OpenAI-compatible REST API at `/v1/`
-- Model Context Protocol (MCP) endpoint at `/mcp` (Streamable HTTP, stateless)
-- Swagger UI at `/docs`
+OpenAI-compatible chat:
 
 ```bash
-gemini-web-cli serve --port 8080 --state-dir ~/.local/share/gemini-web-cli/serve
+curl http://127.0.0.1:8080/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"gemini-2.5-flash","messages":[{"role":"user","content":"hello"}]}'
 ```
 
-Multiple accounts are supported to spread rate limits — point `--cookies-json` at a directory of cookie files and new conversations rotate across accounts with failover:
+MCP (Streamable HTTP at `/mcp`):
+
+```toml
+# Codex: ~/.codex/config.toml
+[mcp_servers.gemini-web-cli]
+url = "http://127.0.0.1:8080/mcp"
+```
+
+```json
+// Cursor: .cursor/mcp.json
+{
+  "mcpServers": {
+    "gemini-web-cli": {
+      "type": "streamable-http",
+      "url": "http://127.0.0.1:8080/mcp"
+    }
+  }
+}
+```
+
+Interactive docs: `http://127.0.0.1:8080/docs`.
+
+## Docker
 
 ```bash
-gemini-web-cli serve --cookies-json accounts/   # one <name>.json per account
+# Import cookies (no host binary needed)
+docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/out" \
+  ghcr.io/leechael/gemini-web-cli:latest \
+  import '_ga=...; __Secure-1PSID=...' -o /out/cookies.json
+
+# Run the server
+docker run --user "$(id -u):$(id -g)" -p 8080:8080 \
+  -e GEMINI_WEB_CLI_API_KEY=your-secret \
+  -v "$PWD/cookies.json:/cookies:ro" \
+  -v "$PWD/state:/state" \
+  ghcr.io/leechael/gemini-web-cli:latest
 ```
 
-See [docs/serve.md](docs/serve.md) for the full reference: serve flags, REST endpoints, chat state mapping, MCP tools, and client configuration (Cursor, VS Code, Claude Desktop).
-
-## Commands
-
-### import
-
-Parse a raw cookie string from browser DevTools and save as a JSON file.
-
-```bash
-# Save to default cookies.json (or $GEMINI_WEB_COOKIES_JSON_PATH)
-gemini-web-cli import '_ga=GA1.1.123; __Secure-1PSID=g.a000...; SID=abc...'
-
-# Save to a specific path
-gemini-web-cli import '_ga=GA1.1.123; __Secure-1PSID=g.a000...' -o path/to/cookies.json
-```
-
-### ask
-
-Single-turn question with streaming output. Supports text, image generation, video generation, and music generation.
-
-```bash
-gemini-web-cli ask "Explain quantum computing"
-gemini-web-cli ask --no-stream "What is 2+2?"
-gemini-web-cli ask --mode image "Draw a sunset"
-
-# Generate image/video/music (explicit mode)
-gemini-web-cli ask --mode image -f photo.jpg "Make this image photorealistic"
-gemini-web-cli ask --mode video "A cat walking in slow motion"
-gemini-web-cli ask --mode music "A short jazz melody"
-gemini-web-cli ask --mode image-to-video -f photo.jpg "Animate this photo"
-
-# Attach files
-gemini-web-cli ask -f image.png "What's in this image?"
-gemini-web-cli ask -f a.pdf -f b.pdf "Compare these documents"
-```
-
-The `--mode` flag controls generation type: `auto` (default), `text`, `image`, `video`, `image-to-video`, `music`. Image mode selects the current Flash model advertised by Gemini, with older Flash models as fallbacks.
-
-Output includes the response text, any generated images/videos/media, and the chat ID for follow-up.
-
-### reply
-
-Continue an existing conversation. The chat ID comes from `ask` or `list` output.
-
-```bash
-gemini-web-cli reply c_abc123 "Tell me more"
-gemini-web-cli reply --no-stream c_abc123 "Summarize"
-gemini-web-cli reply --mode video c_abc123 "Now generate a video of that scene"
-```
-
-Supports the same `--mode` flag as `ask`.
-
-### list
-
-List chat history with pagination.
-
-```bash
-gemini-web-cli list
-gemini-web-cli list --cursor <cursor>
-```
-
-### notebook
-
-Manage Gemini notebooks (create, inspect, attach sources, list chats).
-
-```bash
-gemini-web-cli notebook create "My Project"
-gemini-web-cli notebook get 5a088119-...
-gemini-web-cli notebook chats 5a088119-...
-gemini-web-cli notebook add-source 5a088119-... notes.md report.pdf
-gemini-web-cli notebook add-url 5a088119-... https://example.com/article
-gemini-web-cli notebook remove-source notebooks/5a088119-.../sources/fa1beeca-...
-```
-
-Ask questions inside a notebook so Gemini can use its sources:
-
-```bash
-gemini-web-cli ask --notebook 5a088119-... "Summarize the sources in one sentence"
-gemini-web-cli reply --notebook 5a088119-... c_abc123 "Tell me more about the second topic"
-```
-
-### get
-
-Get a conversation's messages, including generated images, videos, and media.
-
-```bash
-gemini-web-cli get c_abc123
-gemini-web-cli get c_abc123 --max-turns 10
-gemini-web-cli get c_abc123 --output chat.txt
-# Fetch older turns with the cursor printed by the previous page
-gemini-web-cli get c_abc123 --cursor <cursor>
-```
-
-Example output:
-
-```
---- user #1 r_abc123 (2026-05-26 12:34 CST) ---
-Draw a cat
-
---- agent #1 r_def456 (2026-05-26 12:34 CST) ---
-Here's a generated cat image!
-
-[Generated Image 1] https://lh3.googleusercontent.com/...
-
---- user #2 r_ghi789 (2026-05-26 12:35 CST) ---
-Generate a video of a cat walking
-
---- agent #2 r_jkl012 (2026-05-26 12:35 CST) ---
-Your video is ready!
-
-[Generated Video 1] https://contribution.usercontent.google.com/download?...
-  Thumbnail: https://lh3.googleusercontent.com/...
-
---- user #3 r_mno345 (2026-05-26 12:36 CST) ---
-Generate a jazz melody
-
---- agent #3 r_pqr678 (2026-05-26 12:36 CST) ---
-Here's a jazz melody for you.
-
-[Generated Media 1] MP3: https://contribution.usercontent.google.com/download?...
-[Generated Media 1] MP4: https://contribution.usercontent.google.com/download?...
-[Generated Media 1] VTT: https://contribution.usercontent.google.com/download?...
-```
-
-Each turn shows `user` and `agent` blocks with request IDs and local timestamps. Generated media item numbers correspond to the `download` command's index selector.
-
-### download
-
-Download generated images, videos, or media by direct URL or chat ID.
-
-```bash
-# Direct URL
-gemini-web-cli download "https://lh3.googleusercontent.com/..." -o image.png
-
-# All media from a chat (images, videos, music)
-gemini-web-cli download c_abc123 -o output.png
-# Saves output_1.png, output_2.mp4, output_3.mp3, ...
-
-# Specific item by index (matches get output numbering)
-gemini-web-cli download c_abc123 2 -o video.mp4
-
-# Direct URL with polling (for in-progress video/music generation)
-gemini-web-cli download --poll "https://contribution.usercontent.google.com/download?..."
-```
-
-Videos and music downloads automatically poll (retry on HTTP 206) when downloading from a chat ID.
-
-### progress
-
-Check generation progress for deep research, video, or music tasks.
-
-```bash
-gemini-web-cli progress c_abc123
-```
-
-Output examples:
-
-```
-  Type: deep research
-  Status: running
-```
-
-```
-  Type: deep research
-  Status: done
-  Report length: 42318 chars
-
-  Use 'report c_abc123' to retrieve the full result.
-```
-
-```
-  Type: video generation
-  Status: ready
-  Video 1: https://contribution.usercontent.google.com/download?...
-
-  Use 'download c_abc123' to save.
-```
-
-```
-  Type: music generation
-  Status: ready
-  Media 1 MP3: https://contribution.usercontent.google.com/download?...
-  Media 1 MP4: https://contribution.usercontent.google.com/download?...
-  Media 1 VTT: https://contribution.usercontent.google.com/download?...
-
-  Use 'download c_abc123' to save.
-```
-
-### research
-
-Submit and manage deep research tasks.
-
-```bash
-# Submit a task
-gemini-web-cli research run "Compare Rust and Go for systems programming"
-
-# List completed reports from your library
-gemini-web-cli research list
-gemini-web-cli research list --count 20 --cursor <cursor>
-gemini-web-cli research list --json
-```
-
-### report
-
-Get the deep research result.
-
-```bash
-gemini-web-cli report c_abc123
-gemini-web-cli report c_abc123 --output report.md
-```
-
-### chat
-
-Chat metadata and inspection utilities.
-
-```bash
-# Show metadata for a chat
-gemini-web-cli chat meta c_abc123
-gemini-web-cli chat meta c_abc123 --json
-
-# Fetch a single conversation turn by request ID
-gemini-web-cli chat turn c_abc123 <requestId>
-gemini-web-cli chat turn c_abc123 <requestId> --json
-```
-
-### expand-prompt
-
-Expand a media prompt into alternative descriptions (useful for image, video, or music generation).
-
-```bash
-gemini-web-cli expand-prompt "A sunset over the ocean"
-gemini-web-cli expand-prompt "A sunset over the ocean" --json
-```
-
-### models
-
-List available models.
-
-```bash
-gemini-web-cli models
-```
-
-```
-Available models for --model:
-  unspecified (default)
-  gemini-3.5-flash-lite (Gemini 3.5 Flash-Lite)
-  gemini-3.8-flash (Gemini 3.8 Flash)
-  gemini-3.1-pro [advanced] (Gemini 3.1 Pro)
-  gemini-3-pro (Gemini 3 Pro)
-  gemini-3-flash (Gemini 3 Flash)
-  gemini-3-flash-thinking (Gemini 3 Flash Thinking)
-  gemini-3-pro-plus [advanced] (Gemini 3 Pro Plus)
-  gemini-3.8-flash-plus [advanced] (Gemini 3.8 Flash Plus)
-  gemini-3-flash-thinking-plus [advanced] (Gemini 3 Flash Thinking Plus)
-  gemini-3-pro-advanced [advanced] (Gemini 3 Pro Advanced)
-  gemini-3.8-flash-advanced [advanced] (Gemini 3.8 Flash Advanced)
-  gemini-3-flash-thinking-advanced [advanced] (Gemini 3 Flash Thinking Advanced)
-
-Note: dynamic models come from the current Gemini account when cookies are available.
-Use 'unspecified' to let Gemini auto-select.
-```
-
-### status
-
-Check login status and account diagnostics.
-
-```bash
-# Full account probe (network)
-gemini-web-cli status
-
-# Cookie-only check (no network) — requires --cookies-json
-gemini-web-cli status --cookies-only --cookies-json cookies.json
-```
-
-### debug
-
-Low-level utilities for exercising RPCs directly. Useful for verifying protocol changes.
-
-```bash
-# Call any batchexecute RPC and print raw response
-gemini-web-cli debug rpc otAQ7b
-gemini-web-cli debug rpc MaZiqc --payload '[13,null,[1,null,1]]'
-gemini-web-cli debug rpc hNvQHb --payload '["c_abc",10]' --source-cid c_abc
-gemini-web-cli debug rpc cYRIkd --payload '["en"]' --pretty
-
-# Trigger a housekeeping RPC by name
-gemini-web-cli debug housekeeping heartbeat
-gemini-web-cli debug housekeeping list-gems --pretty
-```
-
-Supported housekeeping names: `heartbeat`, `ui-heartbeat`, `set-lang`, `ma-gu-ac`, `list-gems`, `bulk-log`, `log-event`, `log-model-select`.
-
-## Global flags
-
-| Flag | Description | Default |
-|------|-------------|---------|
-| `--cookies-json` | Path to cookie JSON file | `$GEMINI_WEB_COOKIES_JSON_PATH` |
-| `--model` | Model name (see `models` command) | `unspecified` |
-| `--proxy` | HTTP/SOCKS proxy URL | `$HTTPS_PROXY` |
-| `--account-index` | Google account index (for multi-login, e.g. `/u/2`) | — |
-| `--verbose` | Debug logging to stderr | `false` |
-| `--rpc-log` | Log complete Gemini RPC requests and responses to disk | `false` |
-| `--no-persist` | Don't write updated cookies back to file | `false` |
-| `--request-timeout` | HTTP timeout in seconds | `300` |
-
-## Cookies
-
-The cookie JSON file is resolved in order:
-
-1. `--cookies-json` flag (explicit)
-2. `$GEMINI_WEB_COOKIES_JSON_PATH` environment variable
-3. `./cookies.json` (project-level)
-4. `~/.config/gemini-web-cli/cookies.json` (user-level)
-5. `/etc/gemini-web-cli/cookies.json` (system-level)
-
-The file accepts multiple formats:
-
-- `{"cookies": {"name": "value", ...}}` (output of `import` command)
-- `{"name": "value", ...}` (flat key-value)
-- `[{"name": "...", "value": "...", ...}, ...]` (browser extension export)
-- `{"cookies": [{"name": "...", "value": "...", ...}, ...]}`
-
-The required cookie is `__Secure-1PSID`. `__Secure-1PSIDTS` is recommended but optional.
-
-## E2E tests
-
-```bash
-./scripts/e2e-test.sh cookies.json
-```
-
-Covers all commands with a live Gemini account.
+Published ports are reachable by anyone who can reach the host — set `GEMINI_WEB_CLI_API_KEY`. Multi-account: mount a directory of `*.json` files at `/cookies`.
+
+Env, volumes, and logs: [docs/docker.md](docs/docker.md).
+
+## Docs
+
+| | |
+|---|---|
+| [Install](docs/install.md) | Binary download for all platforms |
+| [CLI](docs/cli.md) | Commands, cookies, global flags |
+| [Serve](docs/serve.md) | Server flags, multi-account, cookie priority |
+| [HTTP API](docs/http-api.md) | REST endpoints, chat state mapping, research |
+| [MCP](docs/mcp.md) | Tools, client config for Codex / Cursor / VS Code / Claude Desktop |
+| [Docker](docs/docker.md) | Image, volumes, env overrides |
 
 ## Acknowledgments
 
-This project is a Go reimplementation of the HTTP-level protocol reverse-engineered by [Gemini-API](https://github.com/HanaokaYuzu/Gemini-API). The Python library by [@HanaokaYuzu](https://github.com/HanaokaYuzu) was the sole reference for understanding Gemini's streaming format, RPC protocol, cookie rotation, and deep research workflow.
+Built on the reverse-engineering in [Gemini-API](https://github.com/HanaokaYuzu/Gemini-API) by [@HanaokaYuzu](https://github.com/HanaokaYuzu).
 
 ## License
 

@@ -33,8 +33,7 @@ func (c *Client) streamGenerate(ctx context.Context, prompt string, metadata []s
 	}
 
 	if c.verbose {
-		outerJSON, _ := json.Marshal([]any{nil, string(innerJSON)})
-		fmt.Fprintf(logWriter, "f.req payload: %s\n", string(outerJSON))
+		fmt.Fprintf(logWriter, "inner request payload bytes=%d\n", len(innerJSON))
 	}
 
 	// Code 13 protocol note (from data/rpc_logs reverse engineering):

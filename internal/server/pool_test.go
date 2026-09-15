@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/Leechael/gemini-web-cli/internal/client"
@@ -12,6 +13,7 @@ import (
 
 // fakeAccount implements accountClient with overridable hooks.
 type fakeAccount struct {
+	initFn            func(ctx context.Context) error
 	generateContentFn func(ctx context.Context, prompt string) (*types.ModelOutput, error)
 	genStreamFn       func(ctx context.Context, cb client.StreamCallback) (*types.ModelOutput, error)
 	sendMessageFn     func(ctx context.Context, metadata []string) (*types.ModelOutput, error)
@@ -22,7 +24,12 @@ type fakeAccount struct {
 	listReportsFn     func(ctx context.Context) ([]rpcs.ResearchReport, string, error)
 }
 
-func (f *fakeAccount) Init(ctx context.Context) error                { return nil }
+func (f *fakeAccount) Init(ctx context.Context) error {
+	if f.initFn != nil {
+		return f.initFn(ctx)
+	}
+	return nil
+}
 func (f *fakeAccount) Close()                                        {}
 func (f *fakeAccount) FetchAndCacheModels(ctx context.Context) error { return nil }
 func (f *fakeAccount) AvailableModels() []types.Model                { return nil }
@@ -496,5 +503,64 @@ func TestPoolStreamFlushesMetadataOnSuccessWithoutDelta(t *testing.T) {
 	}
 	if len(frames) != 1 || frames[0].Metadata[0] != "c_quiet" {
 		t.Fatalf("frames = %+v, want the held metadata frame delivered", frames)
+	}
+}
+
+func TestAccountLabel(t *testing.T) {
+	pool := newAccountPool(
+		[]accountClient{&fakeAccount{}, &fakeAccount{}},
+		[]string{
+			"/cookies/alice.json ($GEMINI_WEB_COOKIES_JSON_PATH)",
+			"/cookies/bob.json ($GEMINI_WEB_COOKIES_JSON_PATH)",
+		},
+	)
+	if got, want := pool.accountLabel(0), "account 1/2 (alice.json)"; got != want {
+		t.Fatalf("accountLabel(0) = %q, want %q", got, want)
+	}
+	if got, want := pool.accountLabel(1), "account 2/2 (bob.json)"; got != want {
+		t.Fatalf("accountLabel(1) = %q, want %q", got, want)
+	}
+	if got, want := shortSourceName("/tmp/foo (bar).json (--cookies-json)"), "foo (bar).json"; got != want {
+		t.Fatalf("shortSourceName = %q, want %q", got, want)
+	}
+
+	pool.recordChat("c_1", 1)
+	if got, want := pool.labelForChat("c_1"), "account 2/2 (bob.json)"; got != want {
+		t.Fatalf("labelForChat = %q, want %q", got, want)
+	}
+}
+
+func TestAccountSnapshotsLoginAndLastError(t *testing.T) {
+	okAcc := &fakeAccount{}
+	badAcc := &fakeAccount{
+		initFn: func(ctx context.Context) error {
+			return fmt.Errorf("GetNotebook rejected __Secure-1PSID=g.a000secret")
+		},
+	}
+	pool := newAccountPool(
+		[]accountClient{okAcc, badAcc},
+		[]string{
+			"/home/user/accounts/alice.json (--cookies-json)",
+			"/home/user/accounts/bob.json (--cookies-json)",
+		},
+	)
+	if err := pool.Init(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	snaps := pool.AccountSnapshots()
+	if len(snaps) != 2 {
+		t.Fatalf("len = %d", len(snaps))
+	}
+	if snaps[0].Index != 1 || snaps[0].Name != "alice.json" || !snaps[0].LoggedIn {
+		t.Fatalf("account 1 = %+v", snaps[0])
+	}
+	if snaps[1].Index != 2 || snaps[1].Name != "bob.json" || snaps[1].LoggedIn {
+		t.Fatalf("account 2 = %+v", snaps[1])
+	}
+	if snaps[1].LastError == "" || snaps[1].LastErrorAt.IsZero() {
+		t.Fatalf("account 2 missing last error: %+v", snaps[1])
+	}
+	if strings.Contains(snaps[1].LastError, "g.a000secret") || strings.Contains(snaps[1].Name, "/") {
+		t.Fatalf("secret or path leaked: %+v", snaps[1])
 	}
 }
