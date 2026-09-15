@@ -101,3 +101,13 @@ func TestDefaultCookiesPathWithPathListEnv(t *testing.T) {
 		t.Fatalf("defaultCookiesPath = %q, want %q", got, want)
 	}
 }
+
+func TestClientConfigFromFlagsErrorsOnEmptyExplicitDir(t *testing.T) {
+	oldCookiesJSON := cookiesJSON
+	t.Cleanup(func() { cookiesJSON = oldCookiesJSON })
+
+	cookiesJSON = []string{t.TempDir()} // no *.json inside
+	if _, _, _, err := clientConfigFromFlagsWithStateDir(""); err == nil {
+		t.Fatal("expected error for an explicitly configured directory with no cookie files")
+	}
+}

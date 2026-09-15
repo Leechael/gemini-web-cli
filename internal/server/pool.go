@@ -304,18 +304,32 @@ func (p *accountPool) SendMessageStream(ctx context.Context, prompt string, meta
 	}
 	var output *types.ModelOutput
 	idx, err := p.forNew(func(c accountClient) error {
+		// Buffer metadata-only frames so a failing account cannot leak its
+		// chat id to the caller before failover picks the winner.
+		var buffered []*types.ModelOutput
 		emitted := false
 		out, err := c.SendMessageStream(ctx, prompt, metadata, model, notebook, func(o *types.ModelOutput) {
 			if o.TextDelta != "" || o.ThoughtsDelta != "" {
 				emitted = true
+				for _, b := range buffered {
+					cb(b)
+				}
+				buffered = nil
+				cb(o)
+				return
 			}
-			cb(o)
+			buffered = append(buffered, o)
 		})
 		if err != nil {
 			if emitted {
 				return fatalStreamError{err}
 			}
 			return err
+		}
+		// Successful stream that never produced a delta: deliver the held
+		// metadata frames so the caller still learns the chat id.
+		for _, b := range buffered {
+			cb(b)
 		}
 		output = out
 		return nil
@@ -376,18 +390,32 @@ func (p *accountPool) GenerateContentStream(ctx context.Context, prompt string, 
 	}
 	var output *types.ModelOutput
 	idx, err := p.forNew(func(c accountClient) error {
+		// Buffer metadata-only frames so a failing account cannot leak its
+		// chat id to the caller before failover picks the winner.
+		var buffered []*types.ModelOutput
 		emitted := false
 		out, err := c.GenerateContentStream(ctx, prompt, model, notebook, func(o *types.ModelOutput) {
 			if o.TextDelta != "" || o.ThoughtsDelta != "" {
 				emitted = true
+				for _, b := range buffered {
+					cb(b)
+				}
+				buffered = nil
+				cb(o)
+				return
 			}
-			cb(o)
+			buffered = append(buffered, o)
 		})
 		if err != nil {
 			if emitted {
 				return fatalStreamError{err}
 			}
 			return err
+		}
+		// Successful stream that never produced a delta: deliver the held
+		// metadata frames so the caller still learns the chat id.
+		for _, b := range buffered {
+			cb(b)
 		}
 		output = out
 		return nil

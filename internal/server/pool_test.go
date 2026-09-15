@@ -441,3 +441,60 @@ func TestPoolGetNotebookProbeFailureIsNot404(t *testing.T) {
 		t.Fatalf("probe failure must surface as error, got nb=%+v", nb)
 	}
 }
+
+func TestPoolStreamDoesNotLeakFailedAccountMetadata(t *testing.T) {
+	metaThenBroken := &fakeAccount{
+		genStreamFn: func(ctx context.Context, cb client.StreamCallback) (*types.ModelOutput, error) {
+			cb(&types.ModelOutput{Metadata: []string{"c_bad"}})
+			return nil, fmt.Errorf("rate limited by server (HTTP 429)")
+		},
+	}
+	healthy := &fakeAccount{
+		genStreamFn: func(ctx context.Context, cb client.StreamCallback) (*types.ModelOutput, error) {
+			cb(&types.ModelOutput{Metadata: []string{"c_good"}})
+			cb(&types.ModelOutput{TextDelta: "hello"})
+			return &types.ModelOutput{Text: "hello", Metadata: []string{"c_good"}}, nil
+		},
+	}
+	pool := newAccountPool([]accountClient{metaThenBroken, healthy}, nil)
+
+	var frames []*types.ModelOutput
+	out, err := pool.GenerateContentStream(context.Background(), "hi", nil, "", func(o *types.ModelOutput) {
+		frames = append(frames, o)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Text != "hello" {
+		t.Fatalf("output = %q", out.Text)
+	}
+	for _, f := range frames {
+		if len(f.Metadata) > 0 && f.Metadata[0] == "c_bad" {
+			t.Fatalf("failed account's metadata leaked to caller: %+v", frames)
+		}
+	}
+	// The winner's metadata frame must be delivered ahead of its delta.
+	if len(frames) != 2 || len(frames[0].Metadata) == 0 || frames[0].Metadata[0] != "c_good" {
+		t.Fatalf("frames = %+v, want winner metadata then delta", frames)
+	}
+}
+
+func TestPoolStreamFlushesMetadataOnSuccessWithoutDelta(t *testing.T) {
+	quiet := &fakeAccount{
+		genStreamFn: func(ctx context.Context, cb client.StreamCallback) (*types.ModelOutput, error) {
+			cb(&types.ModelOutput{Metadata: []string{"c_quiet"}})
+			return &types.ModelOutput{Metadata: []string{"c_quiet"}}, nil
+		},
+	}
+	pool := newAccountPool([]accountClient{quiet}, nil)
+
+	var frames []*types.ModelOutput
+	if _, err := pool.GenerateContentStream(context.Background(), "hi", nil, "", func(o *types.ModelOutput) {
+		frames = append(frames, o)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(frames) != 1 || frames[0].Metadata[0] != "c_quiet" {
+		t.Fatalf("frames = %+v, want the held metadata frame delivered", frames)
+	}
+}

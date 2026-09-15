@@ -58,7 +58,9 @@ func resolveCookiesJSON() string {
 func resolveCookiesJSONWithStateDir(stateDir string) (string, string) {
 	paths, source := resolveCookiePathsWithStateDir(stateDir)
 	if len(paths) == 0 {
-		return "", ""
+		// Keep the source so callers can tell an explicitly configured but
+		// empty source apart from "nothing configured".
+		return "", source
 	}
 	return paths[0], source
 }
