@@ -23,16 +23,16 @@ make build    # outputs to ./bin/gemini-web-cli
 Release tags also publish a multi-arch image (`linux/amd64`, `linux/arm64`) to GHCR:
 
 ```bash
-docker run --user "$(id -u):$(id -g)" -p 8080:8080 -v "$PWD/cookies.json:/cookies.json:ro" \
-  ghcr.io/leechael/gemini-web-cli:latest \
-  serve --host 0.0.0.0 --cookies-json /cookies.json --api-key your-secret
+docker run -p 8080:8080 -v "$PWD/cookies.json:/cookies:ro" \
+  ghcr.io/leechael/gemini-web-cli:latest
+
+docker run -p 8080:8080 -v "$PWD/accounts:/cookies:ro" -v "$PWD/state:/state" \
+  ghcr.io/leechael/gemini-web-cli:latest
 ```
 
-`--user` runs the container as your host user because `import` writes `cookies.json` with `0600` permissions — the image's default nonroot user cannot read a host-mounted file owned by you. (Skip it if you `chmod 644` the file or store cookies elsewhere.)
+The image defaults to `serve` on `0.0.0.0:8080` reading `/cookies` (a cookie file, or a directory of `*.json` files) and writing chat-map state to `/state`. Override with env (`GEMINI_WEB_CLI_HOST`, `GEMINI_WEB_CLI_PORT`, `GEMINI_WEB_COOKIES_JSON_PATH`, `GEMINI_WEB_CLI_STATE_DIR`, `GEMINI_WEB_CLI_API_KEY`); `--api-key` / `GEMINI_WEB_CLI_API_KEY` is unset by default. One-off commands work too: `docker run --rm ghcr.io/leechael/gemini-web-cli:latest --help`.
 
-The image entrypoint is the `gemini-web-cli` binary (default command: `serve --host 0.0.0.0 --port 8080`), so one-off commands work too: `docker run --rm ghcr.io/leechael/gemini-web-cli:latest --help`.
-
-Published ports are reachable by anyone who can reach the host — always set `--api-key` (or `GEMINI_WEB_CLI_API_KEY`) when binding beyond localhost, the same as running the binary directly.
+`import` writes `cookies.json` with `0600` permissions. If the image's nonroot user cannot read the mount, run with `--user "$(id -u):$(id -g)"` or `chmod 644` the file.
 
 ## Quick start
 

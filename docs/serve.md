@@ -12,11 +12,11 @@ The following flags are available:
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--port` | Port to listen on | `8080` |
-| `--host` | Host to bind to | `127.0.0.1` |
+| `--port` | Port to listen on (or `GEMINI_WEB_CLI_PORT`) | `8080` |
+| `--host` | Host to bind to (or `GEMINI_WEB_CLI_HOST`) | `127.0.0.1` |
 | `--api-key` | API key for `/v1` endpoints (or `GEMINI_WEB_CLI_API_KEY`) | — |
 | `--expose-thoughts` | Include model thoughts/reasoning in API responses (or `GEMINI_WEB_CLI_EXPOSE_THOUGHTS=1`) | `false` |
-| `--state-dir` | Directory for state (cookie lookup + chat map persistence) | — |
+| `--state-dir` | Directory for state (cookie lookup + chat map persistence; or `GEMINI_WEB_CLI_STATE_DIR`) | — |
 | `--mcp-default-model` | Default model for MCP tool calls that omit `model` | — |
 | `--rpc-log` | Enable RPC request/response logging to `data/rpc_logs` (or `GEMINI_WEB_CLI_RPC_LOG_DIR`) | `false` |
 
