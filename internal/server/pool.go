@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -90,12 +91,12 @@ func (p *accountPool) Init(ctx context.Context) error {
 	var failures []string
 	for i, c := range p.clients {
 		if err := c.Init(ctx); err != nil {
-			msg := fmt.Sprintf("account %d (%s): %v", i, p.sourceName(i), sanitizeUpstreamError(err.Error()))
+			msg := fmt.Sprintf("%s: %s", p.accountLabel(i), sanitizeUpstreamError(err.Error()))
 			failures = append(failures, msg)
-			log.Printf("account init failed: %s", msg)
+			log.Printf("%s init failed: %s", p.accountLabel(i), sanitizeUpstreamError(err.Error()))
 			continue
 		}
-		log.Printf("account %d (%s) ready", i, p.sourceName(i))
+		log.Printf("%s ready", p.accountLabel(i))
 	}
 	if len(failures) == len(p.clients) {
 		return fmt.Errorf("all accounts failed to initialize:\n  %s", strings.Join(failures, "\n  "))
@@ -144,11 +145,50 @@ func (p *accountPool) ResolveModel(name string) *types.Model {
 	return nil
 }
 
-func (p *accountPool) sourceName(idx int) string {
-	if idx >= 0 && idx < len(p.sources) && p.sources[idx] != "" {
-		return p.sources[idx]
+// accountLabel is the 1-based log identity for an account, e.g.
+// "account 1/2 (alice.json)". Indexes in logs match how operators count
+// accounts, not the 0-based slice position.
+func (p *accountPool) accountLabel(idx int) string {
+	n := len(p.clients)
+	if idx < 0 || idx >= n {
+		return fmt.Sprintf("account ?/%d", n)
 	}
-	return fmt.Sprintf("#%d", idx)
+	var short string
+	if idx < len(p.sources) {
+		short = shortSourceName(p.sources[idx])
+	}
+	if short == "" {
+		return fmt.Sprintf("account %d/%d", idx+1, n)
+	}
+	return fmt.Sprintf("account %d/%d (%s)", idx+1, n, short)
+}
+
+func shortSourceName(name string) string {
+	if name == "" {
+		return ""
+	}
+	path := name
+	if i := strings.Index(name, " ("); i >= 0 {
+		path = name[:i]
+	}
+	base := filepath.Base(path)
+	if base == "." || base == string(filepath.Separator) {
+		return path
+	}
+	return base
+}
+
+func (p *accountPool) labelForChat(cid string) string {
+	if cid == "" {
+		return ""
+	}
+	p.mu.Lock()
+	idx, ok := p.chatOwners[cid]
+	p.mu.Unlock()
+	if !ok {
+		return ""
+	}
+	return p.accountLabel(idx)
 }
 
 // forNew runs fn against accounts in round-robin order until one succeeds.
@@ -170,7 +210,7 @@ func (p *accountPool) forNew(fn func(c accountClient) error) (int, error) {
 		if fatal, ok := err.(fatalStreamError); ok {
 			return -1, fatal.err
 		}
-		log.Printf("account %d (%s) failed, trying next account: %s", idx, p.sourceName(idx), sanitizeUpstreamError(err.Error()))
+		log.Printf("%s failed, trying next: %s", p.accountLabel(idx), sanitizeUpstreamError(err.Error()))
 		lastErr = err
 	}
 	return -1, lastErr
@@ -183,6 +223,7 @@ func (p *accountPool) recordChat(cid string, idx int) {
 	p.mu.Lock()
 	p.chatOwners[cid] = idx
 	p.mu.Unlock()
+	log.Printf("%s chat_id=%s", p.accountLabel(idx), cid)
 }
 
 func (p *accountPool) recordChatOutput(output *types.ModelOutput, idx int) {
@@ -223,6 +264,7 @@ func (p *accountPool) recordNotebook(id string, idx int) {
 	p.mu.Lock()
 	p.notebookOwners[id] = idx
 	p.mu.Unlock()
+	log.Printf("%s notebook=%s", p.accountLabel(idx), id)
 }
 
 // errNotebookNotFound marks a confirmed negative ownership probe: every
@@ -249,7 +291,7 @@ func (p *accountPool) notebookOwner(ctx context.Context, id string) (accountClie
 			return c, i, nil
 		}
 		if err != nil {
-			probeErrs = append(probeErrs, fmt.Sprintf("account %d (%s): %v", i, p.sourceName(i), sanitizeUpstreamError(err.Error())))
+			probeErrs = append(probeErrs, fmt.Sprintf("%s: %s", p.accountLabel(i), sanitizeUpstreamError(err.Error())))
 		}
 	}
 	if len(probeErrs) > 0 {
@@ -491,7 +533,7 @@ func (p *accountPool) ListResearchReportsPage(ctx context.Context, count int, cu
 	for i, c := range p.clients {
 		reports, _, err := c.ListResearchReportsPage(ctx, count, "")
 		if err != nil {
-			failures = append(failures, fmt.Sprintf("account %d (%s): %v", i, p.sourceName(i), err))
+			failures = append(failures, fmt.Sprintf("%s: %s", p.accountLabel(i), sanitizeUpstreamError(err.Error())))
 			continue
 		}
 		all = append(all, reports...)

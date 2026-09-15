@@ -498,3 +498,24 @@ func TestPoolStreamFlushesMetadataOnSuccessWithoutDelta(t *testing.T) {
 		t.Fatalf("frames = %+v, want the held metadata frame delivered", frames)
 	}
 }
+
+func TestAccountLabel(t *testing.T) {
+	pool := newAccountPool(
+		[]accountClient{&fakeAccount{}, &fakeAccount{}},
+		[]string{
+			"/cookies/alice.json ($GEMINI_WEB_COOKIES_JSON_PATH)",
+			"/cookies/bob.json ($GEMINI_WEB_COOKIES_JSON_PATH)",
+		},
+	)
+	if got, want := pool.accountLabel(0), "account 1/2 (alice.json)"; got != want {
+		t.Fatalf("accountLabel(0) = %q, want %q", got, want)
+	}
+	if got, want := pool.accountLabel(1), "account 2/2 (bob.json)"; got != want {
+		t.Fatalf("accountLabel(1) = %q, want %q", got, want)
+	}
+
+	pool.recordChat("c_1", 1)
+	if got, want := pool.labelForChat("c_1"), "account 2/2 (bob.json)"; got != want {
+		t.Fatalf("labelForChat = %q, want %q", got, want)
+	}
+}

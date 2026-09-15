@@ -284,7 +284,11 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) logChatCompletion(modelName, chatID string, stream bool, source string) {
-	log.Printf("chat completion finished model=%q chat_id=%q stream=%t source=%q", modelName, chatID, stream, source)
+	account := s.pool.labelForChat(chatID)
+	if account == "" {
+		account = "account ?"
+	}
+	log.Printf("chat completion finished %s model=%q chat_id=%q stream=%t source=%q", account, modelName, chatID, stream, source)
 }
 
 func chatIDFromOutput(output *types.ModelOutput, fallback string) string {
@@ -370,7 +374,11 @@ func (s *Server) writeSSE(w http.ResponseWriter, chatID, modelName string, gener
 	}
 
 	if err := generate(emit); err != nil {
-		log.Printf("chat stream failed model=%q chat_id=%q err=%q", modelName, currentChatID, sanitizeUpstreamError(err.Error()))
+		account := s.pool.labelForChat(currentChatID)
+		if account == "" {
+			account = "account ?"
+		}
+		log.Printf("chat stream failed %s model=%q chat_id=%q err=%q", account, modelName, currentChatID, sanitizeUpstreamError(err.Error()))
 		if _, writeErr := fmt.Fprintf(w, "data: {\"error\":{\"message\":%q}}\n\n", err.Error()); writeErr == nil {
 			flusher.Flush()
 		}
