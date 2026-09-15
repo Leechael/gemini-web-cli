@@ -6,6 +6,7 @@
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
+| `GET` | `/v1/accounts` | 列出 cookie 账号及登录状态 |
 | `GET` | `/v1/models` | 列出可用模型 |
 | `POST` | `/v1/chat/completions` | OpenAI 兼容的聊天补全 |
 | `POST` | `/v1/research` | 提交深度研究任务 |
@@ -21,6 +22,24 @@
 | `GET` | `/openapi.json` | OpenAPI 规范 |
 
 设置 `--api-key` 或 `GEMINI_WEB_CLI_API_KEY` 后，`/v1/` 需要 `Authorization: Bearer <key>` 或 `X-API-Key: <key>`。`/mcp` 不受此限制。
+
+## 账号
+
+`GET /v1/accounts` 返回账号健康状态。名称只显示 cookie 文件名（如 `alice.json`），不会暴露完整路径。错误信息走现有脱敏流程。
+
+```bash
+curl http://127.0.0.1:8080/v1/accounts
+```
+
+```json
+{
+  "object": "list",
+  "accounts": [
+    { "index": 1, "name": "alice.json", "logged_in": true },
+    { "index": 2, "name": "bob.json", "logged_in": true }
+  ]
+}
+```
 
 ## 聊天补全
 

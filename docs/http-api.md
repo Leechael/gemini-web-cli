@@ -6,6 +6,7 @@
 
 | Method | Path | Description |
 |--------|------|-------------|
+| `GET` | `/v1/accounts` | List cookie accounts and login health |
 | `GET` | `/v1/models` | List available models |
 | `POST` | `/v1/chat/completions` | OpenAI-compatible chat completions |
 | `POST` | `/v1/research` | Submit a deep research task |
@@ -21,6 +22,24 @@
 | `GET` | `/openapi.json` | OpenAPI spec |
 
 When `--api-key` or `GEMINI_WEB_CLI_API_KEY` is set, `/v1/` requires `Authorization: Bearer <key>` or `X-API-Key: <key>`. `/mcp` is not covered.
+
+## Accounts
+
+`GET /v1/accounts` returns account health. Names are cookie filenames only (e.g. `alice.json`), never full paths. Error messages use the existing redaction pipeline.
+
+```bash
+curl http://127.0.0.1:8080/v1/accounts
+```
+
+```json
+{
+  "object": "list",
+  "accounts": [
+    { "index": 1, "name": "alice.json", "logged_in": true },
+    { "index": 2, "name": "bob.json", "logged_in": true }
+  ]
+}
+```
 
 ## Chat completions
 
