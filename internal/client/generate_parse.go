@@ -20,12 +20,17 @@ func (e *QueueingError) Error() string { return e.Hint }
 
 // streamReadError wraps a non-EOF failure while reading the StreamGenerate body.
 // Callers can use errors.As / isRetryableStreamBodyError to decide on retries.
+// HTTPStatus is the response status that delivered the body (always 200 here);
+// BytesRead/Frames help diagnose reverse-engineered protocol failures.
 type streamReadError struct {
-	Err error
+	Err        error
+	HTTPStatus int
+	BytesRead  int
+	Frames     int
 }
 
 func (e *streamReadError) Error() string {
-	return fmt.Sprintf("reading stream: %v", e.Err)
+	return fmt.Sprintf("reading stream: %v (http=%d bytes=%d frames=%d)", e.Err, e.HTTPStatus, e.BytesRead, e.Frames)
 }
 
 func (e *streamReadError) Unwrap() error { return e.Err }
@@ -36,13 +41,17 @@ func (c *Client) parseStreamResponse(body io.Reader, cb StreamCallback) error {
 	var lastText string
 	var lastThoughts string
 	var output *types.ModelOutput
+	bytesRead := 0
+	framesSeen := 0
 
 	for {
 		n, readErr := body.Read(buf)
 		if n > 0 {
+			bytesRead += n
 			frames := parser.append(buf[:n])
 			done := false
 			for _, frame := range frames {
+				framesSeen++
 				var envelope []any
 				if err := json.Unmarshal(frame, &envelope); err != nil {
 					continue
@@ -89,16 +98,21 @@ func (c *Client) parseStreamResponse(body io.Reader, cb StreamCallback) error {
 			if readErr == io.EOF {
 				break
 			}
-			return &streamReadError{Err: readErr}
+			return &streamReadError{
+				Err:        readErr,
+				HTTPStatus: 200,
+				BytesRead:  bytesRead,
+				Frames:     framesSeen,
+			}
 		}
 	}
 
 	if output == nil {
 		snippet := parser.snippet()
 		if len(snippet) > 0 {
-			return fmt.Errorf("no valid response frames parsed, raw response: %s", snippet)
+			return fmt.Errorf("no valid response frames parsed (http=200 bytes=%d frames=%d), raw response: %s", bytesRead, framesSeen, snippet)
 		}
-		return fmt.Errorf("no valid response frames parsed (empty response body)")
+		return fmt.Errorf("no valid response frames parsed (http=200 bytes=%d empty response body)", bytesRead)
 	}
 	return nil
 }

@@ -114,7 +114,7 @@ func postBatch(ctx context.Context, client *http.Client, rawURL, accessToken, us
 		return nil, readErr
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("batchexecute returned HTTP %d", resp.StatusCode)
+		return nil, fmt.Errorf("batchexecute returned HTTP %d: %s", resp.StatusCode, snippet(body, 200))
 	}
 	return body, nil
 }

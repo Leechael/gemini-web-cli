@@ -64,8 +64,11 @@ func TestParseStreamResponse_ReturnsNonEOFReadErrorAfterOutput(t *testing.T) {
 	if !errors.As(err, &readErr) || !errors.Is(readErr, boom) {
 		t.Fatalf("err = %v, want streamReadError wrapping boom", err)
 	}
-	if !strings.Contains(err.Error(), "reading stream:") {
-		t.Fatalf("err = %v, want reading stream prefix", err)
+	if readErr.HTTPStatus != 200 || readErr.BytesRead == 0 || readErr.Frames == 0 {
+		t.Fatalf("diagnostics = http=%d bytes=%d frames=%d, want http=200 with progress", readErr.HTTPStatus, readErr.BytesRead, readErr.Frames)
+	}
+	if !strings.Contains(err.Error(), "reading stream:") || !strings.Contains(err.Error(), "http=200") {
+		t.Fatalf("err = %v, want reading stream prefix with http=200", err)
 	}
 }
 
@@ -157,12 +160,57 @@ func TestStreamGenerateRetriesBodyTimeoutAfterMetadataOnly(t *testing.T) {
 		}, nil
 	})}
 
-	err := c.streamGenerate(t.Context(), "prompt", nil, nil, &types.Models[0], false, "", func(*types.ModelOutput) {})
+	var texts []string
+	var metaCallbacks int
+	err := c.streamGenerate(t.Context(), "prompt", nil, nil, &types.Models[0], false, "", func(out *types.ModelOutput) {
+		if out.TextDelta != "" {
+			texts = append(texts, out.TextDelta)
+		}
+		if len(out.Metadata) > 0 && out.TextDelta == "" && out.ThoughtsDelta == "" {
+			metaCallbacks++
+		}
+	})
 	if err != nil {
 		t.Fatalf("streamGenerate: %v", err)
 	}
 	if requests != 2 {
 		t.Fatalf("requests = %d, want 2", requests)
+	}
+	// Failed attempt's metadata must be discarded; only the successful attempt
+	// may deliver metadata (flushed when text arrives) plus the text frame.
+	if metaCallbacks > 1 {
+		t.Fatalf("metadata callbacks = %d, want at most 1 (no stale metadata from failed attempt)", metaCallbacks)
+	}
+	if len(texts) != 1 || texts[0] != "complete" {
+		t.Fatalf("texts = %#v, want [complete]", texts)
+	}
+}
+
+func TestStreamGenerateRetriesCode13AfterMetadataOnly(t *testing.T) {
+	c := newTestClient()
+	requests := 0
+	c.httpClient = &http.Client{Transport: streamRoundTripFunc(func(*http.Request) (*http.Response, error) {
+		requests++
+		if requests == 1 {
+			metaThen13 := append([]byte(nil), makeStreamBodyMetadataOnly(t)...)
+			metaThen13 = append(metaThen13, makeCode13StreamBody(t)[len(")]}'\n"):]...)
+			return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(bytes.NewReader(metaThen13))}, nil
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(bytes.NewReader(makeStreamBody(t, "complete", true)))}, nil
+	})}
+
+	callbacks := 0
+	err := c.streamGenerate(t.Context(), "prompt", nil, nil, &types.Models[0], false, "", func(*types.ModelOutput) {
+		callbacks++
+	})
+	if err != nil {
+		t.Fatalf("streamGenerate: %v", err)
+	}
+	if requests != 2 {
+		t.Fatalf("requests = %d, want 2", requests)
+	}
+	if callbacks < 1 {
+		t.Fatalf("callbacks = %d, want at least 1", callbacks)
 	}
 }
 
