@@ -153,10 +153,15 @@ func TestStreamGenerateRetriesBodyTimeoutAfterMetadataOnly(t *testing.T) {
 				Body:       io.NopCloser(&chunkReader{chunks: [][]byte{metaOnly}, errs: []error{timeoutErr}}),
 			}, nil
 		}
+		// Separate metadata and text frames so the buffer-and-flush path is
+		// exercised; a stale metadata leak from the failed attempt would make
+		// metaCallbacks == 2.
+		success := append([]byte(nil), makeStreamBodyMetadataOnly(t)...)
+		success = append(success, makeStreamBodyTextOnly(t, "complete", true)[len(")]}'\n"):]...)
 		return &http.Response{
 			StatusCode: http.StatusOK,
 			Header:     make(http.Header),
-			Body:       io.NopCloser(bytes.NewReader(makeStreamBody(t, "complete", true))),
+			Body:       io.NopCloser(bytes.NewReader(success)),
 		}, nil
 	})}
 
@@ -176,10 +181,8 @@ func TestStreamGenerateRetriesBodyTimeoutAfterMetadataOnly(t *testing.T) {
 	if requests != 2 {
 		t.Fatalf("requests = %d, want 2", requests)
 	}
-	// Failed attempt's metadata must be discarded; only the successful attempt
-	// may deliver metadata (flushed when text arrives) plus the text frame.
-	if metaCallbacks > 1 {
-		t.Fatalf("metadata callbacks = %d, want at most 1 (no stale metadata from failed attempt)", metaCallbacks)
+	if metaCallbacks != 1 {
+		t.Fatalf("metadata callbacks = %d, want 1 (failed attempt metadata discarded)", metaCallbacks)
 	}
 	if len(texts) != 1 || texts[0] != "complete" {
 		t.Fatalf("texts = %#v, want [complete]", texts)
@@ -465,6 +468,22 @@ func makeStreamBodyMetadataOnly(t *testing.T) []byte {
 	t.Helper()
 	content := make([]any, 5)
 	content[1] = []any{"c_abc", "r_def"}
+	contentJSON, _ := json.Marshal(content)
+	frameJSON, _ := json.Marshal([]any{[]any{"wrb.fr", nil, string(contentJSON)}})
+	framed := "\n" + string(frameJSON) + "\n"
+	return []byte(")]}'\n" + strconv.Itoa(utf16Units(framed)) + framed)
+}
+
+func makeStreamBodyTextOnly(t *testing.T, text string, done bool) []byte {
+	t.Helper()
+	content := make([]any, 5)
+	content[4] = []any{[]any{"rc_ghi", []any{text}}}
+	if done {
+		for len(content) <= 25 {
+			content = append(content, nil)
+		}
+		content[25] = "ctx"
+	}
 	contentJSON, _ := json.Marshal(content)
 	frameJSON, _ := json.Marshal([]any{[]any{"wrb.fr", nil, string(contentJSON)}})
 	framed := "\n" + string(frameJSON) + "\n"

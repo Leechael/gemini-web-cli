@@ -191,7 +191,7 @@ func TestCreateAndStartDeepResearchDoesNotFallbackOnUnavailableModel(t *testing.
 	defer srv.Close()
 
 	_, err := c.CreateAndStartDeepResearch(t.Context(), "research prompt", nil)
-	if err == nil || !strings.Contains(err.Error(), "model unavailable (error code 1052") {
+	if err == nil || !strings.Contains(err.Error(), "model unavailable (error code 1052)") {
 		t.Fatalf("err = %v, want model unavailable", err)
 	}
 	if streamRequests != 1 {
