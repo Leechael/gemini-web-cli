@@ -18,6 +18,18 @@ type QueueingError struct {
 
 func (e *QueueingError) Error() string { return e.Hint }
 
+// streamReadError wraps a non-EOF failure while reading the StreamGenerate body.
+// Callers can use errors.As / isRetryableStreamBodyError to decide on retries.
+type streamReadError struct {
+	Err error
+}
+
+func (e *streamReadError) Error() string {
+	return fmt.Sprintf("reading stream: %v", e.Err)
+}
+
+func (e *streamReadError) Unwrap() error { return e.Err }
+
 func (c *Client) parseStreamResponse(body io.Reader, cb StreamCallback) error {
 	parser := newStreamFrameParser()
 	buf := make([]byte, 64*1024)
@@ -77,7 +89,7 @@ func (c *Client) parseStreamResponse(body io.Reader, cb StreamCallback) error {
 			if readErr == io.EOF {
 				break
 			}
-			return fmt.Errorf("reading stream: %w", readErr)
+			return &streamReadError{Err: readErr}
 		}
 	}
 

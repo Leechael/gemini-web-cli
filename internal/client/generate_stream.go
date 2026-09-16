@@ -57,7 +57,12 @@ func (c *Client) streamGenerate(ctx context.Context, prompt string, metadata []s
 	// fresh reqID but the same inner request/metadata so the server sees a new
 	// protocol attempt. If protocol behavior changes, this block is the central
 	// place to adjust code 13 handling.
-	retryableProtocolError := false
+	//
+	// Mid-stream body timeouts (Client.Timeout / context deadline while reading)
+	// are also retried here when no visible content has been delivered yet. On a
+	// multi-account serve pool, exhausting these retries still allows failover to
+	// the next account for new chats.
+	retryableParseError := false
 	err = runStreamGenerateAttempts(ctx, func() (bool, error) {
 		body, requestErr := c.callStreamGenerate(ctx, transport.StreamGenerateRequest{
 			AccessToken: s.accessToken,
@@ -66,13 +71,17 @@ func (c *Client) streamGenerate(ctx context.Context, prompt string, metadata []s
 			ModelHeader: modelHeaders,
 		}, s)
 		if requestErr != nil {
-			retryableProtocolError = false
+			retryableParseError = false
 			return isRetryableStreamGenerateError(requestErr), requestErr
 		}
 
-		emitted := false
+		contentEmitted := false
+		anyEmitted := false
 		parseErr := c.parseStreamResponse(body, func(out *types.ModelOutput) {
-			emitted = true
+			anyEmitted = true
+			if streamOutputHasVisibleContent(out) {
+				contentEmitted = true
+			}
 			cb(out)
 		})
 		transport.FinalizeStreamLog(body, parseErr)
@@ -82,18 +91,29 @@ func (c *Client) streamGenerate(ctx context.Context, prompt string, metadata []s
 		}
 
 		var eerr *rpcs.EnvelopeError
-		retryableProtocolError = errors.As(parseErr, &eerr) && eerr.Code == 13 && !emitted
-		return retryableProtocolError, parseErr
+		code13Retry := errors.As(parseErr, &eerr) && eerr.Code == 13 && !anyEmitted
+		bodyRetry := isRetryableStreamBodyError(parseErr) && !contentEmitted
+		retryableParseError = code13Retry || bodyRetry
+		return retryableParseError, parseErr
 	}, func(attempt, maxAttempts int, retryErr error) {
 		var eerr *rpcs.EnvelopeError
 		if errors.As(retryErr, &eerr) && eerr.Code == 13 {
 			log.Printf("gemini stream: code 13 (BardErrorInfo 1155) retry attempt %d/%d", attempt, maxAttempts)
 			return
 		}
+		if isRetryableStreamBodyError(retryErr) {
+			log.Printf("gemini stream: body read retry attempt %d/%d: %v", attempt, maxAttempts, retryErr)
+			return
+		}
 		log.Printf("gemini stream: request retry attempt %d/%d: %v", attempt, maxAttempts, retryErr)
 	})
-	if err != nil && retryableProtocolError {
-		log.Printf("gemini stream: code 13 retries exhausted after %d attempts", maxStreamGenerateAttempts)
+	if err != nil && retryableParseError {
+		var eerr *rpcs.EnvelopeError
+		if errors.As(err, &eerr) && eerr.Code == 13 {
+			log.Printf("gemini stream: code 13 retries exhausted after %d attempts", maxStreamGenerateAttempts)
+		} else {
+			log.Printf("gemini stream: body read retries exhausted after %d attempts: %v", maxStreamGenerateAttempts, err)
+		}
 	}
 	return err
 }
