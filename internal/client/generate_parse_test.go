@@ -2,8 +2,10 @@ package client
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -58,8 +60,160 @@ func TestParseStreamResponse_ReturnsNonEOFReadErrorAfterOutput(t *testing.T) {
 	reader := &chunkReader{chunks: [][]byte{body}, errs: []error{boom}}
 
 	err := (&Client{}).parseStreamResponse(reader, func(out *types.ModelOutput) {})
-	if err == nil || !strings.Contains(err.Error(), "boom") {
-		t.Fatalf("err = %v, want boom", err)
+	var readErr *streamReadError
+	if !errors.As(err, &readErr) || !errors.Is(readErr, boom) {
+		t.Fatalf("err = %v, want streamReadError wrapping boom", err)
+	}
+	if readErr.HTTPStatus != 200 || readErr.BytesRead == 0 || readErr.Frames == 0 {
+		t.Fatalf("diagnostics = http=%d bytes=%d frames=%d, want http=200 with progress", readErr.HTTPStatus, readErr.BytesRead, readErr.Frames)
+	}
+	if !strings.Contains(err.Error(), "reading stream:") || !strings.Contains(err.Error(), "http=200") {
+		t.Fatalf("err = %v, want reading stream prefix with http=200", err)
+	}
+}
+
+func TestStreamGenerateRetriesBodyTimeoutBeforeOutput(t *testing.T) {
+	c := newTestClient()
+	requests := 0
+	c.httpClient = &http.Client{Transport: streamRoundTripFunc(func(*http.Request) (*http.Response, error) {
+		requests++
+		if requests == 1 {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body: io.NopCloser(&errReader{err: fmt.Errorf(
+					"%w (Client.Timeout or context cancellation while reading body)",
+					context.DeadlineExceeded,
+				)}),
+			}, nil
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(bytes.NewReader(makeStreamBody(t, "complete", true))),
+		}, nil
+	})}
+
+	callbacks := 0
+	err := c.streamGenerate(t.Context(), "prompt", nil, nil, &types.Models[0], false, "", func(*types.ModelOutput) {
+		callbacks++
+	})
+	if err != nil {
+		t.Fatalf("streamGenerate: %v", err)
+	}
+	if requests != 2 {
+		t.Fatalf("requests = %d, want 2", requests)
+	}
+	if callbacks != 1 {
+		t.Fatalf("callbacks = %d, want 1", callbacks)
+	}
+}
+
+func TestStreamGenerateDoesNotRetryBodyTimeoutAfterOutput(t *testing.T) {
+	c := newTestClient()
+	requests := 0
+	timeoutErr := fmt.Errorf("%w (Client.Timeout or context cancellation while reading body)", context.DeadlineExceeded)
+	c.httpClient = &http.Client{Transport: streamRoundTripFunc(func(*http.Request) (*http.Response, error) {
+		requests++
+		body := makeStreamBody(t, "partial", false)
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(&chunkReader{chunks: [][]byte{body}, errs: []error{timeoutErr}}),
+		}, nil
+	})}
+
+	callbacks := 0
+	err := c.streamGenerate(t.Context(), "prompt", nil, nil, &types.Models[0], false, "", func(*types.ModelOutput) {
+		callbacks++
+	})
+	var readErr *streamReadError
+	if !errors.As(err, &readErr) || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v, want streamReadError wrapping deadline exceeded", err)
+	}
+	if requests != 1 {
+		t.Fatalf("requests = %d, want 1", requests)
+	}
+	if callbacks != 1 {
+		t.Fatalf("callbacks = %d, want 1", callbacks)
+	}
+}
+
+func TestStreamGenerateRetriesBodyTimeoutAfterMetadataOnly(t *testing.T) {
+	c := newTestClient()
+	requests := 0
+	timeoutErr := fmt.Errorf("%w (Client.Timeout or context cancellation while reading body)", context.DeadlineExceeded)
+	c.httpClient = &http.Client{Transport: streamRoundTripFunc(func(*http.Request) (*http.Response, error) {
+		requests++
+		if requests == 1 {
+			metaOnly := makeStreamBodyMetadataOnly(t)
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(&chunkReader{chunks: [][]byte{metaOnly}, errs: []error{timeoutErr}}),
+			}, nil
+		}
+		// Separate metadata and text frames so the buffer-and-flush path is
+		// exercised; a stale metadata leak from the failed attempt would make
+		// metaCallbacks == 2.
+		success := append([]byte(nil), makeStreamBodyMetadataOnly(t)...)
+		success = append(success, makeStreamBodyTextOnly(t, "complete", true)[len(")]}'\n"):]...)
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(bytes.NewReader(success)),
+		}, nil
+	})}
+
+	var texts []string
+	var metaCallbacks int
+	err := c.streamGenerate(t.Context(), "prompt", nil, nil, &types.Models[0], false, "", func(out *types.ModelOutput) {
+		if out.TextDelta != "" {
+			texts = append(texts, out.TextDelta)
+		}
+		if len(out.Metadata) > 0 && out.TextDelta == "" && out.ThoughtsDelta == "" {
+			metaCallbacks++
+		}
+	})
+	if err != nil {
+		t.Fatalf("streamGenerate: %v", err)
+	}
+	if requests != 2 {
+		t.Fatalf("requests = %d, want 2", requests)
+	}
+	if metaCallbacks != 1 {
+		t.Fatalf("metadata callbacks = %d, want 1 (failed attempt metadata discarded)", metaCallbacks)
+	}
+	if len(texts) != 1 || texts[0] != "complete" {
+		t.Fatalf("texts = %#v, want [complete]", texts)
+	}
+}
+
+func TestStreamGenerateRetriesCode13AfterMetadataOnly(t *testing.T) {
+	c := newTestClient()
+	requests := 0
+	c.httpClient = &http.Client{Transport: streamRoundTripFunc(func(*http.Request) (*http.Response, error) {
+		requests++
+		if requests == 1 {
+			metaThen13 := append([]byte(nil), makeStreamBodyMetadataOnly(t)...)
+			metaThen13 = append(metaThen13, makeCode13StreamBody(t)[len(")]}'\n"):]...)
+			return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(bytes.NewReader(metaThen13))}, nil
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(bytes.NewReader(makeStreamBody(t, "complete", true)))}, nil
+	})}
+
+	callbacks := 0
+	err := c.streamGenerate(t.Context(), "prompt", nil, nil, &types.Models[0], false, "", func(*types.ModelOutput) {
+		callbacks++
+	})
+	if err != nil {
+		t.Fatalf("streamGenerate: %v", err)
+	}
+	if requests != 2 {
+		t.Fatalf("requests = %d, want 2", requests)
+	}
+	if callbacks < 1 {
+		t.Fatalf("callbacks = %d, want at least 1", callbacks)
 	}
 }
 
@@ -248,10 +402,81 @@ func TestIsRetryableStreamGenerateError(t *testing.T) {
 	}
 }
 
+func TestIsRetryableStreamBodyError(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "client timeout while reading body",
+			err: &streamReadError{Err: fmt.Errorf(
+				"%w (Client.Timeout or context cancellation while reading body)",
+				context.DeadlineExceeded,
+			)},
+			want: true,
+		},
+		{
+			name: "unexpected eof while reading",
+			err:  &streamReadError{Err: io.ErrUnexpectedEOF},
+			want: true,
+		},
+		{
+			name: "user canceled",
+			err:  &streamReadError{Err: context.Canceled},
+			want: false,
+		},
+		{
+			name: "plain parse error",
+			err:  errors.New("no valid response frames parsed"),
+			want: false,
+		},
+		{
+			name: "non-timeout read error",
+			err:  &streamReadError{Err: errors.New("boom")},
+			want: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isRetryableStreamBodyError(tc.err); got != tc.want {
+				t.Fatalf("isRetryableStreamBodyError() = %t, want %t", got, tc.want)
+			}
+		})
+	}
+}
+
 func makeStreamBody(t *testing.T, text string, done bool) []byte {
 	t.Helper()
 	content := make([]any, 5)
 	content[1] = []any{"c_abc", "r_def"}
+	content[4] = []any{[]any{"rc_ghi", []any{text}}}
+	if done {
+		for len(content) <= 25 {
+			content = append(content, nil)
+		}
+		content[25] = "ctx"
+	}
+	contentJSON, _ := json.Marshal(content)
+	frameJSON, _ := json.Marshal([]any{[]any{"wrb.fr", nil, string(contentJSON)}})
+	framed := "\n" + string(frameJSON) + "\n"
+	return []byte(")]}'\n" + strconv.Itoa(utf16Units(framed)) + framed)
+}
+
+func makeStreamBodyMetadataOnly(t *testing.T) []byte {
+	t.Helper()
+	content := make([]any, 5)
+	content[1] = []any{"c_abc", "r_def"}
+	contentJSON, _ := json.Marshal(content)
+	frameJSON, _ := json.Marshal([]any{[]any{"wrb.fr", nil, string(contentJSON)}})
+	framed := "\n" + string(frameJSON) + "\n"
+	return []byte(")]}'\n" + strconv.Itoa(utf16Units(framed)) + framed)
+}
+
+func makeStreamBodyTextOnly(t *testing.T, text string, done bool) []byte {
+	t.Helper()
+	content := make([]any, 5)
 	content[4] = []any{[]any{"rc_ghi", []any{text}}}
 	if done {
 		for len(content) <= 25 {
@@ -275,6 +500,14 @@ func utf16Units(s string) int {
 		}
 	}
 	return units
+}
+
+type errReader struct {
+	err error
+}
+
+func (r *errReader) Read([]byte) (int, error) {
+	return 0, r.err
 }
 
 type chunkReader struct {

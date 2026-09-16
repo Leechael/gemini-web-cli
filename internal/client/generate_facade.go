@@ -14,7 +14,7 @@ type ModelUnavailableError struct {
 }
 
 func (e *ModelUnavailableError) Error() string {
-	return fmt.Sprintf("model unavailable (error code %d)", e.Code)
+	return fmt.Sprintf("model unavailable (error code %d) (http=200)", e.Code)
 }
 
 // GenerateContent sends a prompt and returns the full response (non-streaming).

@@ -119,7 +119,9 @@ type EnvelopeError struct {
 }
 
 func (e *EnvelopeError) Error() string {
-	return fmt.Sprintf("envelope error code %d", e.Code)
+	// StreamGenerate rejects arrive after HTTP 200 with a wrb.fr envelope code.
+	// Include http=200 so operators do not mistake this for a transport failure.
+	return fmt.Sprintf("stream envelope reject code %d (http=200)", e.Code)
 }
 
 // RejectCode exposes the protocol reject code to transport diagnostics.

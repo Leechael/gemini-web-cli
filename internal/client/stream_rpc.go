@@ -9,7 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Leechael/gemini-web-cli/internal/client/protocol/rpcs"
 	"github.com/Leechael/gemini-web-cli/internal/client/transport"
+	"github.com/Leechael/gemini-web-cli/internal/types"
 )
 
 // CallStreamGenerate sends a StreamGenerate request and retries transient
@@ -29,7 +31,7 @@ func (c *Client) callStreamGenerateWithRetry(ctx context.Context, req transport.
 		body = attemptBody
 		return false, nil
 	}, func(attempt, maxAttempts int, err error) {
-		fmt.Fprintf(logWriter, "stream request failed (attempt %d/%d), retrying: %v\n", attempt, maxAttempts, err)
+		fmt.Fprintf(logWriter, "stream request failed (attempt %d/%d), retrying: %s\n", attempt, maxAttempts, formatStreamAttemptError(err))
 	})
 	return body, err
 }
@@ -93,18 +95,84 @@ func isRetryableStreamGenerateError(err error) bool {
 	if !errors.As(err, &requestErr) {
 		return false
 	}
-	if errors.Is(requestErr.Err, io.ErrUnexpectedEOF) || errors.Is(requestErr.Err, io.EOF) {
+	return isRetryableTransientNetError(requestErr.Err)
+}
+
+// isRetryableStreamBodyError reports mid-stream read failures that are safe to
+// retry when no visible content has been emitted yet (timeouts, resets, etc.).
+// User cancellation is not retryable.
+func isRetryableStreamBodyError(err error) bool {
+	var readErr *streamReadError
+	if !errors.As(err, &readErr) {
+		return false
+	}
+	inner := readErr.Err
+	if errors.Is(inner, context.Canceled) && !errors.Is(inner, context.DeadlineExceeded) {
+		return false
+	}
+	if errors.Is(inner, context.DeadlineExceeded) {
+		return true
+	}
+	return isRetryableTransientNetError(inner)
+}
+
+func isRetryableTransientNetError(err error) bool {
+	if errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF) {
 		return true
 	}
 	var netErr net.Error
-	if errors.As(requestErr.Err, &netErr) && netErr.Timeout() {
+	if errors.As(err, &netErr) && netErr.Timeout() {
 		return true
 	}
-	msg := strings.ToLower(requestErr.Err.Error())
+	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "unexpected eof") ||
 		strings.Contains(msg, "connection reset") ||
 		strings.Contains(msg, "broken pipe") ||
-		strings.Contains(msg, "server closed idle connection")
+		strings.Contains(msg, "server closed idle connection") ||
+		strings.Contains(msg, "client.timeout")
+}
+
+// streamOutputHasVisibleContent reports whether a stream frame delivered text,
+// reasoning, media, or a deep-research plan that the caller may already have consumed.
+func streamOutputHasVisibleContent(out *types.ModelOutput) bool {
+	if out == nil {
+		return false
+	}
+	return out.TextDelta != "" ||
+		out.ThoughtsDelta != "" ||
+		out.DeepResearchPlan != nil ||
+		out.Done ||
+		len(out.Images) > 0 ||
+		len(out.Videos) > 0 ||
+		len(out.Media) > 0
+}
+
+// formatStreamAttemptError keeps reverse-engineered failures diagnosable in logs:
+// HTTP status (when present), reject codes, and the underlying message.
+func formatStreamAttemptError(err error) string {
+	if err == nil {
+		return ""
+	}
+	var statusErr *transport.HTTPStatusError
+	if errors.As(err, &statusErr) {
+		if statusErr.BodySnippet == "" {
+			return fmt.Sprintf("http=%d %s", statusErr.StatusCode, statusErr.Error())
+		}
+		return fmt.Sprintf("http=%d body=%q", statusErr.StatusCode, statusErr.BodySnippet)
+	}
+	var rateErr *RateLimitError
+	if errors.As(err, &rateErr) {
+		return fmt.Sprintf("http=%d %s", rateErr.StatusCode, rateErr.Error())
+	}
+	var eerr *rpcs.EnvelopeError
+	if errors.As(err, &eerr) {
+		return eerr.Error()
+	}
+	var readErr *streamReadError
+	if errors.As(err, &readErr) {
+		return readErr.Error()
+	}
+	return err.Error()
 }
 
 func sleepBeforeStreamRetry(ctx context.Context, attempt int) error {
